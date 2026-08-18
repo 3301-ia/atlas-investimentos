@@ -4641,3 +4641,111 @@ async function changeMtfTf(index, newTf){
   }
 }
 window.changeMtfTf = changeMtfTf;
+
+
+// ====================================
+// MULTI-TF LOGIC RESTORATION
+// ====================================
+let mtfCharts = [];
+let mtfSeries = [];
+
+function toggleMtfView() {
+  if (typeof window.mtfViewOpen === 'undefined') window.mtfViewOpen = false;
+  window.mtfViewOpen = !window.mtfViewOpen;
+  
+  const el = document.getElementById('mtf-view');
+  if(!el) return;
+  
+  if (window.mtfViewOpen) {
+    el.classList.add('show');
+    openMtfCharts();
+  } else {
+    el.classList.remove('show');
+    closeMtfCharts();
+  }
+}
+
+async function openMtfCharts() {
+  const containerIds = ['mtf-chart-1', 'mtf-chart-2', 'mtf-chart-3', 'mtf-chart-4'];
+  // Provide elements if missing in html
+  const mtfView = document.getElementById('mtf-view');
+  if (!document.getElementById('mtf-chart-1')) {
+     mtfView.innerHTML = `
+        <div id="mtf-center-compass" style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); z-index:100; width:160px; height:160px; background:rgba(19, 25, 34, 0.7); backdrop-filter:blur(8px); border-radius:16px; border:1px solid rgba(255,255,255,0.05); display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:2px; overflow:hidden; box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+            <div style="background:rgba(0,0,0,0.3); display:flex; flex-direction:column; align-items:center; justify-content:center;"><span id="mtf-comp-lbl-1" style="font-size:9px; color:var(--t2);">TF 1</span></div>
+            <div style="background:rgba(0,0,0,0.3); display:flex; flex-direction:column; align-items:center; justify-content:center;"><span id="mtf-comp-lbl-2" style="font-size:9px; color:var(--t2);">TF 2</span></div>
+            <div style="background:rgba(0,0,0,0.3); display:flex; flex-direction:column; align-items:center; justify-content:center;"><span id="mtf-comp-lbl-3" style="font-size:9px; color:var(--t2);">TF 3</span></div>
+            <div style="background:rgba(0,0,0,0.3); display:flex; flex-direction:column; align-items:center; justify-content:center;"><span id="mtf-comp-lbl-4" style="font-size:9px; color:var(--t2);">TF 4</span></div>
+        </div>
+        <div class="multi-cell"><div class="multi-hd"><span class="multi-sym">15m</span></div><div class="multi-chart" id="mtf-chart-1"></div></div>
+        <div class="multi-cell"><div class="multi-hd"><span class="multi-sym">1h</span></div><div class="multi-chart" id="mtf-chart-2"></div></div>
+        <div class="multi-cell"><div class="multi-hd"><span class="multi-sym">4h</span></div><div class="multi-chart" id="mtf-chart-3"></div></div>
+        <div class="multi-cell"><div class="multi-hd"><span class="multi-sym">1d</span></div><div class="multi-chart" id="mtf-chart-4"></div></div>
+     `;
+  }
+  
+  closeMtfCharts();
+  
+  const sym = typeof currentSym !== 'undefined' ? currentSym : 'BTCUSDT';
+  const tfs = ['15m', '1h', '4h', '1d'];
+  
+  for(let i = 0; i < 4; i++) {
+     const cId = containerIds[i];
+     const el = document.getElementById(cId);
+     if(!el) continue;
+     
+     const chart = LightweightCharts.createChart(el, {
+        layout: { background: { color: 'transparent' }, textColor: '#8b9bb4' },
+        grid: { vertLines: { color: 'rgba(255,255,255,0.02)' }, horzLines: { color: 'rgba(255,255,255,0.02)' } },
+        timeScale: { timeVisible: true }
+     });
+     
+     const series = chart.addCandlestickSeries({
+        upColor: '#00ffaa', downColor: '#ff4444', borderUpColor: '#00ffaa', borderDownColor: '#ff4444', wickUpColor: '#00ffaa', wickDownColor: '#ff4444'
+     });
+     
+     mtfCharts.push(chart);
+     mtfSeries.push(series);
+     
+     try {
+       const data = await fetchCandles(sym, tfs[i], 300);
+       if(data && data.length) series.setData(data);
+     } catch(e) {}
+  }
+}
+
+function closeMtfCharts() {
+  mtfCharts.forEach(c => c.remove());
+  mtfCharts = [];
+  mtfSeries = [];
+}
+
+window.toggleMtfView = toggleMtfView;
+
+// Re-assign modals explicitly to ensure they work on click
+window.toggleBussolaModal = function() {
+  const el = document.getElementById('bussola-modal');
+  if(!el) return;
+  const isHidden = el.style.display === 'none' || el.style.display === '';
+  el.style.display = isHidden ? 'flex' : 'none';
+};
+
+window.togglePotential = function() {
+  const el = document.getElementById('potential-card');
+  if(!el) return;
+  const isHidden = el.style.display === 'none' || el.style.display === '';
+  el.style.display = isHidden ? 'flex' : 'none';
+};
+
+window.toggleTerminalTab = function() {
+  const el = document.getElementById('terminal-view');
+  if(!el) return;
+  if(el.classList.contains('show')){
+    el.classList.remove('show');
+    document.querySelector('.chart-wrap').style.display = '';
+  } else {
+    el.classList.add('show');
+    document.querySelector('.chart-wrap').style.display = 'none';
+    if(typeof updateTerminalUI !== 'undefined') updateTerminalUI();
+  }
+};
