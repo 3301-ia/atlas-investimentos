@@ -1,29 +1,4 @@
 
-function aggregateCandles(candles, factor) {
-  if (!candles || candles.length === 0) return candles;
-  const result = [];
-  let current = null;
-  let count = 0;
-  for (let i = 0; i < candles.length; i++) {
-    const c = candles[i];
-    if (count === 0) {
-      current = { time: c.time, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume };
-    } else {
-      current.high = Math.max(current.high, c.high);
-      current.low = Math.min(current.low, c.low);
-      current.close = c.close;
-      current.volume += c.volume;
-    }
-    count++;
-    if (count === factor || i === candles.length - 1) {
-      result.push(current);
-      count = 0;
-    }
-  }
-  return result;
-}
-
-
 import * as LightweightCharts from 'lightweight-charts';
 
 // ══════════════════════════════════════════════════════
@@ -1077,7 +1052,7 @@ const DATA_SOURCES = [
   },
   {
     name:'bybit',
-    tfMap:{'1m':'1','3m':'3','5m':'5','15m':'15','30m':'30','1h':'60','4h':'240','5h':'300','6h':'360','12h':'720','1d':'D','1w':'W','1M':'M','3M':'3M','6M':'6M','9M':'9M','12M':'12M'},
+    tfMap:{'1m':'1','5m':'5','15m':'15','30m':'30','1h':'60','4h':'240','1d':'D','1w':'W','1M':'M'},
     build(sym,tf,limit){ const iv=this.tfMap[tf]; if(!iv)return null; return `https://api.bybit.com/v5/market/kline?category=spot&symbol=${sym}&interval=${iv}&limit=${Math.min(limit,1000)}`; },
     parse:(d)=>{
       const list=d?.result?.list; if(!list)return null;
@@ -1087,7 +1062,7 @@ const DATA_SOURCES = [
   },
   {
     name:'okx',
-    tfMap:{'1m':'1m','3m':'3m','5m':'5m','15m':'15m','30m':'30m','1h':'1H','4h':'4H','5h':'5H','6h':'6H','12h':'12H','1d':'1D','1w':'1W','1M':'1M','3M':'3M','6M':'6M','9M':'9M','12M':'1Y'},
+    tfMap:{'1m':'1m','5m':'5m','15m':'15m','30m':'30m','1h':'1H','4h':'4H','1d':'1D','1w':'1W','1M':'1M'},
     build(sym,tf,limit){ const iv=this.tfMap[tf]; if(!iv)return null; const inst=toCryptoBase(sym)+'-USDT'; return `https://www.okx.com/api/v5/market/candles?instId=${inst}&bar=${iv}&limit=${Math.min(limit,300)}`; },
     parse:(d)=>{
       const list=d?.data; if(!list)return null;
@@ -1253,29 +1228,15 @@ function interpretVolumeConfirm(candles){
 }
 
 async function fetchCandles(sym,tf,limit=500){
-  let fetchTf = tf;
-  let aggFactor = 1;
-
-  if (tf === '5h') { fetchTf = '1h'; aggFactor = 5; }
-  else if (tf === '3M') { fetchTf = '1M'; aggFactor = 3; }
-  else if (tf === '6M') { fetchTf = '1M'; aggFactor = 6; }
-  else if (tf === '9M') { fetchTf = '1M'; aggFactor = 9; }
-  else if (tf === '12M') { fetchTf = '1M'; aggFactor = 12; }
-
-  const realLimit = Math.min(limit * aggFactor, 1500);
-
   for(const src of DATA_SOURCES){
     try{
-      const url = src.build ? src.build(sym,fetchTf,realLimit) : null;
-      if(!url)continue;
+      const url = src.build ? src.build(sym,tf,limit) : null;
+      if(!url)continue; // essa fonte nao tem esse timeframe — pula pra proxima
       const r=await fetch(url,{signal:AbortSignal.timeout(3500)});
       if(!r.ok)continue;
       const raw=await r.json();
-      let parsed=src.parse(raw);
+      const parsed=src.parse(raw);
       if(parsed&&parsed.length>0){
-        if (aggFactor > 1) {
-            parsed = aggregateCandles(parsed, aggFactor);
-        }
         lastDataSource=src.name;
         updateDataSourceBadge(src.name, src.name!=='binance');
         return parsed;
@@ -1509,11 +1470,7 @@ function openWS(){
   const symL=currentSym.toLowerCase();
   const wantedSym=currentSym; // guarda o simbolo desta conexao
   // Multiplex: velas (kline) + todas as execucoes em tempo real (aggTrade)
-  let wsTf = currentTF;
-  if (['5h', '3M', '6M', '9M', '12M'].includes(currentTF)) {
-      wsTf = '1m'; // Fallback for websocket so Binance doesn't drop connection
-  }
-  wsKline=new WebSocket(`wss://fstream.binance.com/stream?streams=${symL}@kline_${wsTf}/${symL}@aggTrade`);
+  wsKline=new WebSocket(`wss://fstream.binance.com/stream?streams=${symL}@kline_${currentTF}/${symL}@aggTrade`);
 
   wsKline.onopen=()=>{
     document.getElementById('ws-dot').className='dot grn blink';
@@ -4013,6 +3970,7 @@ function initDrawingTools(){
 }
 
 let syncLoopRunning = false;
+let lastSyncMapKey = null;
 function startDrawSyncLoop(){
   if(syncLoopRunning) return;
   syncLoopRunning = true;
@@ -4021,7 +3979,25 @@ function startDrawSyncLoop(){
     // transitorio do chart durante troca de simbolo), o loop NAO pode morrer —
     // antes, um unico erro parava a sincronizacao do zoom pra sempre.
     try{
-      if(drawings().length || isDragging) redrawDrawings();
+      if(isDragging){
+        redrawDrawings(); // arrastando, precisa de feedback a cada frame mesmo
+      }else if(drawings().length){
+        // So redesenha (e, mais caro ainda, so reconstroi as legendas de fib via
+        // innerHTML dentro de redrawDrawings) se o mapeamento preco<->pixel do
+        // eixo vertical realmente mudou (zoom vertical, autoscale ao vivo puxando
+        // o range, ou resize). Pan/zoom horizontal ja tem seu proprio evento
+        // (subscribeVisibleLogicalRangeChange, abaixo) — este loop so cobria o
+        // resto. Antes rodava redrawDrawings() incondicionalmente a 60fps pra
+        // sempre enquanto houvesse qualquer desenho no simbolo/TF atual, mesmo
+        // com o grafico completamente parado — travava a aba sem necessidade.
+        const r = chartRect();
+        const y0 = p2y(0), y1 = p2y(1000);
+        const mapKey = `${r.width}x${r.height}|${y0}|${y1}`;
+        if(mapKey !== lastSyncMapKey){
+          lastSyncMapKey = mapKey;
+          redrawDrawings();
+        }
+      }
     }catch(e){
       console.warn('[draw-sync] erro num frame, seguindo pro proximo:',e);
     }
@@ -4476,276 +4452,3 @@ window.runBacktest = typeof runBacktest !== 'undefined' ? runBacktest : null;
 window.archiveStudyObservation = typeof archiveStudyObservation !== 'undefined' ? archiveStudyObservation : null;
 window.refreshPhiRibbonAndBorders = typeof refreshPhiRibbonAndBorders !== 'undefined' ? refreshPhiRibbonAndBorders : null;
 window.updateLiveCandleBorder = typeof updateLiveCandleBorder !== 'undefined' ? updateLiveCandleBorder : null;
-
-
-
-
-// UI TOGGLES RESTORED
-let terminalOpen = false;
-let bussolaOpen = false;
-let potentialOpen = false;
-let goldOpen = false;
-
-
-async function updateTerminalUI() {
-  const tCards = document.getElementById('terminal-cards');
-  if(!tCards) return;
-  tCards.innerHTML = '<div style="color:var(--t3);font-size:11px;padding:20px;text-align:center;">Carregando leitura terminal...</div>';
-  
-  const sym = currentSym;
-  // Terminal timeframes from user screenshot
-  const tfs = ['3m', '15m', '1h', '4h', '5h', '6h', '12h', '1d', '1w', '1M', '3M', '6M', '9M', '12M'];
-  let html = '<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:10px; padding:16px;">';
-  
-  try {
-    const promises = tfs.map(t => fetchCandles(sym, t, 50));
-    const results = await Promise.all(promises);
-    
-    for(let i = 0; i < tfs.length; i++) {
-       const t = tfs[i];
-       const data = results[i];
-       if(data && data.length > 0) {
-          const last = data[data.length-1];
-          // Very basic rendering for now to show the TF is working
-          html += `<div style="background:var(--bg2); padding:10px; border-radius:8px; border:1px solid var(--bd2); text-align:center;">
-            <div style="font-weight:bold; color:var(--gold); font-size:14px; margin-bottom:4px;">${t.toUpperCase()}</div>
-            <div style="font-family:var(--mono); color:var(--t2); font-size:12px;">$${last.close.toFixed(2)}</div>
-          </div>`;
-       } else {
-          html += `<div style="background:var(--bg2); padding:10px; border-radius:8px; border:1px dashed var(--red); text-align:center; opacity:0.6;">
-            <div style="font-weight:bold; color:var(--t3); font-size:14px; margin-bottom:4px;">${t.toUpperCase()}</div>
-            <div style="font-size:10px; color:var(--red);">Sem dados</div>
-          </div>`;
-       }
-    }
-  } catch(e) {
-    html = `<div style="color:red;padding:20px;">Falha ao carregar dados do Terminal. ${e.message}</div>`;
-  }
-  html += '</div>';
-  tCards.innerHTML = html;
-}
-
-// Hook it to the toggle
-function toggleTerminalTab() {
-  terminalOpen = !terminalOpen;
-  const cw = document.querySelector('.chart-wrap');
-  if(cw) cw.style.display = terminalOpen ? 'none' : '';
-  const el = document.getElementById('terminal-view');
-  if(el) el.classList.toggle('show', terminalOpen);
-  if(terminalOpen) updateTerminalUI();
-}
-window.toggleTerminalTab = toggleTerminalTab;
-window.updateTerminalUI = updateTerminalUI;
-
-
-function toggleBussolaModal() {
-  const el = document.getElementById('bussola-modal');
-  if(!el) return;
-  const isHidden = el.style.display === 'none' || el.style.display === '';
-  el.style.display = isHidden ? 'flex' : 'none';
-}
-window.toggleBussolaModal = toggleBussolaModal;
-
-
-function togglePotential() {
-  const card = document.getElementById('potential-card');
-  if (!card) return;
-  const show = card.style.display === 'none' || card.style.display === '';
-  card.style.display = show ? 'flex' : 'none';
-  if (show) updatePotential();
-}
-
-function updatePotential() {
-  const eqEl = document.getElementById('pot-equity');
-  const riskEl = document.getElementById('pot-risk');
-  const levEl = document.getElementById('pot-lev');
-  const distEl = document.getElementById('pot-dist');
-  
-  if (!eqEl || !riskEl || !levEl || !distEl) return;
-  
-  const equity = parseFloat(eqEl.value) || 1000;
-  const riskPct = parseFloat(riskEl.value) || 1;
-  const lev = parseFloat(levEl.value) || 100;
-  const distPct = parseFloat(distEl.value) || 0.5;
-  
-  const riskUSD = equity * (riskPct / 100);
-  
-  const p = window.lastPrice || 1; 
-  // Margin = Notional / lev => Notional = Margin * lev
-  // Let's assume user wants to risk riskUSD if price moves distPct%.
-  // Loss = Notional * (distPct / 100) = riskUSD
-  // Notional = riskUSD / (distPct / 100)
-  const notional = riskUSD / (distPct / 100);
-  const margin = notional / lev;
-  
-  const mgnEl = document.getElementById('pot-margin');
-  const sizeEl = document.getElementById('pot-size');
-  
-  if (mgnEl) mgnEl.textContent = `$${margin.toFixed(2)}`;
-  if (sizeEl) sizeEl.textContent = `$${notional.toFixed(2)}`;
-}
-window.togglePotential = togglePotential;
-window.updatePotential = updatePotential;
-
-
-function toggleGoldTab() {
-  goldOpen = !goldOpen;
-  const cw = document.querySelector('.chart-wrap');
-  if(cw) cw.style.display = goldOpen ? 'none' : '';
-  const el = document.getElementById('gold-view');
-  if(el) el.classList.toggle('show', goldOpen);
-}
-
-window.toggleTerminalTab = toggleTerminalTab;
-window.toggleBussolaModal = toggleBussolaModal;
-window.togglePotential = togglePotential;
-window.toggleGoldTab = toggleGoldTab;
-
-// EXPORTACOES GLOBAIS (Gerado automaticamente)
-window.archiveStudyObservation = typeof archiveStudyObservation !== 'undefined' ? archiveStudyObservation : null;
-window.changeSym = typeof changeSym !== 'undefined' ? changeSym : null;
-window.changeTF = typeof changeTF !== 'undefined' ? changeTF : null;
-window.closeDerivModal = typeof closeDerivModal !== 'undefined' ? closeDerivModal : null;
-window.filterRsiTable = typeof filterRsiTable !== 'undefined' ? filterRsiTable : null;
-window.loadFullHistory = typeof loadFullHistory !== 'undefined' ? loadFullHistory : null;
-window.onBuyClick = typeof onBuyClick !== 'undefined' ? onBuyClick : null;
-window.onDerivConnectClick = typeof onDerivConnectClick !== 'undefined' ? onDerivConnectClick : null;
-window.openDerivModal = typeof openDerivModal !== 'undefined' ? openDerivModal : null;
-window.runBacktestUI = typeof runBacktestUI !== 'undefined' ? runBacktestUI : null;
-window.setRsiZone = typeof setRsiZone !== 'undefined' ? setRsiZone : null;
-window.setTTSide = typeof setTTSide !== 'undefined' ? setTTSide : null;
-window.sortRsiTable = typeof sortRsiTable !== 'undefined' ? sortRsiTable : null;
-window.swapStochPhiPanels = typeof swapStochPhiPanels !== 'undefined' ? swapStochPhiPanels : null;
-window.switchRTab = typeof switchRTab !== 'undefined' ? switchRTab : null;
-window.toggleAlerts = typeof toggleAlerts !== 'undefined' ? toggleAlerts : null;
-window.toggleBacktestTab = typeof toggleBacktestTab !== 'undefined' ? toggleBacktestTab : null;
-window.toggleMacroTab = typeof toggleMacroTab !== 'undefined' ? toggleMacroTab : null;
-window.toggleMultiView = typeof toggleMultiView !== 'undefined' ? toggleMultiView : null;
-window.toggleRainbowTab = typeof toggleRainbowTab !== 'undefined' ? toggleRainbowTab : null;
-window.toggleRsiTable = typeof toggleRsiTable !== 'undefined' ? toggleRsiTable : null;
-window.toggleStudyArchive = typeof toggleStudyArchive !== 'undefined' ? toggleStudyArchive : null;
-window.toggleTheme = typeof toggleTheme !== 'undefined' ? toggleTheme : null;
-window.toggleTokenVisibility = typeof toggleTokenVisibility !== 'undefined' ? toggleTokenVisibility : null;
-window.toggleValidatorPanel = typeof toggleValidatorPanel !== 'undefined' ? toggleValidatorPanel : null;
-window.updateTTCalc = typeof updateTTCalc !== 'undefined' ? updateTTCalc : null;
-
-let mtfTfs = ['15m','1h','4h','1d']; // base state
-async function changeMtfTf(index, newTf){
-  mtfTfs[index-1] = newTf;
-  if(typeof mtfViewOpen !== 'undefined' && mtfViewOpen || document.getElementById('multi-view').classList.contains('show')){
-      // The user changed a dropdown while multi view is open
-      // We need to reload just that chart, but openMultiCharts does it all.
-      // Easiest is to call closeMultiCharts and openMultiCharts
-      if (typeof closeMultiCharts !== 'undefined') closeMultiCharts();
-      if (typeof openMultiCharts !== 'undefined') openMultiCharts();
-  }
-}
-window.changeMtfTf = changeMtfTf;
-
-
-// ====================================
-// MULTI-TF LOGIC RESTORATION
-// ====================================
-let mtfCharts = [];
-let mtfSeries = [];
-
-function toggleMtfView() {
-  if (typeof window.mtfViewOpen === 'undefined') window.mtfViewOpen = false;
-  window.mtfViewOpen = !window.mtfViewOpen;
-  
-  const el = document.getElementById('mtf-view');
-  if(!el) return;
-  
-  if (window.mtfViewOpen) {
-    el.classList.add('show');
-    openMtfCharts();
-  } else {
-    el.classList.remove('show');
-    closeMtfCharts();
-  }
-}
-
-async function openMtfCharts() {
-  const containerIds = ['mtf-chart-1', 'mtf-chart-2', 'mtf-chart-3', 'mtf-chart-4'];
-  // Provide elements if missing in html
-  const mtfView = document.getElementById('mtf-view');
-  if (!document.getElementById('mtf-chart-1')) {
-     mtfView.innerHTML = `
-        <div id="mtf-center-compass" style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); z-index:100; width:160px; height:160px; background:rgba(19, 25, 34, 0.7); backdrop-filter:blur(8px); border-radius:16px; border:1px solid rgba(255,255,255,0.05); display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:2px; overflow:hidden; box-shadow:0 8px 32px rgba(0,0,0,0.5);">
-            <div style="background:rgba(0,0,0,0.3); display:flex; flex-direction:column; align-items:center; justify-content:center;"><span id="mtf-comp-lbl-1" style="font-size:9px; color:var(--t2);">TF 1</span></div>
-            <div style="background:rgba(0,0,0,0.3); display:flex; flex-direction:column; align-items:center; justify-content:center;"><span id="mtf-comp-lbl-2" style="font-size:9px; color:var(--t2);">TF 2</span></div>
-            <div style="background:rgba(0,0,0,0.3); display:flex; flex-direction:column; align-items:center; justify-content:center;"><span id="mtf-comp-lbl-3" style="font-size:9px; color:var(--t2);">TF 3</span></div>
-            <div style="background:rgba(0,0,0,0.3); display:flex; flex-direction:column; align-items:center; justify-content:center;"><span id="mtf-comp-lbl-4" style="font-size:9px; color:var(--t2);">TF 4</span></div>
-        </div>
-        <div class="multi-cell"><div class="multi-hd"><span class="multi-sym">15m</span></div><div class="multi-chart" id="mtf-chart-1"></div></div>
-        <div class="multi-cell"><div class="multi-hd"><span class="multi-sym">1h</span></div><div class="multi-chart" id="mtf-chart-2"></div></div>
-        <div class="multi-cell"><div class="multi-hd"><span class="multi-sym">4h</span></div><div class="multi-chart" id="mtf-chart-3"></div></div>
-        <div class="multi-cell"><div class="multi-hd"><span class="multi-sym">1d</span></div><div class="multi-chart" id="mtf-chart-4"></div></div>
-     `;
-  }
-  
-  closeMtfCharts();
-  
-  const sym = typeof currentSym !== 'undefined' ? currentSym : 'BTCUSDT';
-  const tfs = ['15m', '1h', '4h', '1d'];
-  
-  for(let i = 0; i < 4; i++) {
-     const cId = containerIds[i];
-     const el = document.getElementById(cId);
-     if(!el) continue;
-     
-     const chart = LightweightCharts.createChart(el, {
-        layout: { background: { color: 'transparent' }, textColor: '#8b9bb4' },
-        grid: { vertLines: { color: 'rgba(255,255,255,0.02)' }, horzLines: { color: 'rgba(255,255,255,0.02)' } },
-        timeScale: { timeVisible: true }
-     });
-     
-     const series = chart.addCandlestickSeries({
-        upColor: '#00ffaa', downColor: '#ff4444', borderUpColor: '#00ffaa', borderDownColor: '#ff4444', wickUpColor: '#00ffaa', wickDownColor: '#ff4444'
-     });
-     
-     mtfCharts.push(chart);
-     mtfSeries.push(series);
-     
-     try {
-       const data = await fetchCandles(sym, tfs[i], 300);
-       if(data && data.length) series.setData(data);
-     } catch(e) {}
-  }
-}
-
-function closeMtfCharts() {
-  mtfCharts.forEach(c => c.remove());
-  mtfCharts = [];
-  mtfSeries = [];
-}
-
-window.toggleMtfView = toggleMtfView;
-
-// Re-assign modals explicitly to ensure they work on click
-window.toggleBussolaModal = function() {
-  const el = document.getElementById('bussola-modal');
-  if(!el) return;
-  const isHidden = el.style.display === 'none' || el.style.display === '';
-  el.style.display = isHidden ? 'flex' : 'none';
-};
-
-window.togglePotential = function() {
-  const el = document.getElementById('potential-card');
-  if(!el) return;
-  const isHidden = el.style.display === 'none' || el.style.display === '';
-  el.style.display = isHidden ? 'flex' : 'none';
-};
-
-window.toggleTerminalTab = function() {
-  const el = document.getElementById('terminal-view');
-  if(!el) return;
-  if(el.classList.contains('show')){
-    el.classList.remove('show');
-    document.querySelector('.chart-wrap').style.display = '';
-  } else {
-    el.classList.add('show');
-    document.querySelector('.chart-wrap').style.display = 'none';
-    if(typeof updateTerminalUI !== 'undefined') updateTerminalUI();
-  }
-};
