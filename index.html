@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Atlas Dashboard v10.0</title>
+
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div id="toasts"></div>
+
+<div class="app-shell">
+  <!-- NAV LATERAL DE ICONES -->
+  <div class="side-nav">
+    <div class="side-nav-top">
+      <div class="nav-item active" title="Inicio"><span class="nav-icon">🏠</span><span class="nav-lbl">Inicio</span></div>
+      <div class="nav-item" id="nav-analise" title="Analise" onclick="switchRTab('analise')"><span class="nav-icon">📊</span><span class="nav-lbl">Analise</span></div>
+      <div class="nav-item" id="nav-alerts" title="Alertas" onclick="toggleAlerts()"><span class="nav-icon">🔔</span><span class="nav-lbl">Alertas</span></div>
+      <div class="nav-item" title="Ajuda" onclick="alert('ATLAS Dashboard: chart em tempo real + motor de sinais (ATLAS/GOLD/Fibonacci) + ferramentas de desenho. Aba OPERAR prepara a ordem para a Deriv.')"><span class="nav-icon">❓</span><span class="nav-lbl">Ajuda</span></div>
+      <div class="nav-item" title="Idioma"><span class="nav-icon">🌐</span><span class="nav-lbl">PT-BR</span></div>
+    </div>
+    <div class="nav-item" id="nav-config" title="Configuracoes" onclick="openDerivModal()"><span class="nav-icon">⚙️</span><span class="nav-lbl">Config</span></div>
+  </div>
+
+  <!-- MODAL: CONFIGURACOES DERIV -->
+  <div id="deriv-modal-overlay" class="modal-overlay" onclick="if(event.target===this)closeDerivModal()">
+    <div class="modal-card">
+      <div class="modal-hd">
+        <span>Conectar conta Deriv</span>
+        <button class="modal-x" onclick="closeDerivModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-status-row">
+          <span class="dot off" id="deriv-status-dot"></span>
+          <span id="deriv-status-txt">Desconectado</span>
+        </div>
+
+        <label class="modal-lbl">App ID</label>
+        <input type="text" id="deriv-appid" class="modal-input" placeholder="ex: 12345"
+          oninput="localStorage.setItem('deriv_app_id', this.value)">
+        <div class="modal-hint">
+          Crie gratis em <b>api.deriv.com</b> &rarr; "Register application". Isso fica salvo so no seu navegador, e nao e um segredo.
+        </div>
+
+        <label class="modal-lbl" style="margin-top:12px;">Token de API</label>
+        <div style="position:relative;">
+          <input type="password" id="deriv-token" class="modal-input" placeholder="cole aqui a cada sessao" autocomplete="off" style="padding-right:36px;">
+          <button type="button" onclick="toggleTokenVisibility()" id="token-eye"
+            style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;
+            cursor:pointer;font-size:14px;color:var(--t2);padding:4px;">👁</button>
+        </div>
+        <div class="modal-hint">
+          Gere em Deriv &rarr; Configuracoes &rarr; Seguranca e Login &rarr; API Token (escopo <b>Trade</b>).
+          <b>Nunca compartilhe esse token comigo no chat</b> — ele fica so na memoria desta aba e some se voce recarregar a pagina.
+        </div>
+
+        <button class="modal-connect-btn" id="deriv-connect-btn" onclick="onDerivConnectClick()">Conectar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="page-col">
+    <!-- TOPBAR -->
+    <div class="topbar">
+      <div class="logo">
+        <div class="logo-icon">A</div>
+        <div><div class="logo-name">ATLAS v10.0</div><div class="logo-sub">DASHBOARD</div></div>
+      </div>
+      <div class="sep"></div>
+      <div class="dot off blink" id="ws-dot"></div>
+      <span class="st" id="ws-st">Conectando...</span>
+      <span class="st" id="data-source-badge" style="display:none;color:var(--gold);font-weight:700;margin-left:6px;" title="Fonte de dados de fallback ativa (Binance indisponivel no momento)"></span>
+      <div class="sep"></div>
+      <div class="cat-bar" id="cat-bar"></div>
+
+      <select id="sym-select" onchange="changeSym(this.value)">
+        <!-- Opciones generadas dinamicamente -->
+      </select>
+
+      <div class="sep"></div>
+      <select id="tf-select" onchange="changeTF(this.value)">
+        <option value="1m">1m</option>
+        <option value="3m">3m</option>
+        <option value="5m">5m</option>
+        <option value="15m" selected>15m</option>
+        <option value="30m">30m</option>
+        <option value="1h">1h</option>
+        <option value="4h">4h</option>
+        <option value="5h">5h</option>
+        <option value="6h">6h</option>
+        <option value="12h">12h</option>
+        <option value="1d">1d</option>
+        <option value="1M">1M</option>
+        <option value="3M">3M</option>
+        <option value="6M">6M</option>
+        <option value="9M">9M</option>
+        <option value="12M">12M</option>
+        <option value="1w">1w</option>
+      </select>
+      <button class="btn" id="btn-fullhist" onclick="loadFullHistory()" title="Carrega todo o historico disponivel, pra analisar tendencia macro">🕰 Tudo</button>
+      <button class="btn" id="btn-multi" onclick="toggleMultiView()" title="Abre BTC, ETH, XAU e XAG juntos na mesma tela">🔲 Multi</button>
+      <button class="btn" id="btn-mtf" onclick="toggleMtfView()" title="Abre 4 timeframes diferentes para o ativo selecionado">⏱ Multi-TF</button>
+      <button class="btn" id="btn-validador" onclick="toggleValidatorPanel()" title="Valida todos os ativos da lista com o checklist ATLAS (Score + EMAs + StochRSI)">🛡 Validador</button>
+      <button class="btn" id="btn-rsitable" onclick="toggleRsiTable()" title="Tabela RSI multi-timeframe pra todos os ativos, com alvo de preco inverso">📊 RSI Table</button>
+      <button class="btn" id="btn-rainbow" onclick="toggleRainbowTab()" title="Rainbow Chart isolado (regressao log de longo prazo)">🌈 Rainbow</button>
+      <button class="btn" id="btn-estudo" onclick="toggleStudyArchive()" title="Arquivo de estudo: angulo das EMAs 8/16 por timeframe, pra registrar observacoes ao longo do tempo">📚 Arquivo</button>
+      <button class="btn" id="btn-backtest" onclick="toggleBacktestTab()" title="Backtest: simula um sinal contra o historico e mostra Win Rate, Profit Factor, Sharpe e mais">🧪 Backtest</button>
+      <button class="btn" id="btn-macro" onclick="toggleMacroTab()" title="Leitura macro: RSI semanal, Canal Gaussiano, StochRSI, MACD/PPO mensal, Pi Cycle">📐 Macro</button>
+      <button class="btn" id="btn-terminal" onclick="toggleTerminalTab()" title="Terminal: forca consolidada D/W/M + cruzamento + RSI inverso, e climax de volume nos fundos (VSA/Wyckoff)">🎯 Terminal</button>
+      <button class="btn" id="btn-gold" onclick="toggleGoldTab()" title="Mercados globais: 377 ativos (cripto/forex/indices/commodities/acoes) com RSI H1/H4/D1 + alvo inverso, cotacao ao vivo">🥇 Gold</button>
+      <button class="btn" id="btn-bussola" onclick="toggleBussolaModal()" title="Bussola Direcional do Mercado">🧭 Bússola</button>
+      <button class="btn" id="btn-potential" onclick="togglePotential()" title="Calculadora Dinâmica de Potencial de Lucro e Risco (Alavancagem 800:1)">⚡ Potential</button>
+      <button class="btn" id="btn-confluator-gold" onclick="toggleConfluatorGoldModal()" title="ATLAS GOLD - RSI/Stoch Multi-Timeframe para o ativo atual">🏆 ATLAS GOLD</button>
+      <button class="btn" id="btn-theme" onclick="toggleTheme()" title="Alterna entre tema claro e escuro">🌙</button>
+      <button class="btn" id="btn-alerts" onclick="toggleAlerts()">🔔 OFF</button>
+      <span class="st" id="st-info" style="color:var(--goldd);"></span>
+      <span class="st" id="hist-info" style="color:var(--t3);font-size:9px;"></span>
+      <span class="st" id="rt-price" style="color:var(--green);font-size:13px;font-weight:900;margin-left:auto;font-family:var(--mono);"></span>
+    </div>
+
+    <!-- LAYOUT -->
+    <div class="layout">
+      <div class="main-area">
+        <!-- MULTI-VIEW: 4 ativos ao mesmo tempo (BTC/ETH/XAU/XAG) -->
+        <div id="multi-view" class="multi-view">
+          <div class="multi-cell" data-sym="BTCUSDT">
+            <div class="multi-hd"><span class="multi-sym">BTC/USD</span><span class="multi-timer" id="multi-timer-BTCUSDT">--:--</span><span class="multi-px" id="multi-px-BTCUSDT">--</span></div>
+            <div class="multi-chart" id="multi-chart-BTCUSDT"></div>
+          </div>
+          <div class="multi-cell" data-sym="ETHUSDT">
+            <div class="multi-hd"><span class="multi-sym">ETH/USD</span><span class="multi-timer" id="multi-timer-ETHUSDT">--:--</span><span class="multi-px" id="multi-px-ETHUSDT">--</span></div>
+            <div class="multi-chart" id="multi-chart-ETHUSDT"></div>
+          </div>
+          <div class="multi-cell" data-sym="XAUUSDT">
+            <div class="multi-hd"><span class="multi-sym">XAU/USD (Ouro)</span><span class="multi-timer" id="multi-timer-XAUUSDT">--:--</span><span class="multi-px" id="multi-px-XAUUSDT">--</span></div>
+            <div class="multi-chart" id="multi-chart-XAUUSDT"></div>
+          </div>
+          <div class="multi-cell" data-sym="XAGUSDT">
+            <div class="multi-hd"><span class="multi-sym">XAG/USD (Prata)</span><span class="multi-timer" id="multi-timer-XAGUSDT">--:--</span><span class="multi-px" id="multi-px-XAGUSDT">--</span></div>
+            <div class="multi-chart" id="multi-chart-XAGUSDT"></div>
+          </div>
+        </div>
+
+        
+        <!-- MTF-VIEW: 4 timeframes do mesmo ativo -->
+        <div id="mtf-view" class="multi-view" style="position:relative;">
+        <div id="mtf-center-compass" style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); z-index:100; width:160px; height:160px; background:rgba(19, 25, 34, 0.7); backdrop-filter:blur(8px); border-radius:16px; border:1px solid rgba(255,255,255,0.05); display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:2px; overflow:hidden; box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+            <div style="background:rgba(0,0,0,0.3); display:flex; flex-direction:column; align-items:center; justify-content:center;">
+                <span id="mtf-comp-lbl-1" style="font-size:9px; color:var(--t2);">TF 1</span>
+                <span id="mtf-comp-val-1" style="font-size:16px; font-weight:900; font-family:var(--mono); color:var(--t3);">--</span>
+            </div>
+            <div style="background:rgba(0,0,0,0.3); display:flex; flex-direction:column; align-items:center; justify-content:center;">
+                <span id="mtf-comp-lbl-2" style="font-size:9px; color:var(--t2);">TF 2</span>
+                <span id="mtf-comp-val-2" style="font-size:16px; font-weight:900; font-family:var(--mono); color:var(--t3);">--</span>
+            </div>
+            <div style="background:rgba(0,0,0,0.3); display:flex; flex-direction:column; align-items:center; justify-content:center;">
+                <span id="mtf-comp-lbl-3" style="font-size:9px; color:var(--t2);">TF 3</span>
+                <span id="mtf-comp-val-3" style="font-size:16px; font-weight:900; font-family:var(--mono); color:var(--t3);">--</span>
+            </div>
+            <div style="background:rgba(0,0,0,0.3); display:flex; flex-direction:column; align-items:center; justify-content:center;">
+                <span id="mtf-comp-lbl-4" style="font-size:9px; color:var(--t2);">TF 4</span>
+                <span id="mtf-comp-val-4" style="font-size:16px; font-weight:900; font-family:var(--mono); color:var(--t3);">--</span>
+            </div>
+            <div style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); width:54px; height:54px; background:#131922; border-radius:50%; border:2px solid var(--gold); display:flex; align-items:center; justify-content:center; flex-direction:column; box-shadow:0 0 15px rgba(245,166,35,0.15);">
+                <span style="font-size:8px; color:var(--goldd); margin-bottom:-2px;">SOMA</span>
+                <span id="mtf-comp-total" style="font-size:13px; font-weight:900; font-family:var(--mono); color:var(--gold);">--</span>
+            </div>
+        </div>
+          <div class="multi-cell" id="mtf-cell-1">
+            <div class="multi-hd">
+              <span class="multi-sym mtf-sym-lbl">--</span>
+              <select class="mtf-tf-select" id="mtf-sel-1" onchange="changeMtfTf(1, this.value)" style="margin-left:8px;">
+                <option value="1m">1m</option><option value="3m">3m</option><option value="5m">5m</option><option value="15m" selected>15m</option><option value="30m">30m</option><option value="1h">1h</option><option value="4h">4h</option><option value="5h">5h</option><option value="6h">6h</option><option value="12h">12h</option><option value="1d">1d</option><option value="1M">1M</option><option value="3M">3M</option><option value="6M">6M</option><option value="9M">9M</option><option value="12M">12M</option>
+              </select>
+              <span class="multi-timer" id="mtf-timer-1" style="margin-left:auto;margin-right:8px;">--:--</span>
+              <span class="multi-px" id="mtf-px-1">--</span>
+            </div>
+            <div class="multi-chart" id="mtf-chart-1"></div>
+<div id="mtf-compass-container-1" style="position:absolute; top:20px; right:70px; z-index:50; pointer-events:none; display:flex; align-items:center; gap:12px; background:rgba(19,25,34,0.7); backdrop-filter:blur(4px); padding:8px 12px; border-radius:8px; border:1px solid var(--bd2); box-shadow:0 4px 12px rgba(0,0,0,0.4); opacity:0.9;">
+        <svg id="mtf-compass-svg-1" width="65" height="65" viewBox="0 0 110 110" style="overflow:visible;"></svg>
+        <div id="mtf-compass-legend-1" style="display:flex; flex-direction:column; gap:3px; font-size:10px; font-family:monospace; color:var(--text); white-space:nowrap;"></div>
+    </div>
+          </div>
+          <div class="multi-cell" id="mtf-cell-2">
+            <div class="multi-hd">
+              <span class="multi-sym mtf-sym-lbl">--</span>
+              <select class="mtf-tf-select" id="mtf-sel-2" onchange="changeMtfTf(2, this.value)" style="margin-left:8px;">
+                <option value="1m">1m</option><option value="3m">3m</option><option value="5m">5m</option><option value="15m">15m</option><option value="30m">30m</option><option value="1h" selected>1h</option><option value="4h">4h</option><option value="5h">5h</option><option value="6h">6h</option><option value="12h">12h</option><option value="1d">1d</option><option value="1M">1M</option><option value="3M">3M</option><option value="6M">6M</option><option value="9M">9M</option><option value="12M">12M</option>
+              </select>
+              <span class="multi-timer" id="mtf-timer-2" style="margin-left:auto;margin-right:8px;">--:--</span>
+              <span class="multi-px" id="mtf-px-2">--</span>
+            </div>
+            <div class="multi-chart" id="mtf-chart-2"></div>
+<div id="mtf-compass-container-2" style="position:absolute; top:20px; right:70px; z-index:50; pointer-events:none; display:flex; align-items:center; gap:12px; background:rgba(19,25,34,0.7); backdrop-filter:blur(4px); padding:8px 12px; border-radius:8px; border:1px solid var(--bd2); box-shadow:0 4px 12px rgba(0,0,0,0.4); opacity:0.9;">
+        <svg id="mtf-compass-svg-2" width="65" height="65" viewBox="0 0 110 110" style="overflow:visible;"></svg>
+        <div id="mtf-compass-legend-2" style="display:flex; flex-direction:column; gap:3px; font-size:10px; font-family:monospace; color:var(--text); white-space:nowrap;"></div>
+    </div>
+          </div>
+          <div class="multi-cell" id="mtf-cell-3">
+            <div class="multi-hd">
+              <span class="multi-sym mtf-sym-lbl">--</span>
+              <select class="mtf-tf-select" id="mtf-sel-3" onchange="changeMtfTf(3, this.value)" style="margin-left:8px;">
+                <option value="1m">1m</option><option value="3m">3m</option><option value="5m">5m</option><option value="15m">15m</option><option value="30m">30m</option><option value="1h">1h</option><option value="4h" selected>4h</option><option value="5h">5h</option><option value="6h">6h</option><option value="12h">12h</option><option value="1d">1d</option><option value="1M">1M</option><option value="3M">3M</option><option value="6M">6M</option><option value="9M">9M</option><option value="12M">12M</option>
+              </select>
+              <span class="multi-timer" id="mtf-timer-3" style="margin-left:auto;margin-right:8px;">--:--</span>
+              <span class="multi-px" id="mtf-px-3">--</span>
+            </div>
+            <div class="multi-chart" id="mtf-chart-3"></div>
+<div id="mtf-compass-container-3" style="position:absolute; top:20px; right:70px; z-index:50; pointer-events:none; display:flex; align-items:center; gap:12px; background:rgba(19,25,34,0.7); backdrop-filter:blur(4px); padding:8px 12px; border-radius:8px; border:1px solid var(--bd2); box-shadow:0 4px 12px rgba(0,0,0,0.4); opacity:0.9;">
+        <svg id="mtf-compass-svg-3" width="65" height="65" viewBox="0 0 110 110" style="overflow:visible;"></svg>
+        <div id="mtf-compass-legend-3" style="display:flex; flex-direction:column; gap:3px; font-size:10px; font-family:monospace; color:var(--text); white-space:nowrap;"></div>
+    </div>
+          </div>
+          <div class="multi-cell" id="mtf-cell-4">
+            <div class="multi-hd">
+              <span class="multi-sym mtf-sym-lbl">--</span>
+              <select class="mtf-tf-select" id="mtf-sel-4" onchange="changeMtfTf(4, this.value)" style="margin-left:8px;">
+                <option value="1m">1m</option><option value="3m">3m</option><option value="5m">5m</option><option value="15m">15m</option><option value="30m">30m</option><option value="1h">1h</option><option value="4h">4h</option><option value="5h">5h</option><option value="6h">6h</option><option value="12h">12h</option><option value="1d" selected>1d</option><option value="1M">1M</option><option value="3M">3M</option><option value="6M">6M</option><option value="9M">9M</option><option value="12M">12M</option>
+              </select>
+              <span class="multi-timer" id="mtf-timer-4" style="margin-left:auto;margin-right:8px;">--:--</span>
+              <span class="multi-px" id="mtf-px-4">--</span>
+            </div>
+            <div class="multi-chart" id="mtf-chart-4"></div>
+<div id="mtf-compass-container-4" style="position:absolute; top:20px; right:70px; z-index:50; pointer-events:none; display:flex; align-items:center; gap:12px; background:rgba(19,25,34,0.7); backdrop-filter:blur(4px); padding:8px 12px; border-radius:8px; border:1px solid var(--bd2); box-shadow:0 4px 12px rgba(0,0,0,0.4); opacity:0.9;">
+        <svg id="mtf-compass-svg-4" width="65" height="65" viewBox="0 0 110 110" style="overflow:visible;"></svg>
+        <div id="mtf-compass-legend-4" style="display:flex; flex-direction:column; gap:3px; font-size:10px; font-family:monospace; color:var(--text); white-space:nowrap;"></div>
+    </div>
+          </div>
+        </div>
+
+          <!-- RSI TABLE: multi-timeframe pra todos os ativos da lista -->
+        <div id="rsi-table-view" class="rsi-table-view">
+          <div class="rsit-toolbar">
+            <span class="rsit-title">RSI TABLE · MULTI-TIMEFRAME</span>
+            <div class="rsit-zones">
+              <button class="rsit-zf on" data-zone="all" onclick="setRsiZone('all',this)">TODOS</button>
+              <button class="rsit-zf" data-zone="os" onclick="setRsiZone('os',this)">🔴 SOBREVENDIDO</button>
+              <button class="rsit-zf" data-zone="ob" onclick="setRsiZone('ob',this)">🟢 SOBRECOMPRADO</button>
+            </div>
+            <input class="rsit-search" id="rsit-search" placeholder="🔍 buscar ativo..." oninput="filterRsiTable(this.value)">
+            <span class="rsit-updated" id="rsit-updated">--</span>
+          </div>
+          <div class="rsit-scroll">
+            <table class="rsit-table">
+              <thead>
+                <tr>
+                  <th onclick="sortRsiTable('sym')">ATIVO</th>
+                  <th onclick="sortRsiTable('1')">M1</th>
+                  <th onclick="sortRsiTable('5')">M5</th>
+                  <th onclick="sortRsiTable('15')">M15</th>
+                  <th onclick="sortRsiTable('60')">H1</th>
+                  <th onclick="sortRsiTable('240')">H4</th>
+                  <th onclick="sortRsiTable('D')">D1</th>
+                  <th onclick="sortRsiTable('score')">SCORE</th>
+                  <th>ALVO OS30 (H1)</th>
+                  <th>ALVO OB70 (H1)</th>
+                </tr>
+              </thead>
+              <tbody id="rsit-body">
+                <tr><td colspan="10" style="text-align:center;color:var(--t3);padding:20px;">Carregando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- RAINBOW: regressao log isolada, sem poluir o grafico principal -->
+        <div id="rainbow-view" class="rainbow-view">
+          <div class="rainbow-toolbar">
+            <span class="rainbow-title">🌈 RAINBOW CHART · <span id="rainbow-sym">--</span></span>
+            <span class="rainbow-sub">Regressao logaritmica sobre o preco no tempo · verde = barato, vermelho = caro · velas 1D</span>
+            <span class="rainbow-updated" id="rainbow-updated">--</span>
+          </div>
+          <div id="rainbow-chart" style="flex:1;min-height:0;"></div>
+        </div>
+
+        
+        <!-- ARQUIVO DE ESTUDO -->
+        <div id="study-view" class="macro-view">
+          <div class="rainbow-toolbar">
+            <span class="rainbow-title">📚 ARQUIVO DE ESTUDO · <span id="study-sym">--</span></span>
+            <span class="rainbow-sub">Ângulo das EMAs 8/16 por timeframe (M1 a D1) · atan(inclinação normalizada), comparável entre timeframes</span>
+            <button class="btn" id="btn-study-save" onclick="archiveStudyObservation()" style="margin-left:auto;">💾 Arquivar observação</button>
+          </div>
+          <div class="macro-scroll" id="study-cards">
+            <div style="color:var(--t3);font-size:11px;padding:20px;text-align:center;">Carregando...</div>
+          </div>
+          <div class="sp-sec" style="margin-top:6px;"><span>OBSERVAÇÕES ARQUIVADAS</span><span class="sp-sec-val" id="study-archive-count">0</span></div>
+          <div id="study-archive-list" style="padding:0 16px 20px;"></div>
+        </div>
+
+        <!-- BACKTEST -->
+        <div id="backtest-view" class="macro-view">
+          <div class="rainbow-toolbar">
+            <span class="rainbow-title">🧪 BACKTEST · <span id="backtest-sym">--</span></span>
+            <span class="rainbow-sub">Simula o sinal contra o histórico — sem spread/comissão ainda, SL sempre avaliado antes do TP</span>
+            <button class="btn" id="btn-backtest-run" onclick="runBacktestUI()" style="margin-left:auto;">▶ Rodar backtest</button>
+          </div>
+          <div class="macro-scroll" style="display:block;padding:16px;" id="backtest-config">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:14px;">
+              <div>
+                <label style="font-size:10px;color:var(--t3);text-transform:uppercase;display:block;margin-bottom:4px;">Sinal</label>
+                <select id="bt-signal" style="width:100%;background:var(--bg4);border:1px solid var(--bd2);border-radius:6px;color:var(--text);padding:6px 8px;font-size:12px;">
+                  <option value="9-21-ema">9/21 EMA Cross</option>
+                  <option value="12-26-ema">12/26 EMA Cross</option>
+                  <option value="50-200-sma">Golden/Death Cross (50/200 SMA)</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size:10px;color:var(--t3);text-transform:uppercase;display:block;margin-bottom:4px;">Direção</label>
+                <select id="bt-direction" style="width:100%;background:var(--bg4);border:1px solid var(--bd2);border-radius:6px;color:var(--text);padding:6px 8px;font-size:12px;">
+                  <option value="both">Ambos</option>
+                  <option value="long">Só compra</option>
+                  <option value="short">Só venda</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size:10px;color:var(--t3);text-transform:uppercase;display:block;margin-bottom:4px;">Timeframe</label>
+                <select id="bt-tf" style="width:100%;background:var(--bg4);border:1px solid var(--bd2);border-radius:6px;color:var(--text);padding:6px 8px;font-size:12px;">
+                  <option value="1d" selected>1D</option>
+                  <option value="4h">4H</option>
+                  <option value="1h">1H</option>
+                  <option value="15m">15m</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size:10px;color:var(--t3);text-transform:uppercase;display:block;margin-bottom:4px;">Filtro Choppiness (ATR)</label>
+                <select id="bt-choppy" style="width:100%;background:var(--bg4);border:1px solid var(--bd2);border-radius:6px;color:var(--text);padding:6px 8px;font-size:12px;">
+                  <option value="0">Desligado</option>
+                  <option value="1" selected>Ligado — so opera com ATR acima da media</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size:10px;color:var(--t3);text-transform:uppercase;display:block;margin-bottom:4px;">TP1 / TP2 / TP3 (x ATR)</label>
+                <div style="display:flex;gap:4px;">
+                  <input id="bt-tp1" type="number" value="1" step="0.5" style="width:33%;background:var(--bg4);border:1px solid var(--bd2);border-radius:6px;color:var(--text);padding:6px;font-size:12px;">
+                  <input id="bt-tp2" type="number" value="2" step="0.5" style="width:33%;background:var(--bg4);border:1px solid var(--bd2);border-radius:6px;color:var(--text);padding:6px;font-size:12px;">
+                  <input id="bt-tp3" type="number" value="3" step="0.5" style="width:33%;background:var(--bg4);border:1px solid var(--bd2);border-radius:6px;color:var(--text);padding:6px;font-size:12px;">
+                </div>
+              </div>
+              <div>
+                <label style="font-size:10px;color:var(--t3);text-transform:uppercase;display:block;margin-bottom:4px;">SL1 / SL2 / SL3 (x ATR)</label>
+                <div style="display:flex;gap:4px;">
+                  <input id="bt-sl1" type="number" value="1.5" step="0.5" style="width:33%;background:var(--bg4);border:1px solid var(--bd2);border-radius:6px;color:var(--text);padding:6px;font-size:12px;">
+                  <input id="bt-sl2" type="number" value="2.5" step="0.5" style="width:33%;background:var(--bg4);border:1px solid var(--bd2);border-radius:6px;color:var(--text);padding:6px;font-size:12px;">
+                  <input id="bt-sl3" type="number" value="3.5" step="0.5" style="width:33%;background:var(--bg4);border:1px solid var(--bd2);border-radius:6px;color:var(--text);padding:6px;font-size:12px;">
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="backtest-results" style="padding:0 16px 24px;">
+            <div style="color:var(--t3);font-size:12px;text-align:center;padding:30px;">Configure e clique em "Rodar backtest".</div>
+          </div>
+        </div>
+
+        <!-- MACRO: leitura de longo prazo (semanal/mensal) — RSI, Canal Gaussiano,
+             StochRSI, MACD/PPO, Pi Cycle. Painel de status, nao um grafico. -->
+        <div id="macro-view" class="macro-view">
+          <div class="rainbow-toolbar">
+            <span class="rainbow-title">📐 LEITURA MACRO · <span id="macro-sym">--</span></span>
+            <span class="rainbow-sub">Semanal/Mensal · aproximacoes calculadas localmente, nao e o mesmo motor do TradingView</span>
+            <span class="rainbow-updated" id="macro-updated">--</span>
+          </div>
+
+            <div class="macro-scroll" id="macro-cards">
+            <div style="color:var(--t3);font-size:11px;padding:20px;text-align:center;">Carregando leitura macro...</div>
+          </div>
+        </div>
+
+        <!-- TERMINAL: consolida a forca do multi-TF (D/W/M) + cruzamento fresco +
+             RSI/alvo inverso num score unico, e cruza volume com VSA/Wyckoff
+             (Spring/Terminal Shakeout) pra achar clímax de venda nos fundos. -->
+        <div id="terminal-view" class="macro-view">
+          <div class="rainbow-toolbar">
+            <span class="rainbow-title">🎯 TERMINAL · <span id="terminal-sym">--</span></span>
+            <span class="rainbow-sub">Forca D/W/M + VSA/Wyckoff · climax de volume nos fundos listado abaixo (nao mexe no grafico principal)</span>
+            <span class="rainbow-updated" id="terminal-updated">--</span>
+          </div>
+          <div id="terminal-score-box" style="display:flex;align-items:center;gap:16px;padding:14px 16px;border-bottom:1px solid var(--bd2);flex-shrink:0;">
+            <div style="text-align:center;">
+              <div style="font-size:9px;color:var(--t3);letter-spacing:.05em;">FORÇA TOTAL (D/W/M)</div>
+              <div id="terminal-score-val" style="font-size:28px;font-weight:900;font-family:var(--mono);color:var(--t2);">--</div>
+            </div>
+            <div style="flex:1;height:8px;background:var(--bg2);border-radius:4px;overflow:hidden;position:relative;">
+              <div id="terminal-score-bar" style="position:absolute;top:0;bottom:0;left:50%;width:0;background:var(--gold);"></div>
+            </div>
+            <div style="text-align:center;">
+              <div style="font-size:9px;color:var(--t3);letter-spacing:.05em;">ALINHAMENTO</div>
+              <div id="terminal-agree-val" style="font-size:16px;font-weight:800;font-family:var(--mono);">--</div>
+            </div>
+            <div style="text-align:center;">
+              <div style="font-size:9px;color:var(--t3);letter-spacing:.05em;">VOL. VS FUNDOS</div>
+              <div id="terminal-vol-val" style="font-size:16px;font-weight:800;font-family:var(--mono);">--</div>
+            </div>
+          </div>
+          <div style="padding:10px 16px 0;flex-shrink:0;">
+            <div style="font-size:10.5px;font-weight:700;color:var(--t2);letter-spacing:.3px;margin-bottom:4px;">🥇 CLÍMAX DE VOLUME NOS FUNDOS (VSA/Wyckoff)</div>
+            <div class="pot-fib-list" id="terminal-climax-list" style="max-height:110px;"></div>
+          </div>
+          <div class="macro-scroll" id="terminal-cards">
+            <div style="color:var(--t3);font-size:11px;padding:20px;text-align:center;">Carregando leitura terminal...</div>
+          </div>
+        </div>
+
+        <!-- GOLD: mercados globais (cripto/forex/indices/commodities/acoes),
+             cotacao ao vivo via SimpleFX + RSI multi-timeframe via Binance. -->
+        <div id="gold-view" class="gold-view">
+          <div class="rainbow-toolbar">
+            <span class="rainbow-title">🥇 ATLAS GOLD · MERCADOS GLOBAIS</span>
+            <span class="rainbow-sub" id="gold-ws-st">Conectando...</span>
+            <div class="gold-cats" id="gold-cats">
+              <div class="cp active" onclick="goldSetCategory('ALL')">ALL</div>
+              <div class="cp" onclick="goldSetCategory('CRYPTO')">CRYPTO</div>
+              <div class="cp" onclick="goldSetCategory('FOREX')">FOREX</div>
+              <div class="cp" onclick="goldSetCategory('INDICES')">INDICES</div>
+              <div class="cp" onclick="goldSetCategory('COMMODITIES')">COMMOD</div>
+              <div class="cp" onclick="goldSetCategory('ASIA-PAC')">ASIA-PAC</div>
+              <div class="cp" onclick="goldSetCategory('EUR/ME/AFR')">EUR/ME/AFR</div>
+              <div class="cp" onclick="goldSetCategory('LATAM')">LATAM</div>
+              <div class="cp" onclick="goldSetCategory('AMER NORTH')">AMER NORTH</div>
+            </div>
+            <input type="text" id="gold-search" class="rsit-search" placeholder="Buscar ativo..." oninput="goldOnSearch(this.value)">
+            <button class="btn" id="gold-btn-alerts" onclick="goldToggleAlerts()">🔔 OFF</button>
+            <span class="rainbow-updated" id="gold-updated">--</span>
+          </div>
+          <div class="gold-body">
+            <div class="rsit-scroll">
+              <table class="rsit-table" style="min-width:920px;">
+                <thead>
+                  <tr>
+                    <th style="text-align:left;cursor:default;">ATIVO</th>
+                    <th style="cursor:default;">CAT</th>
+                    <th style="cursor:default;">BID</th>
+                    <th style="cursor:default;">ASK</th>
+                    <th style="cursor:default;">SPREAD</th>
+                    <th style="cursor:default;">H1 RSI</th>
+                    <th style="cursor:default;">H1 ALVO 30/70</th>
+                    <th style="cursor:default;">H4 RSI</th>
+                    <th style="cursor:default;">D1 RSI</th>
+                    <th style="cursor:default;">D1 ALVO 30/70</th>
+                    <th style="cursor:default;">MTF</th>
+                  </tr>
+                </thead>
+                <tbody id="gold-tbody"></tbody>
+              </table>
+            </div>
+            <div class="gold-spanel">
+              <div class="globe-wrap" style="margin:0;border-radius:0;height:150px;">
+                <canvas id="gold-globe-canvas" width="260" height="150"></canvas>
+                <div class="globe-overlay">
+                  <div class="globe-cnt" id="gold-globe-cnt">0 cotacoes</div>
+                  <div class="globe-sub">ATLAS GOLD ENGINE</div>
+                </div>
+              </div>
+              <div class="sp-sec"><span>WATCHLIST (TOP 60)</span></div>
+              <div id="gold-watchlist" style="max-height:170px;overflow-y:auto;"></div>
+              <div class="sp-sec"><span>ATIVO: <span id="gold-dt-sym">--</span></span></div>
+              <div class="gold-detail-grid" id="gold-detail"></div>
+              <div class="sp-sec"><span>LOG DE ALERTAS</span><span class="sp-sec-val" style="cursor:pointer;" onclick="goldClearAlertLog()">LIMPAR</span></div>
+              <div id="gold-alert-log" style="flex:1;overflow-y:auto;"><div style="padding:10px;color:var(--t3);text-align:center;font-size:10px;">Sem alertas ainda</div></div>
+            </div>
+          </div>
+        </div>
+
+        
+                  <div class="chart-wrap">
+          <div id="chart-price-overlay" style="position:absolute; top:14px; left:56px; z-index:10; pointer-events:none; display:flex; flex-direction:column; gap:1px;">
+            <span style="font-size:13px; color:var(--t2); font-weight:800; letter-spacing:0.1em;" id="big-sym">--</span>
+            <span id="big-price" style="font-size:32px; font-weight:900; font-family:var(--mono); color:var(--green);">--</span>
+            <span id="candle-timer" style="font-size:16px; font-weight:800; font-family:var(--mono); color:var(--t2);">00:00</span>
+          </div>
+          <div id="chart"></div>
+          <canvas id="draw-canvas"></canvas>
+          <div id="drawing-toolbar">
+            <button class="tool-btn active" data-tool="cursor">↖<span class="tool-tip">Cursor (Esc)</span></button>
+            <div class="tool-sep"></div>
+            <button class="tool-btn" data-tool="ray">╱<span class="tool-tip">Raio (extensao infinita)</span></button>
+            <button class="tool-btn" data-tool="horizontal">━<span class="tool-tip">Linha horizontal</span></button>
+            <button class="tool-btn" data-tool="vertical">│<span class="tool-tip">Linha vertical</span></button>
+            <button class="tool-btn" data-tool="rect">▭<span class="tool-tip">Retangulo / zona</span></button>
+            <button class="tool-btn" data-tool="fibbo">☰<span class="tool-tip">Fibonacci 24 niveis + zona de quebra</span></button>
+            <button class="tool-btn" data-tool="fibretr">◇<span class="tool-tip">Fib Retração (acumulação, c/ negativos)</span></button>
+            <button class="tool-btn" data-tool="text">T<span class="tool-tip">Texto</span></button>
+            <button class="tool-btn" data-tool="pencil">✏️<span class="tool-tip">Lapis (mantem so os ultimos 3 tracos)</span></button>
+            <div class="tool-sep"></div>
+            <button class="tool-btn" data-tool="eraser">⌫<span class="tool-tip">Apagar (clique no desenho)</span></button>
+            <button class="tool-btn" id="tool-undo">↺<span class="tool-tip">Desfazer (Ctrl+Z)</span></button>
+            <button class="tool-btn danger" id="tool-clear">🗑<span class="tool-tip">Limpar tudo</span></button>
+            <div class="tool-sep"></div>
+            <button class="tool-btn" id="tool-magnet">🧲<span class="tool-tip">Ima OHLC: OFF</span></button>
+            <div style="position:relative;">
+              <div class="tool-color" id="tool-color-sw" style="background:#FFEB3B;"></div>
+              <div class="tool-swatches" id="tool-swatches">
+                <div class="tool-sw sel" data-c="#FFEB3B" style="background:#FFEB3B;"></div>
+                <div class="tool-sw" data-c="#00A879" style="background:#00A879;"></div>
+                <div class="tool-sw" data-c="#EC3F3F" style="background:#EC3F3F;"></div>
+                <div class="tool-sw" data-c="#377cfc" style="background:#377cfc;"></div>
+                <div class="tool-sw" data-c="#7C4DFF" style="background:#7C4DFF;"></div>
+                <div class="tool-sw" data-c="#FFFFFF" style="background:#FFFFFF;"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="panel-resize-handle" id="resize-chart-stoch" title="Arraste pra redimensionar"></div>
+        <div class="stoch-wrap" id="stoch-wrap-el">
+          <button class="panel-swap-btn" id="btn-swap-panels" title="Trocar posição StochRSI ↔ Ribbon Phi" onclick="swapStochPhiPanels()">⇅</button>
+          <div id="stoch-chart"></div>
+        </div>
+        <div class="panel-resize-handle" id="resize-stoch-phi" title="Arraste pra redimensionar"></div>
+        <div class="phi-wrap" id="phi-wrap-el"><div id="phi-chart"></div></div>
+      </div>
+
+      <!-- PAINEL DIREITO: OPERAR (ticket estilo Deriv) / ANALISE (motor ATLAS) -->
+      <div class="rpanel">
+        <div class="rpanel-col">
+          <div class="rtabs">
+            <div class="rtab active" id="tab-operar" onclick="switchRTab('operar')">OPERAR</div>
+            <div class="rtab" id="tab-analise" onclick="switchRTab('analise')">ANALISE</div>
+            <div class="rtab" id="tab-ia" onclick="switchRTab('ia')">IA</div>
+          </div>
+
+          <!-- OPERAR -->
+          <div class="rpanel-body active" id="body-operar">
+            <div class="tt-help" onclick="alert('Multiplicadores multiplicam o resultado percentual do ativo pelo fator escolhido. O Stop out limita a perda maxima ao valor da sua stake.')">
+              <span>Como negociar Multiplicadores?</span><span>›</span>
+            </div>
+            <div class="tt-updown">
+              <button class="tt-btn up sel" id="tt-up" onclick="setTTSide('up')">Subir</button>
+              <button class="tt-btn down" id="tt-down" onclick="setTTSide('down')">Descer</button>
+            </div>
+            <div class="tt-row">
+              <div class="tt-row-hd"><span class="tt-lbl">Multiplicador<span class="info-i">i</span></span></div>
+              <div class="tt-mult-opts" id="tt-mult-opts">
+                <div class="tt-chip" data-m="50">x50</div>
+                <div class="tt-chip sel" data-m="100">x100</div>
+                <div class="tt-chip" data-m="200">x200</div>
+                <div class="tt-chip" data-m="500">x500</div>
+              </div>
+            </div>
+            <div class="tt-row">
+              <div class="tt-row-hd"><span class="tt-lbl">Stake</span></div>
+              <div class="tt-stake-input">
+                <input type="number" id="tt-stake" value="2" min="1" step="1" oninput="updateTTCalc()">
+                <span class="tt-cur">USD</span>
+              </div>
+            </div>
+            <div class="tt-row">
+              <div class="tt-row-hd"><span class="tt-lbl">Gestao de risco<span class="info-i">i</span></span></div>
+              <span style="font-size:11px;color:var(--t3);">-</span>
+            </div>
+            <div class="tt-info-row"><span class="k">Expira em</span><span class="v" id="tt-expires">--</span></div>
+            <div class="tt-info-row"><span class="k">Stop out</span><span class="v" id="tt-stopout">--</span></div>
+            <div class="tt-info-row"><span class="k">Comissao</span><span class="v" id="tt-commission" style="font-family:var(--font);font-weight:600;font-size:10px;color:var(--t2);">definida pela Deriv</span></div>
+            <div class="tt-buy-wrap">
+              <button class="tt-buy up" id="tt-buy-btn" onclick="onBuyClick()">Comprar</button>
+            </div>
+            <div class="tt-api-note">
+              <b>Conecte sua conta Deriv</b> pra operar de verdade. Este painel ja calcula tudo — falta so ligar seu token de API da Deriv. Nunca cole esse token aqui no chat: ele deve ficar só no seu navegador.
+            </div>
+          </div>
+
+          <!-- ANALISE (motor ATLAS existente) -->
+          <div class="rpanel-body" id="body-analise">
+            <!-- GLOBE -->
+            <div class="globe-wrap">
+              <canvas id="globe-canvas" width="270" height="170"></canvas>
+              <div class="globe-live">
+                <div class="dot grn blink"></div>
+                <span class="globe-live-txt">LIVE</span>
+              </div>
+              <div class="globe-overlay">
+                <div class="globe-cnt" id="globe-cnt">0 sinais</div>
+                <div class="globe-sub">ATLAS INDICATOR</div>
+              </div>
+            </div>
+
+            <!-- RSI HEATMAP: todos os ativos da sua lista, de uma vez -->
+            <div class="sp-sec"><span>RSI HEATMAP</span><span class="sp-sec-val" id="rsi-heat-updated">--</span></div>
+            <div class="rsi-heat-legend">
+              <span><i style="background:#00A879;"></i>Sobrevendido</span>
+              <span><i style="background:#8FBFA8;"></i>Fraco</span>
+              <span><i style="background:#B8BEC7;"></i>Neutro</span>
+              <span><i style="background:#F0A0A0;"></i>Forte</span>
+              <span><i style="background:#EC3F3F;"></i>Sobrecomprado</span>
+            </div>
+            <div class="rsi-heat-scatter" id="rsi-heat-grid" style="height:230px;">
+              <div style="color:#fff;font-size:9px;padding:8px;">Calculando...</div>
+            </div>
+            <div class="rsi-heat-axis-note">Eixo horizontal = market cap (log)</div>
+
+            <!-- TOTAL / TOTAL2 / TOTAL3 -->
+            <div class="sp-sec"><span>MARKET CAP TOTAL</span><span class="sp-sec-val" id="mcap-updated">--</span></div>
+            <div class="mcap-total-grid">
+              <div class="mcap-total-item"><span class="mcap-total-lbl">TOTAL</span><span class="mcap-total-val" id="mcap-total">--</span></div>
+              <div class="mcap-total-item"><span class="mcap-total-lbl">TOTAL2</span><span class="mcap-total-val" id="mcap-total2">--</span></div>
+              <div class="mcap-total-item"><span class="mcap-total-lbl">TOTAL3</span><span class="mcap-total-val" id="mcap-total3">--</span></div>
+            </div>
+
+            <!-- DOMINANCIA TOP 8 -->
+            <div class="sp-sec"><span>DOMINANCIA (TOP 8)</span></div>
+            <div class="dom-list" id="dom-list">
+              <div style="color:var(--t3);font-size:9px;padding:4px 9px;">Calculando...</div>
+            </div>
+
+            <!-- MTF (ativo unico) -->
+            <div id="single-analysis">
+            <div class="sp-sec"><span>MTF SCORE</span><span class="sp-sec-val" id="mtf-summary">0/2</span></div>
+            <div class="mtf-grid">
+              <div class="mtf-row"><span class="mtf-tf">M5</span><div class="mtf-bar"><div class="mtf-fill" id="mtf-m5-fill"></div></div><span class="mtf-cross" id="mtf-m5-cross" title="Cruzamento EMA8x16 recente"></span><span class="mtf-dir flat" id="mtf-m5-dir">---</span></div>
+              <div class="mtf-row"><span class="mtf-tf">H1</span><div class="mtf-bar"><div class="mtf-fill" id="mtf-h1-fill"></div></div><span class="mtf-cross" id="mtf-h1-cross" title="Cruzamento EMA8x16 recente"></span><span class="mtf-dir flat" id="mtf-h1-dir">---</span></div>
+              <div class="mtf-row"><span class="mtf-tf">H4</span><div class="mtf-bar"><div class="mtf-fill" id="mtf-h4-fill"></div></div><span class="mtf-cross" id="mtf-h4-cross" title="Cruzamento EMA8x16 recente"></span><span class="mtf-dir flat" id="mtf-h4-dir">---</span></div>
+              <div class="mtf-row"><span class="mtf-tf">D1</span><div class="mtf-bar"><div class="mtf-fill" id="mtf-d1-fill"></div></div><span class="mtf-cross" id="mtf-d1-cross" title="Cruzamento EMA8x16 recente"></span><span class="mtf-dir flat" id="mtf-d1-dir">---</span></div>
+              <div class="mtf-score">
+                <span class="mtf-score-lbl">Score</span>
+                <span class="mtf-score-val" id="mtf-score-val">0</span>
+                <span class="mtf-score-min">/ min 2</span>
+              </div>
+            </div>
+
+            <!-- MICRO TIMING (M1/M5/M15) — so confirma o momento de entrar,
+                 nunca decide a direcao sozinho (essa vem do MTF acima) -->
+            <div class="sp-sec"><span>MICRO TIMING</span><span class="sp-sec-val" id="micro-summary">--</span></div>
+            <div class="mtf-grid">
+              <div class="mtf-row"><span class="mtf-tf">M1</span><div class="mtf-bar"><div class="mtf-fill" id="micro-m1-fill"></div></div><span class="mtf-cross" id="micro-m1-cross" title="Cruzamento EMA8x16 recente"></span><span class="mtf-dir flat" id="micro-m1-dir">---</span></div>
+              <div class="mtf-row"><span class="mtf-tf">M5</span><div class="mtf-bar"><div class="mtf-fill" id="micro-m5-fill"></div></div><span class="mtf-cross" id="micro-m5-cross" title="Cruzamento EMA8x16 recente"></span><span class="mtf-dir flat" id="micro-m5-dir">---</span></div>
+              <div class="mtf-row"><span class="mtf-tf">M15</span><div class="mtf-bar"><div class="mtf-fill" id="micro-m15-fill"></div></div><span class="mtf-cross" id="micro-m15-cross" title="Cruzamento EMA8x16 recente"></span><span class="mtf-dir flat" id="micro-m15-dir">---</span></div>
+            </div>
+
+            <!-- STOCHRSI -->
+            <div class="sp-sec"><span>STOCHRSI</span><span id="stoch-zone-badge" class="stoch-zone zone-n">NEUTRO</span></div>
+            <div class="stoch-info">
+              <div class="stoch-row"><span class="stoch-lbl">K local</span><span class="stoch-val stoch-k" id="stoch-k-local">--</span></div>
+              <div class="stoch-row"><span class="stoch-lbl">D local</span><span class="stoch-val stoch-d" id="stoch-d-local">--</span></div>
+              <div class="stoch-row"><span class="stoch-lbl">K H1</span><span class="stoch-val stoch-k" id="stoch-k-h1">--</span></div>
+              <div class="stoch-row"><span class="stoch-lbl">D H1</span><span class="stoch-val stoch-d" id="stoch-d-h1">--</span></div>
+            </div>
+
+            <!-- DIRECAO (BUSSOLA) -->
+            <div class="sp-sec"><span>DIRECAO (BUSSOLA)</span><span class="sp-sec-val" style="cursor:pointer;color:var(--accent);" onclick="toggleBussolaModal()">ABRIR</span></div>
+
+            <!-- ANTECIPADOR — reversao antes do cruzamento confirmar -->
+            <div class="sp-sec"><span>ANTECIPADOR</span><span id="antecip-badge" class="fib-dir-badge fib-flat">--</span></div>
+            <div class="micro-note" id="antecip-detail">Sem convergencia + virada do StochRSI no momento.</div>
+
+            <!-- CONFLUATOR — confluencia do fractal (cruzamento EMA8x16) em
+                 cascata H1->M15->M5->M1, junto com o momentum do M1 e o
+                 Antecipador. So confirma quando tudo alinha pro mesmo lado. -->
+            <div class="sp-sec"><span>CONFLUATOR</span><span class="sp-sec-val" id="confluator-score">0/4</span></div>
+            <div style="display:flex;gap:4px;padding:6px 9px;">
+              <div class="confluator-tf" id="confluator-tf-60"><span class="confluator-tf-lbl">H1</span><span class="confluator-tf-dot"></span></div>
+              <div class="confluator-tf" id="confluator-tf-15"><span class="confluator-tf-lbl">M15</span><span class="confluator-tf-dot"></span></div>
+              <div class="confluator-tf" id="confluator-tf-5"><span class="confluator-tf-lbl">M5</span><span class="confluator-tf-dot"></span></div>
+              <div class="confluator-tf" id="confluator-tf-1"><span class="confluator-tf-lbl">M1</span><span class="confluator-tf-dot"></span></div>
+            </div>
+            <div class="micro-note" id="confluator-detail">Aguardando cascata do fractal (EMA8x16) nos timeframes...</div>
+
+            <!-- SENTIMENTO DE MERCADO — funding, OI, long/short, book, volume -->
+            <div class="sp-sec"><span>SENTIMENTO DE MERCADO</span><span class="sp-sec-val" id="sentiment-updated">--</span></div>
+            <div class="micro-note" id="sentiment-body" style="line-height:1.7;">Carregando...</div>
+
+            <!-- RSI INVERSO — preco alvo pro RSI(14) puro bater 30/70 -->
+            <div class="sp-sec"><span>RSI INVERSO (14)</span><span class="sp-sec-val" id="rsiinv-current">--</span></div>
+            <div class="stoch-info">
+              <div class="stoch-row"><span class="stoch-lbl">Alvo p/ OS 30</span><span class="stoch-val" id="rsiinv-os" style="color:var(--red);">--</span></div>
+              <div class="stoch-row"><span class="stoch-lbl">Alvo p/ OB 70</span><span class="stoch-val" id="rsiinv-ob" style="color:var(--green);">--</span></div>
+            </div>
+
+            <!-- FIBONACCI -->
+            <div class="sp-sec"><span>FIBONACCI</span><span id="fib-dir-badge" class="fib-dir-badge fib-flat">FLAT</span></div>
+            <div class="fib-list" id="fib-list"><div style="color:var(--t3);font-size:9px;padding:4px 0;">Aguardando ancora...</div></div>
+            </div>
+
+            <!-- MTF + STOCHRSI + FIBONACCI + SELO DE VALIDACAO (todos os ativos da lista) -->
+            <div id="multi-analysis" style="display:none;">
+              <div class="sp-sec"><span>VALIDADOR · TODOS OS ATIVOS <span style="color:var(--green);font-weight:900;" title="Roda em segundo plano mesmo com esta aba fechada">● ATIVO</span></span><span class="sp-sec-val" id="multi-analysis-updated">--</span></div>
+              <div id="multi-analysis-cards"></div>
+              <div class="sp-sec"><span>HISTORICO · LIBERADOS</span><span class="sp-sec-val" id="validator-history-count">0</span></div>
+              <div class="sig-list" id="validator-history-list" style="max-height:220px;flex:none;"><div style="padding:5px 9px;font-size:9px;color:var(--t3);">Aguardando o 1o sinal liberado...</div></div>
+            </div>
+
+            <!-- FIB MANUAL (ferramenta de desenho) -->
+            <div class="sp-sec"><span>FIB MANUAL</span><span class="sp-sec-val" id="mfib-count">--</span></div>
+            <div class="fib-list" id="mfib-list" style="max-height:150px;"><div style="color:var(--t3);font-size:9px;padding:4px 0;">Desenhe um fib no grafico...</div></div>
+
+            <!-- FIB RETRACAO (acumulacao, com negativos p/ quebra/spring) -->
+            <div class="sp-sec"><span>FIB RETRAÇÃO · ACUMULAÇÃO</span><span class="sp-sec-val" id="mfibretr-count">--</span></div>
+            <div class="fib-list" id="mfibretr-list" style="max-height:180px;"><div style="color:var(--t3);font-size:9px;padding:4px 0;">Desenhe um fib retracao no grafico...</div></div>
+
+            <!-- RISK -->
+            <div class="sp-sec"><span>RISCO DERIV</span></div>
+            <div class="risk-grid">
+              <div class="risk-row"><span class="risk-lbl">STAKE</span><span class="risk-val">$1.00 x100</span></div>
+              <div class="risk-row"><span class="risk-lbl">RISCO MAX</span><span class="risk-val">$1.00</span></div>
+              <div class="risk-row"><span class="risk-lbl">R:R</span><span class="risk-val" id="risk-rr">--</span></div>
+              <div class="risk-row"><span class="risk-lbl" id="risk-lbl1">TP 1.618</span><span class="risk-val green" id="risk-tp1">--</span></div>
+              <div class="risk-row"><span class="risk-lbl" id="risk-lbl2">TP 2.618</span><span class="risk-val green" id="risk-tp2">--</span></div>
+              <div class="risk-row"><span class="risk-lbl" id="risk-lbl3">TP 3.618</span><span class="risk-val green" id="risk-tp3">--</span></div>
+            </div>
+
+            <!-- SIGNALS -->
+            <div class="sp-sec"><span>SINAIS</span><span class="sp-sec-val" id="sig-count" style="color:var(--orange);">0</span></div>
+            <div class="sig-list" id="sig-list"><div style="padding:5px 9px;font-size:9px;color:var(--t3);">Aguardando sinais...</div></div>
+          </div>
+
+          <!-- IA (visao geral do mercado, analise do ativo atual e chat com o ATLAS) -->
+          <div class="rpanel-body" id="body-ia">
+            <!-- CHAVE DE API -->
+            <div class="sp-sec"><span>CONEXAO IA</span></div>
+            <div style="padding:14px;">
+              <div class="modal-status-row">
+                <span class="dot off" id="ia-key-dot"></span>
+                <span id="ia-key-status">IA desativada</span>
+              </div>
+              <label class="modal-lbl">Chave de API Gemini</label>
+              <div style="position:relative;">
+                <input type="password" id="ia-api-key" class="modal-input" placeholder="AIzaSy..." autocomplete="off" style="padding-right:36px;"
+                  onkeydown="if(event.key==='Enter')onIAKeyConnectClick();">
+                <button type="button" onclick="toggleIAKeyVisibility()" id="ia-key-eye"
+                  style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;
+                  cursor:pointer;font-size:14px;color:var(--t2);padding:4px;">👁</button>
+              </div>
+              <div class="modal-hint">
+                Gere gratis em <b>aistudio.google.com/apikey</b> (Google AI Studio). Fica salva localmente no seu navegador para manter as conversas.
+                <b>Nunca compartilhe essa chave no chat</b> — cole-a apenas aqui.
+              </div>
+              <button class="modal-connect-btn" id="ia-key-connect-btn" onclick="onIAKeyConnectClick()" style="margin-top:10px;">Ativar IA</button>
+            </div>
+
+            <div class="sp-sec"><span>VISAO GERAL (IA)</span></div>
+            <div style="padding:14px;">
+              <button class="ia-global-btn" onclick="analyzeGlobalMarket()">Gerar Visao do Mercado</button>
+              <div id="ai-global-result" style="margin-top:10px;display:none;"></div>
+            </div>
+
+            <div class="sp-sec"><span>ANALISE DO ATIVO: <span id="ia-current-sym">--</span></span></div>
+            <div style="padding:14px;">
+              <button class="ma-ai-btn" onclick="analyzeCurrentAssetAI()">Analisar Ativo Atual</button>
+              <div id="ai-asset-result" style="margin-top:10px;display:none;"></div>
+            </div>
+
+            <div class="sp-sec"><span>ASSISTENTE ATLAS</span></div>
+            <div style="display:flex;flex-direction:column;flex:1;min-height:200px;padding:14px;gap:8px;">
+              <div id="ia-chat-history" style="flex:1;overflow-y:auto;border:1px solid var(--bd2);border-radius:6px;
+                padding:8px;background:var(--bg4);font-size:11px;color:var(--text);">
+                <div style="color:var(--t3);">Ola! Sou o Assistente ATLAS. Pergunte sobre o mercado ou o ativo em analise.</div>
+              </div>
+              <div style="display:flex;gap:6px;">
+                <input type="text" id="ia-chat-input" class="rsit-search" style="flex:1;width:auto;"
+                  placeholder="Pergunte algo ao ATLAS..." onkeydown="if(event.key==='Enter')sendIAChat();">
+                <button class="ia-send-btn" id="ia-send-btn" onclick="sendIAChat()">Enviar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+
+
+<!-- BUSSOLA MODAL -->
+
+<div id="bussola-modal" style="display:none;position:fixed;bottom:20px;left:80px;z-index:9999;background:rgba(20,24,32,0.9);border:1px solid var(--bd2);border-radius:10px;padding:12px;width:380px;box-shadow:0 4px 15px rgba(0,0,0,0.8);backdrop-filter:blur(4px);">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;border-bottom:1px solid var(--bd);padding-bottom:6px;">
+    <span style="font-weight:bold;color:var(--goldd);font-size:12px;cursor:move;" class="drag-header">🧭 BÚSSOLA</span>
+    <button onclick="toggleBussolaModal()" style="background:none;border:none;color:var(--t2);cursor:pointer;font-size:16px;line-height:1;">&times;</button>
+  </div>
+  
+  <div id="bussola-body-atual">
+    <div class="sp-sec" style="background:none;border:none;padding:0;margin-bottom:4px;"><span>ESTADO</span><span class="sp-sec-val" id="direcao-state-badge" style="font-size:10px;">--</span></div>
+    <div style="display:flex;gap:12px;align-items:center;">
+      <svg id="direcao-compass" width="95" height="95" viewBox="0 0 110 110" style="flex-shrink:0;"></svg>
+      <div id="direcao-force-meter" style="width: 8px; height: 95px; border-radius: 4px; background: linear-gradient(to top, var(--red) 0%, var(--bg3) 50%, var(--green) 100%); position: relative; border: 1px solid var(--bd2); margin-left: 8px; margin-right: 4px;">
+        <div id="direcao-force-pointer" style="position: absolute; left: -6px; width: 20px; height: 2px; background: var(--text); top: 50%; transition: top 0.3s ease-out; box-shadow: 0 0 4px #000;"></div>
+      </div>
+      <div id="direcao-readout" style="flex:1;display:flex;flex-direction:column;gap:4px;font-family:var(--mono);font-size:12px;"></div>
+    </div>
+    <div class="sig-list" id="direcao-history-list" style="max-height:120px;flex:none;border-top:1px solid var(--bd);margin-top:6px;font-size:11.5px;">
+      <div style="padding:4px;color:var(--t3);font-size:11px;">Sem mudanca...</div>
+    </div>
+  </div>
+</div>
+
+<!-- CONFLUATOR GOLD MODAL -->
+<div id="confluator-gold-modal" style="display:none;position:fixed;bottom:20px;left:80px;z-index:9999;background:rgba(20,24,32,0.9);border:1px solid var(--bd2);border-radius:10px;padding:12px;width:300px;box-shadow:0 4px 15px rgba(0,0,0,0.8);backdrop-filter:blur(4px);">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;border-bottom:1px solid var(--bd);padding-bottom:6px;">
+    <span style="font-weight:bold;color:var(--goldd);font-size:12px;cursor:move;" class="drag-header">🏆 ATLAS GOLD (RSI MTF)</span>
+    <button onclick="toggleConfluatorGoldModal()" style="background:none;border:none;color:var(--t2);cursor:pointer;font-size:16px;line-height:1;">&times;</button>
+  </div>
+  <table style="width:100%;font-size:10px;text-align:left;border-collapse:collapse;" id="confluator-gold-table">
+    <tr style="color:var(--t3);border-bottom:1px solid var(--bd3);"><th>TF</th><th>RSI</th><th>Stoch-K</th><th>Stoch-D</th></tr>
+  </table>
+  <div class="micro-note" id="confluator-gold-signal" style="margin-top:8px;text-align:center;font-weight:bold;color:var(--t3);">Calculando...</div>
+</div>
+
+
+    <!-- POTENTIAL CARD -->
+  <div id="potential-card" class="potential-card" style="display:none;">
+    <div class="pot-header drag-header">
+      <span class="pot-title">⚡ POTENTIAL</span>
+      <button class="pot-close" onclick="document.getElementById('potential-card').style.display='none'">×</button>
+    </div>
+    <div class="pot-body">
+      <div class="pot-row">
+        <label>Preço Atual</label>
+        <span id="pot-price" class="pot-val pot-gold">--</span>
+      </div>
+      <div class="pot-row">
+        <label>Alavancagem (1:X)</label>
+        <input type="number" id="pot-lev" value="800" oninput="updatePotential()">
+      </div>
+      <div class="pot-row">
+        <label>Lote (Volume)</label>
+        <input type="number" id="pot-lot" value="0.02" step="0.01" oninput="updatePotential()">
+      </div>
+      <div class="pot-divider"></div>
+      <div class="pot-row">
+        <label>Nocional Real</label>
+        <span id="pot-notional" class="pot-val">--</span>
+      </div>
+      <div class="pot-row">
+        <label>Margem Retida</label>
+        <span id="pot-margin" class="pot-val pot-accent">--</span>
+      </div>
+      <div class="pot-row">
+        <label>Valor do Tick ($1)</label>
+        <span id="pot-tick" class="pot-val">--</span>
+      </div>
+      <div class="pot-row">
+        <label title="Distancia de preco ate a margem retida acabar (100% de perda da margem alocada)">⚠️ Liq. Compra / Venda</label>
+        <span id="pot-liq" class="pot-val pot-gold">--</span>
+      </div>
+      <div class="pot-divider"></div>
+      <div class="pot-row">
+        <label>Preço de Stop</label>
+        <input type="number" id="pot-stop-price" placeholder="clique num fib" oninput="updatePotential()">
+      </div>
+      <div class="pot-row">
+        <label>Preço de Alvo</label>
+        <input type="number" id="pot-target-price" placeholder="clique num fib" oninput="updatePotential()">
+      </div>
+      <div class="pot-row">
+        <label>Distância Stop</label>
+        <span id="pot-stop-dist" class="pot-val pot-red">--</span>
+      </div>
+      <div class="pot-row">
+        <label>Distância Alvo</label>
+        <span id="pot-target-dist" class="pot-val pot-green">--</span>
+      </div>
+      <div class="pot-row">
+        <label>Risco Real ($)</label>
+        <span id="pot-risk-real" class="pot-val pot-red">--</span>
+      </div>
+      <div class="pot-row">
+        <label>Retorno Real ($)</label>
+        <span id="pot-reward-real" class="pot-val pot-green">--</span>
+      </div>
+      <div class="pot-row">
+        <label>R:R</label>
+        <span id="pot-rr" class="pot-val pot-gold">--</span>
+      </div>
+      <div class="pot-divider"></div>
+      <div class="pot-row">
+        <label>Banca (Equity, $)</label>
+        <input type="number" id="pot-equity" value="1000" step="10" oninput="updatePotential()">
+      </div>
+      <div class="pot-row">
+        <label>Risco (% da banca)</label>
+        <input type="number" id="pot-risk-pct" value="1" step="0.1" oninput="updatePotential()">
+      </div>
+      <div class="pot-row">
+        <label>Risco Desejado ($)</label>
+        <span id="pot-risk-goal" class="pot-val pot-red">--</span>
+      </div>
+      <div class="pot-row">
+        <label>Lote Sugerido</label>
+        <span id="pot-lot-suggested" class="pot-val pot-accent">--</span>
+      </div>
+      <div class="pot-divider"></div>
+      <div class="pot-fib-header"><span>🎯 Fib Extensão (24 níveis)</span></div>
+      <div class="pot-fib-list" id="pot-fib-list"></div>
+      <div class="pot-fib-header"><span>🎯 Fib Retração (14 níveis)</span></div>
+      <div class="pot-fib-list" id="pot-fibretr-list"></div>
+    </div>
+  </div>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+
+</html>
