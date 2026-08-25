@@ -4,9 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev": "vite preview --outDir . --port 5173",
+    "test": "node mock.js"
   },
   "devDependencies": {
     "vite": "^8.2.0"

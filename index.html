@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Atlas Dashboard v10.0</title>
 
-  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="./style.css">
 </head>
 <body>
 <div id="toasts"></div>
@@ -503,6 +503,20 @@
         </div>
         <div class="panel-resize-handle" id="resize-chart-stoch" title="Arraste pra redimensionar"></div>
         <div class="stoch-wrap" id="stoch-wrap-el">
+          <div style="position:absolute; top:4px; left:10px; z-index:10; display:flex; gap:4px; align-items:center;">
+             <span style="color:var(--t2); font-size:10px; font-weight:bold;">RSI TF:</span>
+             <select id="rsi-tf-select" style="background:var(--bg3); color:var(--text); border:1px solid var(--bd); border-radius:4px; font-size:10px; padding:2px; cursor:pointer;" onchange="changeRsiTf(this.value)">
+               <option value="current">Current</option>
+               <option value="1m">1m</option>
+               <option value="3m">3m</option>
+               <option value="5m">5m</option>
+               <option value="15m">15m</option>
+               <option value="30m">30m</option>
+               <option value="1h">1h</option>
+               <option value="4h">4h</option>
+               <option value="1d">1d</option>
+             </select>
+          </div>
           <button class="panel-swap-btn" id="btn-swap-panels" title="Trocar posição StochRSI ↔ Ribbon Phi" onclick="swapStochPhiPanels()">⇅</button>
           <div id="stoch-chart"></div>
         </div>
@@ -886,8 +900,8 @@
     </div>
   </div>
 
-<script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
-<script type="module" src="/src/main.js"></script>
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<script src="./src/main.js?v=2"></script>
 </body>
 
 </html>
