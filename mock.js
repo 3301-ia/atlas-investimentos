@@ -1,4 +1,4 @@
-// Smoke test: carrega o public/main.js num DOM falso pra pegar erro de
+// Smoke test: carrega o src/main.js num DOM falso pra pegar erro de
 // sintaxe ou de execucao imediata sem precisar abrir um navegador.
 //
 // Nao temos jsdom, entao os stubs abaixo sao o minimo necessario. Os
@@ -119,17 +119,17 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const raiz = dirname(fileURLToPath(import.meta.url));
-const caminho = join(raiz, 'public', 'main.js');
+const caminho = join(raiz, 'src', 'main.js');
 
 try {
   const codigo = readFileSync(caminho, 'utf8');
   new Function(codigo).call(windowMock);
-  console.log('OK: public/main.js carregou sem erros.');
+  console.log('OK: src/main.js carregou sem erros.');
   // O main.js agenda intervalos e animacoes que manteriam o processo vivo
   // pra sempre; o objetivo aqui e so a carga inicial.
   process.exit(0);
 } catch (err) {
-  console.error('FALHOU ao carregar public/main.js:');
+  console.error('FALHOU ao carregar src/main.js:');
   console.error(err);
   process.exit(1);
 }

@@ -2,5 +2,9 @@ services:
   - type: web
     name: atlas-v10
     env: static
-    buildCommand: npm install && npm run build
-    staticPublishPath: ./dist
+    # Site estatico puro: index.html + style.css + src/main.js.
+    # Nao ha etapa de build — o main.js e script classico (o index.html
+    # usa handlers inline que dependem do escopo global) e o Vite nao
+    # empacota script sem type="module", o que gerava um dist sem
+    # nenhum JavaScript.
+    staticPublishPath: ./
