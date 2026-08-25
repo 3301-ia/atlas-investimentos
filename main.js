@@ -183,8 +183,6 @@ let signals=[], alertsOn=false, currentMarkers=[];
 let fibState=mkFib(), lastSig={atlasB:-99,atlasS:-99,goldB:-99,goldS:-99,stressB:-99,stressS:-99,rbB:-99,rbS:-99,sqzBk:-99,sqzS:-99,h1B:-99,h1S:-99};
 let bullFlowPrev=false, bearFlowPrev=false;
 let wsKline=null;
-let rsiCustomTf = "current";
-let customRsiData = null;
 // Estado incremental: guarda o ultimo valor CONFIRMADO de cada indicador para
 // que os ticks ao vivo sejam calculados em O(1) em vez de recalcular tudo.
 let liveState={ema8:null,ema16:null,ema55:null,ema98:null,ema200:null,
@@ -916,14 +914,7 @@ function applySeriesData(){
   maS.ema98.setData(map(e98));maS.ema200.setData(map(e200));maS.ma56.setData(map(m56));maS.ma89.setData(map(m89));
 
   const rD=rsiCalc(closes,P.rsiLen),sD=stochCalc(rD,P.stochLen),kD=sma(sD,P.kSmooth),dD=sma(kD,P.dSmooth);
-  
-  if(rsiCustomTf === "current") {
-    stochK.setData(map(kD));stochD.setData(map(dD));
-  } else if (customRsiData) {
-    stochK.setData(customRsiData.k);
-    stochD.setData(customRsiData.d);
-  }
-
+  stochK.setData(map(kD));stochD.setData(map(dD));
   return {closes,e8,e16,e55,e98,e200,m56,m89,rD,kD,dD};
 }
 
@@ -1463,7 +1454,7 @@ function updateLiveIndicators(time,px){
       const hist=[...liveState.rsiHist,rs.value].slice(-(P.stochLen+P.kSmooth+P.dSmooth+5));
       const sD=stochCalc(hist,P.stochLen),kD=sma(sD,P.kSmooth),dD=sma(kD,P.dSmooth);
       const kv=kD[kD.length-1],dv=dD[dD.length-1];
-      if(rsiCustomTf === "current"){ up(stochK,kv);up(stochD,dv); }
+      up(stochK,kv);up(stochD,dv);
       // H1 so recalcula a cada 15s (antes rodava a cada trade sobre 200 velas)
       if(Date.now()-h1StochAt>15000){h1StochCache=calcH1Stoch();h1StochAt=Date.now();}
       if(kv!=null)updateStochPanel(kv,dv,h1StochCache);
@@ -1648,6 +1639,21 @@ function showToast(type,side,price){
 }
 function beep(){try{const ctx=new(window.AudioContext||window.webkitAudioContext)();const o=ctx.createOscillator(),g=ctx.createGain();o.connect(g);g.connect(ctx.destination);o.frequency.value=460;g.gain.value=.09;o.start();o.stop(ctx.currentTime+.2);setTimeout(()=>ctx.close(),300);}catch{}}
 function toggleAlerts(){alertsOn=!alertsOn;const b=document.getElementById('btn-alerts');b.textContent=alertsOn?'🔔 ON':'🔔 OFF';b.classList.toggle('on',alertsOn);document.getElementById('nav-alerts').classList.toggle('active',alertsOn);}
+
+// Aviso generico (nao e um sinal de trade, so uma notificacao curta na UI)
+function showInfoToast(title,msg){
+  // Aceita as duas formas em uso: showInfoToast(titulo,mensagem) e
+  // showInfoToast(mensagem). A segunda vinha de uma definicao duplicada
+  // deste mesmo nome, que quebrava o arquivo inteiro por redeclaracao.
+  if(msg===undefined){msg=title;title='ATLAS';}
+  const a=document.getElementById('toasts');
+  if(!a)return;
+  const t=document.createElement('div');
+  t.className='toast';
+  t.innerHTML=`<div class="toast-hd"><span class="toast-title">${title}</span><button class="toast-x" onclick="this.closest('.toast').remove()">x</button></div><div class="toast-msg">${msg}</div>`;
+  a.appendChild(t);
+  setTimeout(()=>{try{t.remove();}catch{}},5000);
+}
 
 // ══════════════════════════════════════════════════════
 // TEMA CLARO / ESCURO
@@ -2067,8 +2073,7 @@ function applyMultiSeries(sym){
   const map=(arr)=>mc.candles.map((c,i)=>({time:c.time,value:arr[i]})).filter(d=>d.value!=null);
   mc.ma.ema8.setData(map(e8));mc.ma.ema16.setData(map(e16));mc.ma.ema55.setData(map(e55));
   mc.ma.ema98.setData(map(e98));mc.ma.ema200.setData(map(e200));mc.ma.ma56.setData(map(m56));mc.ma.ma89.setData(map(m89));
-  const rainbowM=computeRainbowSeries(mc.candles);
-  if(rainbowM&&mc.ma.rainbow)rainbowM.forEach((series,i)=>mc.ma.rainbow[i].setData(series));
+  
 
   const n2=closes.length-2;
   const pick=(arr)=>n2>=0?arr[n2]:arr[arr.length-1];
@@ -2104,7 +2109,7 @@ async function openMultiCharts(){
       ema200:mchart.addLineSeries({color:C.ema200,lineWidth:1,...maCfg}),
       ma56:mchart.addLineSeries({color:C.ma56,lineWidth:1,...maCfg}),
       ma89:mchart.addLineSeries({color:C.ma89,lineWidth:1,...maCfg}),
-      rainbow:RAINBOW_BANDS.map(b=>mchart.addLineSeries({color:b.color,lineWidth:1,...maCfg})),
+      
     };
     const ro=new ResizeObserver(()=>mchart.applyOptions({width:el.clientWidth,height:el.clientHeight}));
     ro.observe(el);
@@ -3732,12 +3737,6 @@ function updateTTCalc(){
   document.getElementById('tt-expires').textContent=TF_LABELS[currentTF]||currentTF;
 }
 
-function showInfoToast(msg){
-  const a=document.getElementById('toasts'),t=document.createElement('div');
-  t.className='toast';
-  t.innerHTML=`<div class="toast-hd"><span class="toast-title">ATLAS</span><button class="toast-x" onclick="this.closest('.toast').remove()">x</button></div><div class="toast-msg">${msg}</div>`;
-  a.appendChild(t);setTimeout(()=>{try{t.remove();}catch{}},6000);
-}
 
 function onBuyClick(){
   const stake=parseFloat(document.getElementById('tt-stake').value)||0;
@@ -3884,6 +3883,7 @@ async function changeSym(sym){
   if(sel&&sel.value!==sym)sel.value=sym;
   await loadAll();
   if(rainbowOpen)updateRainbowTab();
+  if(confluatorGoldOpen)updateConfluatorGold();
 }
 async function changeTF(tf){
   currentTF=tf;candles=[];resetLive();
@@ -3891,7 +3891,6 @@ async function changeTF(tf){
   await loadAll();
 }
 async function loadAll(){
-  if(rsiCustomTf !== "current") setTimeout(updateCustomRsi, 500);
   const mySeq=++loadSeq, mySym=currentSym, myTf=currentTF;
   document.getElementById('ws-st').textContent='Carregando...';
   const d=await fetchCandles(mySym,myTf,1000);
@@ -4554,9 +4553,108 @@ function toggleBussolaModal() {
   const el = document.getElementById('bussola-modal');
   if(!el) return;
   const isHidden = el.style.display === 'none' || el.style.display === '';
+  if(isHidden){
+    const cg=document.getElementById('confluator-gold-modal');
+    if(cg && cg.style.display!=='none')toggleConfluatorGoldModal();
+  }
   el.style.display = isHidden ? 'flex' : 'none';
 }
 window.toggleBussolaModal = toggleBussolaModal;
+
+// ══════════════════════════════════════════════════════
+// ATLAS GOLD (CONFLUATOR) — RSI + StochRSI (K/D) do ativo atual em
+// 4 timeframes (5m/1h/4h/1d). Reaproveita rsiCalc/stochCalc/sma e
+// fetchMTFFor, a mesma base de calculo ja usada na aba RSI Table.
+// ══════════════════════════════════════════════════════
+let confluatorGoldOpen=false, confluatorGoldTimer=null;
+const CONFLUATOR_TF_LABELS={'5':'5m','60':'1h','240':'4h','D':'1d'};
+
+function toggleConfluatorGoldModal(){
+  const el=document.getElementById('confluator-gold-modal');
+  if(!el)return;
+  confluatorGoldOpen = el.style.display==='none' || el.style.display==='';
+  if(confluatorGoldOpen){
+    const bm=document.getElementById('bussola-modal');
+    if(bm && bm.style.display!=='none' && bm.style.display!=='')bm.style.display='none';
+  }
+  el.style.display=confluatorGoldOpen?'block':'none';
+  if(confluatorGoldOpen){
+    updateConfluatorGold();
+    if(confluatorGoldTimer)clearInterval(confluatorGoldTimer);
+    confluatorGoldTimer=setInterval(updateConfluatorGold,60000);
+  }else if(confluatorGoldTimer){
+    clearInterval(confluatorGoldTimer);confluatorGoldTimer=null;
+  }
+}
+
+async function updateConfluatorGold(){
+  const table=document.getElementById('confluator-gold-table');
+  const sigEl=document.getElementById('confluator-gold-signal');
+  if(!table||!confluatorGoldOpen)return;
+  const mtfLocal=await fetchMTFFor(currentSym);
+  let bull=0,bear=0,valid=0;
+  const rows=Object.keys(CONFLUATOR_TF_LABELS).map(tf=>{
+    const d=mtfLocal[tf];
+    if(!d||d.length<P.rsiLen+P.stochLen+P.kSmooth+P.dSmooth){
+      return `<tr><td>${CONFLUATOR_TF_LABELS[tf]}</td><td>--</td><td>--</td><td>--</td></tr>`;
+    }
+    const r=rsiCalc(d,P.rsiLen),s=stochCalc(r,P.stochLen),k=sma(s,P.kSmooth),dd=sma(k,P.dSmooth);
+    const last=d.length-1;
+    const rsiV=r[last],kV=k[last],dV=dd[last];
+    if(rsiV!=null){valid++;if(rsiV>=P.ob)bear++;else if(rsiV<=P.os)bull++;}
+    return `<tr>
+      <td>${CONFLUATOR_TF_LABELS[tf]}</td>
+      <td class="${getRsiClass(rsiV)}">${rsiV!=null?rsiV.toFixed(1):'--'}</td>
+      <td>${kV!=null?kV.toFixed(1):'--'}</td>
+      <td>${dV!=null?dV.toFixed(1):'--'}</td>
+    </tr>`;
+  }).join('');
+  table.innerHTML=`<tr style="color:var(--t3);border-bottom:1px solid var(--bd3);"><th>TF</th><th>RSI</th><th>Stoch-K</th><th>Stoch-D</th></tr>${rows}`;
+  if(sigEl){
+    if(valid===0){sigEl.textContent='Sem dados suficientes';sigEl.style.color='var(--t3)';}
+    else if(bull>bear){sigEl.textContent=`${bull}/${valid} TFs em sobrevenda`;sigEl.style.color='var(--green)';}
+    else if(bear>bull){sigEl.textContent=`${bear}/${valid} TFs em sobrecompra`;sigEl.style.color='var(--red)';}
+    else{sigEl.textContent='Neutro';sigEl.style.color='var(--t3)';}
+  }
+}
+window.toggleConfluatorGoldModal=toggleConfluatorGoldModal;
+
+
+// ══════════════════════════════════════════════════════
+// PAINEL DE IA — ainda nao implementado (nunca chegou a funcionar).
+// Essas 5 funcoes existem so pra parar de dar erro no clique; quando
+// o recurso for definido de verdade (provedor de IA, chave, etc.),
+// substitua o corpo delas pela integracao real.
+// ══════════════════════════════════════════════════════
+function onIAKeyConnectClick(){
+  showInfoToast('IA','Recurso de IA ainda em construcao.');
+}
+function toggleIAKeyVisibility(){
+  const inp=document.getElementById('ia-api-key');
+  const eye=document.getElementById('ia-key-eye');
+  if(!inp)return;
+  const show=inp.type==='password';
+  inp.type=show?'text':'password';
+  if(eye)eye.textContent=show?'🙈':'👁';
+}
+function analyzeGlobalMarket(){
+  showInfoToast('IA','Analise de mercado ainda em construcao.');
+}
+function analyzeCurrentAssetAI(){
+  showInfoToast('IA',`Analise de ${currentSym.replace('USDT','')} ainda em construcao.`);
+}
+function sendIAChat(){
+  const inp=document.getElementById('ia-chat-input');
+  if(!inp)return;
+  if(!inp.value.trim())return;
+  showInfoToast('IA','Chat ainda em construcao — sua mensagem nao foi enviada.');
+  inp.value='';
+}
+window.onIAKeyConnectClick=onIAKeyConnectClick;
+window.toggleIAKeyVisibility=toggleIAKeyVisibility;
+window.analyzeGlobalMarket=analyzeGlobalMarket;
+window.analyzeCurrentAssetAI=analyzeCurrentAssetAI;
+window.sendIAChat=sendIAChat;
 
 
 function togglePotential() {
@@ -4636,12 +4734,477 @@ window.togglePotential = togglePotential;
 window.updatePotential = updatePotential;
 
 
+
+// ══════════════════════════════════════════════════════
+// GOLD TAB — mercados globais (377 ativos: cripto/forex/indices/
+// commodities/acoes por regiao). Cotacao ao vivo via WebSocket
+// publico da SimpleFX (sem chave/login) + RSI multi-timeframe via
+// Binance (cripto/principais forex) ou RSI local calculado a partir
+// do proprio stream de cotacao pra quem nao tem par na Binance.
+// Portado de um prototipo isolado (atlas_gold.html) que funcionava
+// sozinho; aqui so os nomes de funcao/variavel/id foram adaptados
+// pra bater com o gold-view que ja existe neste index.html.
+// ══════════════════════════════════════════════════════
+const GOLD_ASSET_RAW = [["BTCUSD", "CRYPTO", "Bitcoin / USD", 2], ["ETHUSD", "CRYPTO", "Ethereum / USD", 2], ["SOLUSD", "CRYPTO", "Solana / USD", 2], ["BNBUSD", "CRYPTO", "Binance Coin / USD", 2], ["XRPUSD", "CRYPTO", "Ripple / USD", 4], ["ADAUSD", "CRYPTO", "Cardano / USD", 4], ["AVAXUSD", "CRYPTO", "Avalanche / USD", 2], ["DOTUSD", "CRYPTO", "Polkadot / USD", 3], ["LINKUSD", "CRYPTO", "Chainlink / USD", 3], ["LTCUSD", "CRYPTO", "Litecoin / USD", 2], ["DOGEUSD", "CRYPTO", "Dogecoin / USD", 5], ["MATICUSD", "CRYPTO", "Polygon / USD", 4], ["UNIUSD", "CRYPTO", "Uniswap / USD", 3], ["ATOMUSD", "CRYPTO", "Cosmos / USD", 3], ["NEARUSD", "CRYPTO", "Near Protocol / USD", 3], ["APTUSD", "CRYPTO", "Aptos / USD", 3], ["ARBUSD", "CRYPTO", "Arbitrum / USD", 4], ["OPUSD", "CRYPTO", "Optimism / USD", 3], ["INJUSD", "CRYPTO", "Injective / USD", 3], ["SUIUSD", "CRYPTO", "Sui / USD", 4], ["TIAUSD", "CRYPTO", "Celestia / USD", 3], ["FTMUSD", "CRYPTO", "Fantom / USD", 4], ["SANDUSD", "CRYPTO", "The Sandbox / USD", 4], ["AXSUSD", "CRYPTO", "Axie Infinity / USD", 3], ["AAEUSD", "CRYPTO", "Aave / USD", 2], ["MKRUSD", "CRYPTO", "Maker / USD", 2], ["LDOUSD", "CRYPTO", "Lido DAO / USD", 3], ["FETUSD", "CRYPTO", "Fetch.ai / USD", 4], ["WLDUSD", "CRYPTO", "Worldcoin / USD", 3], ["PEPEUSD", "CRYPTO", "Pepe / USD", 7], ["BONKUSD", "CRYPTO", "Bonk / USD", 7], ["SHIBUSDT", "CRYPTO", "Shiba Inu / USDT", 6], ["XAUUSD", "CRYPTO", "Gold / USD", 2], ["XAGUSD", "CRYPTO", "Silver / USD", 3], ["EURUSD", "FOREX", "Euro / US Dollar", 5], ["GBPUSD", "FOREX", "British Pound / US Dollar", 5], ["USDJPY", "FOREX", "US Dollar / Japanese Yen", 3], ["USDCHF", "FOREX", "US Dollar / Swiss Franc", 5], ["AUDUSD", "FOREX", "Australian Dollar / US Dollar", 5], ["NZDUSD", "FOREX", "New Zealand Dollar / US Dollar", 5], ["USDCAD", "FOREX", "US Dollar / Canadian Dollar", 5], ["EURGBP", "FOREX", "Euro / British Pound", 5], ["EURJPY", "FOREX", "Euro / Japanese Yen", 3], ["GBPJPY", "FOREX", "British Pound / Japanese Yen", 3], ["EURCHF", "FOREX", "Euro / Swiss Franc", 5], ["AUDJPY", "FOREX", "Australian Dollar / Japanese Yen", 3], ["GBPAUD", "FOREX", "British Pound / Australian Dollar", 5], ["GBPCAD", "FOREX", "British Pound / Canadian Dollar", 5], ["GBPCHF", "FOREX", "British Pound / Swiss Franc", 5], ["EURAUD", "FOREX", "Euro / Australian Dollar", 5], ["EURCAD", "FOREX", "Euro / Canadian Dollar", 5], ["EURNZD", "FOREX", "Euro / New Zealand Dollar", 5], ["AUDCAD", "FOREX", "Australian Dollar / Canadian Dollar", 5], ["AUDNZD", "FOREX", "Australian Dollar / New Zealand Dollar", 5], ["AUDCHF", "FOREX", "Australian Dollar / Swiss Franc", 5], ["CADCHF", "FOREX", "Canadian Dollar / Swiss Franc", 5], ["CADJPY", "FOREX", "Canadian Dollar / Japanese Yen", 3], ["NZDJPY", "FOREX", "New Zealand Dollar / Japanese Yen", 3], ["NZDCHF", "FOREX", "New Zealand Dollar / Swiss Franc", 5], ["NZDCAD", "FOREX", "New Zealand Dollar / Canadian Dollar", 5], ["CHFJPY", "FOREX", "Swiss Franc / Japanese Yen", 3], ["USDNOK", "FOREX", "US Dollar / Norwegian Krone", 4], ["USDSEK", "FOREX", "US Dollar / Swedish Krona", 4], ["USDDKK", "FOREX", "US Dollar / Danish Krone", 4], ["USDPLN", "FOREX", "US Dollar / Polish Zloty", 4], ["USDHUF", "FOREX", "US Dollar / Hungarian Forint", 2], ["USDCZK", "FOREX", "US Dollar / Czech Koruna", 4], ["USDMXN", "FOREX", "US Dollar / Mexican Peso", 4], ["USDBRL", "FOREX", "US Dollar / Brazilian Real", 4], ["USDTRY", "FOREX", "US Dollar / Turkish Lira", 4], ["USDZAR", "FOREX", "US Dollar / South African Rand", 4], ["USDINR", "FOREX", "US Dollar / Indian Rupee", 3], ["USDCNY", "FOREX", "US Dollar / Chinese Yuan", 4], ["USDSGD", "FOREX", "US Dollar / Singapore Dollar", 4], ["USDKRW", "FOREX", "US Dollar / Korean Won", 2], ["USDHKD", "FOREX", "US Dollar / Hong Kong Dollar", 4], ["USDTHB", "FOREX", "US Dollar / Thai Baht", 3], ["USDMYR", "FOREX", "US Dollar / Malaysian Ringgit", 4], ["USDIDR", "FOREX", "US Dollar / Indonesian Rupiah", 1], ["USDPHP", "FOREX", "US Dollar / Philippine Peso", 3], ["USDVND", "FOREX", "US Dollar / Vietnamese Dong", 0], ["USDAED", "FOREX", "US Dollar / UAE Dirham", 4], ["USDILN", "FOREX", "US Dollar / Israeli Shekel", 4], ["USDRUB", "FOREX", "US Dollar / Russian Ruble", 2], ["USDEGP", "FOREX", "US Dollar / Egyptian Pound", 3], ["USDNGN", "FOREX", "US Dollar / Nigerian Naira", 2], ["EURTRY", "FOREX", "Euro / Turkish Lira", 4], ["EURRUB", "FOREX", "Euro / Russian Ruble", 2], ["EURSEK", "FOREX", "Euro / Swedish Krona", 4], ["EURNOK", "FOREX", "Euro / Norwegian Krone", 4], ["EURHUF", "FOREX", "Euro / Hungarian Forint", 2], ["EURPLN", "FOREX", "Euro / Polish Zloty", 4], ["EURZAR", "FOREX", "Euro / South African Rand", 4], ["US500", "INDICES", "S&P 500 Index", 2], ["US100", "INDICES", "Nasdaq 100 Index", 2], ["US30", "INDICES", "Dow Jones 30 Index", 1], ["US2000", "INDICES", "Russell 2000 Index", 2], ["GER40", "INDICES", "DAX 40 Index", 1], ["UK100", "INDICES", "FTSE 100 Index", 1], ["FRA40", "INDICES", "CAC 40 Index", 1], ["ESP35", "INDICES", "IBEX 35 Index", 1], ["ITA40", "INDICES", "FTSE MIB Index", 1], ["NED25", "INDICES", "AEX Index", 2], ["SWI20", "INDICES", "SMI Index", 1], ["AUT20", "INDICES", "ATX Index", 1], ["BEL20", "INDICES", "BEL 20 Index", 1], ["POR20", "INDICES", "PSI 20 Index", 1], ["GRE20", "INDICES", "Athex 20 Index", 1], ["FIN25", "INDICES", "OMX Helsinki 25", 1], ["JPN225", "INDICES", "Nikkei 225 Index", 1], ["AUS200", "INDICES", "ASX 200 Index", 1], ["HKG50", "INDICES", "Hang Seng Index", 1], ["CHN50", "INDICES", "China A50 Index", 1], ["SGP30", "INDICES", "Straits Times Index", 1], ["KOR200", "INDICES", "KOSPI 200 Index", 2], ["TWN50", "INDICES", "MSCI Taiwan Index", 2], ["IND50", "INDICES", "Nifty 50 Index", 1], ["VIX", "INDICES", "Volatility Index", 2], ["DOLLAR", "INDICES", "US Dollar Index", 2], ["USOIL", "COMMODITIES", "WTI Crude Oil", 2], ["UKOIL", "COMMODITIES", "Brent Crude Oil", 2], ["NGAS", "COMMODITIES", "Natural Gas", 3], ["COPPER", "COMMODITIES", "High Grade Copper", 4], ["WHEAT", "COMMODITIES", "Chicago Wheat", 2], ["CORN", "COMMODITIES", "Corn Futures", 2], ["SOYBEAN", "COMMODITIES", "Soybeans", 2], ["COFFEE", "COMMODITIES", "Arabica Coffee", 2], ["SUGAR", "COMMODITIES", "Raw Sugar", 4], ["COTTON", "COMMODITIES", "Cotton No. 2", 2], ["COCOA", "COMMODITIES", "Cocoa Futures", 1], ["RICE", "COMMODITIES", "Rough Rice", 3], ["OJ", "COMMODITIES", "Orange Juice", 2], ["LUMBER", "COMMODITIES", "Random Length Lumber", 2], ["PLATINUM", "COMMODITIES", "Platinum Futures", 2], ["PALLADIUM", "COMMODITIES", "Palladium Futures", 2], ["ZINC", "COMMODITIES", "Zinc Futures", 2], ["ALUMINUM", "COMMODITIES", "Aluminum Futures", 2], ["NICKEL", "COMMODITIES", "Nickel Futures", 2], ["LEAD", "COMMODITIES", "Lead Futures", 2], ["TIN", "COMMODITIES", "Tin Futures", 2], ["TSM.US", "ASIA-PAC", "Taiwan Semiconductor", 2], ["BABA.US", "ASIA-PAC", "Alibaba Group", 2], ["SONY.US", "ASIA-PAC", "Sony Group", 2], ["BIDU.US", "ASIA-PAC", "Baidu Inc", 2], ["JD.US", "ASIA-PAC", "JD.com Inc", 2], ["PDD.US", "ASIA-PAC", "PDD Holdings", 2], ["NTES.US", "ASIA-PAC", "NetEase Inc", 2], ["BILI.US", "ASIA-PAC", "Bilibili Inc", 2], ["IQ.US", "ASIA-PAC", "iQIYI Inc", 2], ["TME.US", "ASIA-PAC", "Tencent Music", 2], ["NIO.US", "ASIA-PAC", "NIO Inc", 2], ["XPEV.US", "ASIA-PAC", "XPeng Inc", 2], ["LI.US", "ASIA-PAC", "Li Auto Inc", 2], ["DIDI.US", "ASIA-PAC", "DiDi Global", 2], ["BEKE.US", "ASIA-PAC", "KE Holdings", 2], ["EDU.US", "ASIA-PAC", "New Oriental Education", 2], ["TAL.US", "ASIA-PAC", "TAL Education", 2], ["YUMC.US", "ASIA-PAC", "Yum China", 2], ["INFY.US", "ASIA-PAC", "Infosys Ltd", 2], ["WIT.US", "ASIA-PAC", "Wipro Ltd", 2], ["HDB.US", "ASIA-PAC", "HDFC Bank", 2], ["IBN.US", "ASIA-PAC", "ICICI Bank", 2], ["VEDL.US", "ASIA-PAC", "Vedanta Ltd", 2], ["TTM.US", "ASIA-PAC", "Tata Motors", 2], ["BHP.US", "ASIA-PAC", "BHP Group US", 2], ["RIO.US", "ASIA-PAC", "Rio Tinto US", 2], ["VALE3.SA", "ASIA-PAC", "Vale SA B3", 2], ["NTCOY.US", "ASIA-PAC", "Natura & Co", 2], ["FUJIY.US", "ASIA-PAC", "Fujifilm ADR", 2], ["LNVGY.US", "ASIA-PAC", "Lenovo Group ADR", 2], ["HTHIY.US", "ASIA-PAC", "Hitachi ADR", 2], ["KB.US", "ASIA-PAC", "KB Financial Group", 2], ["SHG.US", "ASIA-PAC", "Shinhan Financial", 2], ["9984.JP", "ASIA-PAC", "SoftBank Group", 1], ["7203.JP", "ASIA-PAC", "Toyota Motor", 1], ["6758.JP", "ASIA-PAC", "Sony Corp JP", 1], ["9432.JP", "ASIA-PAC", "NTT Corp", 1], ["8306.JP", "ASIA-PAC", "Mitsubishi UFJ", 1], ["7267.JP", "ASIA-PAC", "Honda Motor", 1], ["700.HK", "ASIA-PAC", "Tencent Holdings HK", 2], ["941.HK", "ASIA-PAC", "China Mobile HK", 2], ["1299.HK", "ASIA-PAC", "AIA Group HK", 2], ["2318.HK", "ASIA-PAC", "Ping An Insurance HK", 2], ["3690.HK", "ASIA-PAC", "Meituan HK", 2], ["9999.HK", "ASIA-PAC", "NetEase HK", 2], ["005930.KR", "ASIA-PAC", "Samsung Electronics", 0], ["000660.KR", "ASIA-PAC", "SK Hynix", 0], ["035420.KR", "ASIA-PAC", "NAVER Corp", 0], ["CBA.AU", "ASIA-PAC", "Commonwealth Bank AU", 2], ["BHP.AU", "ASIA-PAC", "BHP Group AU", 2], ["WBC.AU", "ASIA-PAC", "Westpac Banking AU", 2], ["ANZ.AU", "ASIA-PAC", "ANZ Group AU", 2], ["NAB.AU", "ASIA-PAC", "National Australia Bank", 2], ["WES.AU", "ASIA-PAC", "Wesfarmers AU", 2], ["ASML.US", "EUR/ME/AFR", "ASML Holding", 2], ["SAP.DE", "EUR/ME/AFR", "SAP SE", 2], ["SIE.DE", "EUR/ME/AFR", "Siemens AG", 2], ["ALV.DE", "EUR/ME/AFR", "Allianz SE", 2], ["BMW.DE", "EUR/ME/AFR", "Bayerische Motoren Werke", 2], ["VOW.DE", "EUR/ME/AFR", "Volkswagen AG", 2], ["DTE.DE", "EUR/ME/AFR", "Deutsche Telekom", 2], ["DBK.DE", "EUR/ME/AFR", "Deutsche Bank", 2], ["BAS.DE", "EUR/ME/AFR", "BASF SE", 2], ["BAY.DE", "EUR/ME/AFR", "Bayer AG", 2], ["MBG.DE", "EUR/ME/AFR", "Mercedes-Benz Group", 2], ["ADS.DE", "EUR/ME/AFR", "Adidas AG", 2], ["MC.FR", "EUR/ME/AFR", "LVMH Moet Hennessy", 2], ["OR.FR", "EUR/ME/AFR", "L'Oreal SA", 2], ["TTE.FR", "EUR/ME/AFR", "TotalEnergies SE", 2], ["BNP.FR", "EUR/ME/AFR", "BNP Paribas", 2], ["SAN.FR", "EUR/ME/AFR", "Sanofi SA", 2], ["AIR.FR", "EUR/ME/AFR", "Airbus SE", 2], ["KER.FR", "EUR/ME/AFR", "Kering SA", 2], ["SGO.FR", "EUR/ME/AFR", "Saint-Gobain", 2], ["DG.FR", "EUR/ME/AFR", "Vinci SA", 2], ["SU.FR", "EUR/ME/AFR", "Schneider Electric", 2], ["CS.FR", "EUR/ME/AFR", "AXA SA", 2], ["GLE.FR", "EUR/ME/AFR", "Societe Generale", 2], ["NESN.CH", "EUR/ME/AFR", "Nestle SA", 2], ["NOVN.CH", "EUR/ME/AFR", "Novartis AG", 2], ["ROG.CH", "EUR/ME/AFR", "Roche Holding", 2], ["UBSG.CH", "EUR/ME/AFR", "UBS Group AG", 2], ["CSGN.CH", "EUR/ME/AFR", "Credit Suisse", 2], ["ABBN.CH", "EUR/ME/AFR", "ABB Ltd", 2], ["ZURN.CH", "EUR/ME/AFR", "Zurich Insurance", 2], ["SREN.CH", "EUR/ME/AFR", "Swiss Re AG", 2], ["SHEL.UK", "EUR/ME/AFR", "Shell plc", 2], ["BP.UK", "EUR/ME/AFR", "BP plc", 2], ["HSBA.UK", "EUR/ME/AFR", "HSBC Holdings", 2], ["AZN.UK", "EUR/ME/AFR", "AstraZeneca plc", 2], ["GSK.UK", "EUR/ME/AFR", "GSK plc", 2], ["ULVR.UK", "EUR/ME/AFR", "Unilever plc", 2], ["DGE.UK", "EUR/ME/AFR", "Diageo plc", 2], ["BA.UK", "EUR/ME/AFR", "BAE Systems", 2], ["VOD.UK", "EUR/ME/AFR", "Vodafone Group", 2], ["BT.UK", "EUR/ME/AFR", "BT Group", 2], ["BARC.UK", "EUR/ME/AFR", "Barclays plc", 2], ["LLOY.UK", "EUR/ME/AFR", "Lloyds Banking Group", 2], ["NWG.UK", "EUR/ME/AFR", "NatWest Group", 2], ["RIO.UK", "EUR/ME/AFR", "Rio Tinto plc UK", 2], ["GLEN.UK", "EUR/ME/AFR", "Glencore plc", 2], ["AAL.UK", "EUR/ME/AFR", "Anglo American", 2], ["ITX.ES", "EUR/ME/AFR", "Inditex SA", 2], ["IBE.ES", "EUR/ME/AFR", "Iberdrola SA", 2], ["BBVA.ES", "EUR/ME/AFR", "Banco Bilbao Vizcaya", 2], ["SAN.ES", "EUR/ME/AFR", "Banco Santander ES", 2], ["REP.ES", "EUR/ME/AFR", "Repsol SA", 2], ["TEF.ES", "EUR/ME/AFR", "Telefonica SA", 2], ["ENI.IT", "EUR/ME/AFR", "Eni SpA", 2], ["ENEL.IT", "EUR/ME/AFR", "Enel SpA", 2], ["UCG.IT", "EUR/ME/AFR", "UniCredit SpA", 2], ["ISP.IT", "EUR/ME/AFR", "Intesa Sanpaolo", 2], ["STM.IT", "EUR/ME/AFR", "STMicroelectronics", 2], ["NPN.ZA", "EUR/ME/AFR", "Naspers Ltd", 2], ["AGL.ZA", "EUR/ME/AFR", "Anglo American ZA", 2], ["MTN.ZA", "EUR/ME/AFR", "MTN Group", 2], ["SBK.ZA", "EUR/ME/AFR", "Standard Bank", 2], ["FSR.ZA", "EUR/ME/AFR", "FirstRand Ltd", 2], ["SBER.US", "EUR/ME/AFR", "Sberbank ADR", 2], ["YNDX.US", "EUR/ME/AFR", "Yandex NV", 2], ["SABIC.SA", "EUR/ME/AFR", "SABIC Tadawul", 2], ["ARAMCO.SA", "EUR/ME/AFR", "Saudi Aramco", 2], ["EMAAR.AE", "EUR/ME/AFR", "Emaar Properties", 2], ["FAB.AE", "EUR/ME/AFR", "First Abu Dhabi Bank", 2], ["PBR.US", "LATAM", "Petrobras ADR", 2], ["VALE.US", "LATAM", "Vale SA ADR", 2], ["ITUB.US", "LATAM", "Itai Unibanco ADR", 2], ["BBD.US", "LATAM", "Banco Bradesco ADR", 2], ["ABEV.US", "LATAM", "Ambev SA ADR", 2], ["NU.US", "LATAM", "Nu Holdings Ltd", 2], ["XP.US", "LATAM", "XP Inc", 2], ["MELI.US", "LATAM", "MercadoLibre Inc", 2], ["STNE.US", "LATAM", "StoneCo Ltd", 2], ["PAGS.US", "LATAM", "PagSeguro Digital", 2], ["CASH3.SA", "LATAM", "Meliuz SA B3", 2], ["RENT3.SA", "LATAM", "Localiza B3", 2], ["MGLU3.SA", "LATAM", "Magazine Luiza B3", 2], ["VIIA3.SA", "LATAM", "Via SA B3", 2], ["LREN3.SA", "LATAM", "Lojas Renner B3", 2], ["BRFS3.SA", "LATAM", "BRF SA B3", 2], ["JBSS3.SA", "LATAM", "JBS SA B3", 2], ["PCAR3.SA", "LATAM", "Pao de Acucar B3", 2], ["BBAS3.SA", "LATAM", "Banco do Brasil B3", 2], ["SANB11.SA", "LATAM", "Santander Brasil B3", 2], ["YPF.US", "LATAM", "YPF SA ADR", 2], ["PAM.US", "LATAM", "Pampa Energia ADR", 2], ["VIST.US", "LATAM", "Vista Energy", 2], ["EC.US", "LATAM", "Ecopetrol SA ADR", 2], ["CIB.US", "LATAM", "Bancolombia ADR", 2], ["SCCO.US", "LATAM", "Southern Copper", 2], ["BAP.US", "LATAM", "Credicorp Ltd", 2], ["IFS.US", "LATAM", "Intercorp Financial", 2], ["AMX.US", "LATAM", "America Movil ADR", 2], ["FMX.US", "LATAM", "Fomento Economico Mexicano", 2], ["BSMX.US", "LATAM", "Banco Santander Mexico", 2], ["AC.US", "LATAM", "Arca Continental", 2], ["WALMEX.US", "LATAM", "Wal-Mart de Mexico", 2], ["BSANTANDER.CL", "LATAM", "Banco Santander Chile", 2], ["ENDESA.CL", "LATAM", "Enel Chile SA", 2], ["COPEC.CL", "LATAM", "Empresas Copec", 2], ["FALABELLA.CL", "LATAM", "SACI Falabella", 2], ["AAPL.US", "AMER NORTH", "Apple Inc", 2], ["MSFT.US", "AMER NORTH", "Microsoft Corp", 2], ["NVDA.US", "AMER NORTH", "NVIDIA Corp", 2], ["AMZN.US", "AMER NORTH", "Amazon.com Inc", 2], ["GOOGL.US", "AMER NORTH", "Alphabet Inc Class A", 2], ["GOOG.US", "AMER NORTH", "Alphabet Inc Class C", 2], ["META.US", "AMER NORTH", "Meta Platforms Inc", 2], ["TSLA.US", "AMER NORTH", "Tesla Inc", 2], ["BRK.B.US", "AMER NORTH", "Berkshire Hathaway", 2], ["JPM.US", "AMER NORTH", "JPMorgan Chase", 2], ["V.US", "AMER NORTH", "Visa Inc", 2], ["MA.US", "AMER NORTH", "Mastercard Inc", 2], ["UNH.US", "AMER NORTH", "UnitedHealth Group", 2], ["XOM.US", "AMER NORTH", "Exxon Mobil Corp", 2], ["WMT.US", "AMER NORTH", "Walmart Inc", 2], ["JNJ.US", "AMER NORTH", "Johnson & Johnson", 2], ["PG.US", "AMER NORTH", "Procter & Gamble", 2], ["HD.US", "AMER NORTH", "Home Depot Inc", 2], ["ABBV.US", "AMER NORTH", "AbbVie Inc", 2], ["MRK.US", "AMER NORTH", "Merck & Co Inc", 2], ["CVX.US", "AMER NORTH", "Chevron Corp", 2], ["LLY.US", "AMER NORTH", "Eli Lilly & Co", 2], ["BAC.US", "AMER NORTH", "Bank of America", 2], ["KO.US", "AMER NORTH", "Coca-Cola Co", 2], ["PFE.US", "AMER NORTH", "Pfizer Inc", 2], ["AVGO.US", "AMER NORTH", "Broadcom Inc", 2], ["COST.US", "AMER NORTH", "Costco Wholesale", 2], ["MCD.US", "AMER NORTH", "McDonald's Corp", 2], ["DIS.US", "AMER NORTH", "Walt Disney Co", 2], ["NFLX.US", "AMER NORTH", "Netflix Inc", 2], ["CSCO.US", "AMER NORTH", "Cisco Systems", 2], ["AMD.US", "AMER NORTH", "Advanced Micro Devices", 2], ["INTC.US", "AMER NORTH", "Intel Corp", 2], ["QCOM.US", "AMER NORTH", "QUALCOMM Inc", 2], ["TXN.US", "AMER NORTH", "Texas Instruments", 2], ["ORCL.US", "AMER NORTH", "Oracle Corp", 2], ["CRM.US", "AMER NORTH", "Salesforce Inc", 2], ["ADBE.US", "AMER NORTH", "Adobe Inc", 2], ["NOW.US", "AMER NORTH", "ServiceNow Inc", 2], ["INTU.US", "AMER NORTH", "Intuit Inc", 2], ["UBER.US", "AMER NORTH", "Uber Technologies", 2], ["LYFT.US", "AMER NORTH", "Lyft Inc", 2], ["ABNB.US", "AMER NORTH", "Airbnb Inc", 2], ["SNAP.US", "AMER NORTH", "Snap Inc", 2], ["TWTR.US", "AMER NORTH", "Twitter Inc", 2], ["PINS.US", "AMER NORTH", "Pinterest Inc", 2], ["RBLX.US", "AMER NORTH", "Roblox Corp", 2], ["COIN.US", "AMER NORTH", "Coinbase Global", 2], ["MSTR.US", "AMER NORTH", "MicroStrategy Inc", 2], ["RIOT.US", "AMER NORTH", "Riot Platforms", 2], ["MARA.US", "AMER NORTH", "Marathon Digital", 2], ["HUT.US", "AMER NORTH", "Hut 8 Mining", 2], ["CLSK.US", "AMER NORTH", "CleanSpark Inc", 2], ["SPY.US", "AMER NORTH", "SPDR S&P 500 ETF", 2], ["QQQ.US", "AMER NORTH", "Invesco QQQ Trust", 2], ["IWM.US", "AMER NORTH", "iShares Russell 2000", 2], ["GLD.US", "AMER NORTH", "SPDR Gold Shares", 2], ["SLV.US", "AMER NORTH", "iShares Silver Trust", 2], ["TLT.US", "AMER NORTH", "iShares 20+ Year Treasury", 2], ["GS.US", "AMER NORTH", "Goldman Sachs Group", 2], ["MS.US", "AMER NORTH", "Morgan Stanley", 2], ["WFC.US", "AMER NORTH", "Wells Fargo & Co", 2], ["C.US", "AMER NORTH", "Citigroup Inc", 2], ["USB.US", "AMER NORTH", "U.S. Bancorp", 2], ["PNC.US", "AMER NORTH", "PNC Financial Services", 2], ["AXP.US", "AMER NORTH", "American Express", 2], ["COF.US", "AMER NORTH", "Capital One Financial", 2], ["RY.CA", "AMER NORTH", "Royal Bank of Canada", 2], ["TD.CA", "AMER NORTH", "Toronto-Dominion Bank", 2], ["BNS.CA", "AMER NORTH", "Bank of Nova Scotia", 2], ["CNQ.CA", "AMER NORTH", "Canadian Natural Resources", 2], ["SU.CA", "AMER NORTH", "Suncor Energy Inc", 2], ["CP.CA", "AMER NORTH", "Canadian Pacific Kansas", 2], ["ABX.CA", "AMER NORTH", "Barrick Gold Corp", 2], ["SHOP.CA", "AMER NORTH", "Shopify Inc", 2], ["MFC.CA", "AMER NORTH", "Manulife Financial", 2]];
+
+const GOLD_BINANCE_FUTURES_MAP = {
+  'BTCUSD':'BTCUSDT','ETHUSD':'ETHUSDT','SOLUSD':'SOLUSDT','BNBUSD':'BNBUSDT',
+  'XRPUSD':'XRPUSDT','ADAUSD':'ADAUSDT','AVAXUSD':'AVAXUSDT','DOTUSD':'DOTUSDT',
+  'LINKUSD':'LINKUSDT','LTCUSD':'LTCUSDT','DOGEUSD':'DOGEUSDT','MATICUSD':'MATICUSDT',
+  'UNIUSD':'UNIUSDT','ATOMUSD':'ATOMUSDT','NEARUSD':'NEARUSDT','APTUSD':'APTUSDT',
+  'ARBUSD':'ARBUSDT','OPUSD':'OPUSDT','INJUSD':'INJUSDT','SUIUSD':'SUIUSDT',
+  'TIAUSD':'TIAUSDT','FTMUSD':'FTMUSDT','SANDUSD':'SANDUSDT','AXSUSD':'AXSUSDT',
+  'AAEUSD':'AAVEUSDT','MKRUSD':'MKRUSDT','LDOUSD':'LDOUSDT','FETUSD':'FETUSDT',
+  'WLDUSD':'WLDUSDT','PEPEUSD':'PEPEUSDT','BONKUSD':'BONKUSDT','SHIBUSDT':'SHIBUSDT',
+  'XAUUSD':'XAUUSDT','XAGUSD':'XAGUSDT'
+};
+const GOLD_BINANCE_SPOT_MAP = {
+  'EURUSD':'EURUSDT','GBPUSD':'GBPUSDT','AUDUSD':'AUDUSDT','NZDUSD':'NZDUSDT'
+};
+
+let goldActiveCategory='ALL', goldSearchQuery='', goldAlertsEnabled=false,
+    goldSelectedSymbol='BTCUSD', goldQuotesCount=0, goldReqId=1, goldWs=null,
+    goldInited=false, goldGlobeStarted=false;
+
+const goldAssetsMap={}, goldPriceBuffers={}, goldRsiData={}, goldLastAlertState={};
+
+GOLD_ASSET_RAW.forEach(item=>{
+  const [sym,cat,name,dec]=item;
+  goldAssetsMap[sym]={sym,cat,name,dec,bid:null,ask:null,spread:null,prevMid:null};
+  goldPriceBuffers[sym]=[];
+  goldRsiData[sym]={H1:null,H4:null,D1:null};
+});
+
+function goldFormatPrice(val,dec){
+  if(val==null||isNaN(val))return'--';
+  return Number(val).toFixed(dec);
+}
+
+// RSI Wilder (14) com media incremental — a mesma formula do prototipo,
+// escolhida porque permite recalcular o RSI "ao vivo" a cada tick de
+// cotacao (ve goldUpdateQuote) sem precisar rebuscar velas toda hora.
+function goldComputeRSI(closes,period=14){
+  if(!closes||closes.length<period+1)return null;
+  let gains=0,losses=0;
+  for(let i=1;i<=period;i++){const d=closes[i]-closes[i-1];if(d>=0)gains+=d;else losses+=-d;}
+  let avgGain=gains/period, avgLoss=losses/period;
+  for(let i=period+1;i<closes.length;i++){
+    const d=closes[i]-closes[i-1];
+    if(d>=0){avgGain=(avgGain*13+d)/14;avgLoss=(avgLoss*13)/14;}
+    else{avgGain=(avgGain*13)/14;avgLoss=(avgLoss*13-d)/14;}
+  }
+  const rs=avgLoss===0?100:avgGain/avgLoss;
+  const rsi=avgLoss===0?100:100-(100/(1+rs));
+  return{rsi,avgGain,avgLoss,lastClose:closes[closes.length-1]};
+}
+function goldComputeInverseRSI(avgGain,avgLoss,lastClose,targetRSI){
+  if(avgGain===undefined||avgLoss===undefined||!lastClose)return null;
+  const R=targetRSI/(100-targetRSI);
+  if(targetRSI<50){const L=13*((avgGain/R)-avgLoss);return lastClose-L;}
+  const G=13*(R*avgLoss-avgGain);return lastClose+G;
+}
+
+async function goldFetchBinanceKlines(sym,interval){
+  try{
+    let url='';
+    if(GOLD_BINANCE_FUTURES_MAP[sym]){
+      url=`https://fapi.binance.com/fapi/v1/klines?symbol=${GOLD_BINANCE_FUTURES_MAP[sym]}&interval=${interval}&limit=56`;
+    }else if(GOLD_BINANCE_SPOT_MAP[sym]){
+      url=`https://api.binance.com/api/v3/klines?symbol=${GOLD_BINANCE_SPOT_MAP[sym]}&interval=${interval}&limit=56`;
+    }else return null;
+    const res=await fetch(url);
+    if(!res.ok)return null;
+    const data=await res.json();
+    const closes=data.map(c=>parseFloat(c[4]));
+    const calc=goldComputeRSI(closes,14);
+    if(!calc)return null;
+    const p30=goldComputeInverseRSI(calc.avgGain,calc.avgLoss,calc.lastClose,30);
+    const p70=goldComputeInverseRSI(calc.avgGain,calc.avgLoss,calc.lastClose,70);
+    return{rsi:calc.rsi,avgGain:calc.avgGain,avgLoss:calc.avgLoss,lastClose:calc.lastClose,p30,p70};
+  }catch(e){return null;}
+}
+
+async function goldLoadAllBinanceRsi(){
+  const syms=Object.keys(goldAssetsMap).filter(s=>GOLD_BINANCE_FUTURES_MAP[s]||GOLD_BINANCE_SPOT_MAP[s]);
+  const tfMap={H1:'1h',H4:'4h',D1:'1d'};
+  for(let i=0;i<syms.length;i+=5){
+    if(!goldOpen)return;
+    const chunk=syms.slice(i,i+5);
+    await Promise.all(chunk.map(async sym=>{
+      for(const tf of['H1','H4','D1']){
+        const data=await goldFetchBinanceKlines(sym,tfMap[tf]);
+        if(data)goldRsiData[sym][tf]=data;
+      }
+      goldUpdateMtfBadge(sym);
+    }));
+    renderGoldTable();
+    renderGoldWatchlist();
+    if(chunk.includes(goldSelectedSymbol))updateGoldDetailCard();
+  }
+  const upd=document.getElementById('gold-updated');
+  if(upd){const now=new Date();upd.textContent=`atualizado ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;}
+}
+
+function goldConnectWS(){
+  const st=document.getElementById('gold-ws-st');
+  try{ if(goldWs)goldWs.close(); }catch(e){}
+  goldWs=new WebSocket('wss://web-quotes-core.simplefx.com/websocket/quotes');
+  goldWs.onopen=()=>{
+    if(st)st.textContent='Conectado (377 ativos)';
+    const allSymbols=Object.keys(goldAssetsMap);
+    goldWs.send(JSON.stringify({p:'/subscribe/addList',i:goldReqId++,d:allSymbols}));
+    goldWs.send(JSON.stringify({p:'/lastprices/list',i:goldReqId++,d:allSymbols}));
+  };
+  goldWs.onmessage=(evt)=>{
+    try{
+      const msg=JSON.parse(evt.data);
+      if(msg.d&&Array.isArray(msg.d)){
+        msg.d.forEach(q=>{if(q.s&&goldAssetsMap[q.s])goldUpdateQuote(q.s,q.b,q.a);});
+      }
+    }catch(e){}
+  };
+  goldWs.onclose=()=>{
+    if(st)st.textContent='Desconectado - reconectando...';
+    if(goldOpen)setTimeout(goldConnectWS,4000);
+  };
+  goldWs.onerror=()=>{try{goldWs.close();}catch(e){}};
+}
+
+function goldUpdateMtfBadge(sym){
+  const el=document.getElementById(`gold-mtf-${sym}`);
+  if(!el)return;
+  const d=goldRsiData[sym];
+  let bull=0,bear=0;
+  ['H1','H4','D1'].forEach(tf=>{
+    const r=d[tf];
+    if(r&&r.rsi!=null){if(r.rsi>=50)bull++;else bear++;}
+  });
+  if(bull+bear===0){el.textContent='--';el.style.color='var(--t3)';return;}
+  el.textContent=`${bull}B/${bear}S`;
+  el.style.color=bull>bear?'var(--green)':bear>bull?'var(--red)':'var(--t2)';
+}
+
+function goldUpdateQuote(sym,bid,ask){
+  goldQuotesCount++;
+  const cntEl=document.getElementById('gold-globe-cnt');
+  if(cntEl)cntEl.textContent=goldQuotesCount.toLocaleString('pt-BR')+' cotacoes';
+
+  const a=goldAssetsMap[sym];
+  if(!a)return;
+  const mid=(bid+ask)/2;
+  a.prevMid=mid;a.bid=bid;a.ask=ask;a.spread=Math.abs(ask-bid);
+
+  if(!GOLD_BINANCE_FUTURES_MAP[sym]&&!GOLD_BINANCE_SPOT_MAP[sym]){
+    const buf=goldPriceBuffers[sym];
+    buf.push(mid);
+    if(buf.length>56)buf.shift();
+    if(buf.length>=15){
+      const calc=goldComputeRSI(buf,14);
+      if(calc){
+        const p30=goldComputeInverseRSI(calc.avgGain,calc.avgLoss,calc.lastClose,30);
+        const p70=goldComputeInverseRSI(calc.avgGain,calc.avgLoss,calc.lastClose,70);
+        goldRsiData[sym].H1={rsi:calc.rsi,avgGain:calc.avgGain,avgLoss:calc.avgLoss,lastClose:calc.lastClose,p30,p70};
+        goldRsiData[sym].H4=goldRsiData[sym].H1;
+        goldRsiData[sym].D1=goldRsiData[sym].H1;
+      }
+    }
+  }else{
+    ['H1','H4','D1'].forEach(tf=>{
+      const r=goldRsiData[sym][tf];
+      if(r&&r.avgGain!==undefined){
+        const diff=mid-r.lastClose;
+        const g=Math.max(diff,0),l=Math.max(-diff,0);
+        const liveAG=(r.avgGain*13+g)/14, liveAL=(r.avgLoss*13+l)/14;
+        const liveRS=liveAL===0?100:liveAG/liveAL;
+        r.rsi=liveAL===0?100:100-(100/(1+liveRS));
+        r.p30=goldComputeInverseRSI(liveAG,liveAL,mid,30);
+        r.p70=goldComputeInverseRSI(liveAG,liveAL,mid,70);
+      }
+    });
+  }
+
+  goldCheckAlerts(sym);
+  goldUpdateMtfBadge(sym);
+
+  const bidEl=document.getElementById(`gold-bid-${sym}`);
+  const askEl=document.getElementById(`gold-ask-${sym}`);
+  const spdEl=document.getElementById(`gold-spd-${sym}`);
+  if(bidEl)bidEl.textContent=goldFormatPrice(a.bid,a.dec);
+  if(askEl)askEl.textContent=goldFormatPrice(a.ask,a.dec);
+  if(spdEl)spdEl.textContent=goldFormatPrice(a.spread,a.dec);
+
+  ['H1','H4','D1'].forEach(tf=>{
+    const r=goldRsiData[sym][tf];
+    const rsiEl=document.getElementById(`gold-rsi-${tf.toLowerCase()}-${sym}`);
+    const p30El=document.getElementById(`gold-p30-${tf.toLowerCase()}-${sym}`);
+    const p70El=document.getElementById(`gold-p70-${tf.toLowerCase()}-${sym}`);
+    if(rsiEl&&r&&r.rsi!=null){rsiEl.textContent=r.rsi.toFixed(1);rsiEl.className=getRsiClass(r.rsi);}
+    if(p30El&&r&&r.p30!=null)p30El.textContent=goldFormatPrice(r.p30,a.dec);
+    if(p70El&&r&&r.p70!=null)p70El.textContent=goldFormatPrice(r.p70,a.dec);
+  });
+
+  if(sym===goldSelectedSymbol)updateGoldDetailCard();
+}
+
+function renderGoldTable(){
+  const tbody=document.getElementById('gold-tbody');
+  if(!tbody)return;
+  let html='';
+  GOLD_ASSET_RAW.forEach(([sym,cat,name])=>{
+    html+=`<tr id="gold-tr-${sym}" data-cat="${cat}" data-name="${(sym+' '+name).toLowerCase()}" onclick="selectGoldAsset('${sym}')">
+      <td style="text-align:left;">
+        <div style="font-weight:800;">${sym}</div>
+        <div style="font-size:8.5px;color:var(--t3);">${name}</div>
+      </td>
+      <td style="font-size:9px;color:var(--t2);">${cat}</td>
+      <td id="gold-bid-${sym}" style="color:var(--red);">--</td>
+      <td id="gold-ask-${sym}" style="color:var(--green);">--</td>
+      <td id="gold-spd-${sym}" style="color:var(--t2);">--</td>
+      <td><span id="gold-rsi-h1-${sym}" class="rsi-c-n">--</span></td>
+      <td style="font-size:9px;"><span style="color:var(--red);" id="gold-p30-h1-${sym}">--</span> / <span style="color:var(--green);" id="gold-p70-h1-${sym}">--</span></td>
+      <td><span id="gold-rsi-h4-${sym}" class="rsi-c-n">--</span></td>
+      <td><span id="gold-rsi-d1-${sym}" class="rsi-c-n">--</span></td>
+      <td style="font-size:9px;"><span style="color:var(--red);" id="gold-p30-d1-${sym}">--</span> / <span style="color:var(--green);" id="gold-p70-d1-${sym}">--</span></td>
+      <td id="gold-mtf-${sym}" style="color:var(--t3);">--</td>
+    </tr>`;
+  });
+  tbody.innerHTML=html;
+  goldApplyFilter();
+}
+
+function goldApplyFilter(){
+  const q=goldSearchQuery;
+  Object.keys(goldAssetsMap).forEach(sym=>{
+    const tr=document.getElementById(`gold-tr-${sym}`);
+    if(!tr)return;
+    const a=goldAssetsMap[sym];
+    const matchesCat=goldActiveCategory==='ALL'||a.cat===goldActiveCategory;
+    const matchesSearch=!q||sym.toLowerCase().includes(q)||a.name.toLowerCase().includes(q);
+    tr.classList.toggle('filtered-out', !(matchesCat&&matchesSearch));
+  });
+}
+
+function goldSetCategory(cat){
+  goldActiveCategory=cat;
+  document.querySelectorAll('#gold-cats .cp').forEach(el=>{
+    el.classList.toggle('active', el.dataset.cat===cat);
+  });
+  goldApplyFilter();
+}
+function goldOnSearch(val){
+  goldSearchQuery=val.trim().toLowerCase();
+  goldApplyFilter();
+}
+
+function renderGoldWatchlist(){
+  const box=document.getElementById('gold-watchlist');
+  if(!box)return;
+  const syms=Object.keys(goldAssetsMap).filter(s=>goldAssetsMap[s].cat==='CRYPTO'||goldAssetsMap[s].cat==='FOREX').slice(0,60);
+  const wlCount=document.getElementById('wl-count');
+  if(wlCount)wlCount.textContent=syms.length+' ITEMS';
+  box.innerHTML=syms.map(sym=>{
+    const a=goldAssetsMap[sym];
+    const r=goldRsiData[sym].H1;
+    return `<div class="gold-wl-item" onclick="selectGoldAsset('${sym}')">
+      <div><div style="font-weight:800;">${sym}</div><div style="font-size:8px;color:var(--t2);">${a.cat}</div></div>
+      <div style="text-align:right;"><div style="color:var(--green);">${goldFormatPrice(a.ask,a.dec)}</div><div style="font-size:8.5px;color:var(--t2);">RSI ${r&&r.rsi!=null?r.rsi.toFixed(1):'--'}</div></div>
+    </div>`;
+  }).join('');
+}
+
+function updateGoldDetailCard(){
+  const a=goldAssetsMap[goldSelectedSymbol];
+  if(!a)return;
+  const symEl=document.getElementById('gold-dt-sym');
+  if(symEl)symEl.textContent=`${a.sym} — ${a.name}`;
+  const grid=document.getElementById('gold-detail');
+  if(!grid)return;
+  const tfs=[['H1','1h'],['H4','4h'],['D1','1d']];
+  grid.innerHTML=`
+    <div class="gold-detail-box"><div class="gold-detail-lbl">BID</div><div class="gold-detail-val" style="color:var(--red);">${goldFormatPrice(a.bid,a.dec)}</div></div>
+    <div class="gold-detail-box"><div class="gold-detail-lbl">ASK</div><div class="gold-detail-val" style="color:var(--green);">${goldFormatPrice(a.ask,a.dec)}</div></div>
+    <div class="gold-detail-box"><div class="gold-detail-lbl">SPREAD</div><div class="gold-detail-val">${goldFormatPrice(a.spread,a.dec)}</div></div>
+    ${tfs.map(([tf,lbl])=>{
+      const r=goldRsiData[a.sym][tf];
+      return `<div class="gold-detail-box">
+        <div class="gold-detail-lbl">${lbl.toUpperCase()} RSI</div>
+        <div class="gold-detail-val">${r&&r.rsi!=null?r.rsi.toFixed(1):'--'}</div>
+        <div class="gold-detail-tgt">30: ${r?goldFormatPrice(r.p30,a.dec):'--'} · 70: ${r?goldFormatPrice(r.p70,a.dec):'--'}</div>
+      </div>`;
+    }).join('')}
+  `;
+}
+
+function selectGoldAsset(sym){
+  goldSelectedSymbol=sym;
+  document.querySelectorAll('#gold-tbody tr.gold-selected').forEach(tr=>tr.classList.remove('gold-selected'));
+  const tr=document.getElementById(`gold-tr-${sym}`);
+  if(tr)tr.classList.add('gold-selected');
+  updateGoldDetailCard();
+}
+
+// ALERTAS
+function goldCheckAlerts(sym){
+  ['H1','D1'].forEach(tf=>{
+    const r=goldRsiData[sym][tf];
+    if(!r||r.rsi==null)return;
+    const key=sym+'_'+tf;
+    const val=r.rsi;
+    let condition=null,isExtreme=false;
+    if(val<=32){condition='Sobrevenda';if(val<=22)isExtreme=true;}
+    else if(val>=68){condition='Sobrecompra';if(val>=78)isExtreme=true;}
+    if(condition){
+      if(!goldLastAlertState[key]){goldLastAlertState[key]=true;goldTriggerAlert(sym,tf,val,condition,isExtreme);}
+    }else goldLastAlertState[key]=false;
+  });
+}
+function goldTriggerAlert(sym,tf,val,cond,isExtreme){
+  goldAddAlertLog(sym,tf,val,cond,isExtreme);
+  if(goldAlertsEnabled){
+    goldPlayAlertSound(isExtreme);
+    showInfoToast(`⚡ ${isExtreme?'EXTREMO ':''}${cond}`,`${sym} (${tf}): ${val.toFixed(1)}`);
+  }
+}
+function goldPlayAlertSound(isExtreme){
+  try{
+    const ctx=new(window.AudioContext||window.webkitAudioContext)();
+    const osc=ctx.createOscillator(),gain=ctx.createGain();
+    osc.type=isExtreme?'sawtooth':'sine';
+    osc.frequency.setValueAtTime(isExtreme?880:587.33,ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(isExtreme?1320:880,ctx.currentTime+0.15);
+    gain.gain.setValueAtTime(0.2,ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01,ctx.currentTime+0.3);
+    osc.connect(gain);gain.connect(ctx.destination);
+    osc.start();osc.stop(ctx.currentTime+0.3);
+    setTimeout(()=>{try{ctx.close();}catch(e){}},400);
+  }catch(e){}
+}
+function goldAddAlertLog(sym,tf,val,cond,isExtreme){
+  const box=document.getElementById('gold-alert-log');
+  if(!box)return;
+  const timeStr=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const cls=cond==='Sobrevenda'?'os':'ob';
+  const item=document.createElement('div');
+  item.className=`gold-alert-item ${cls}`;
+  item.innerHTML=`<div style="display:flex;justify-content:space-between;font-weight:800;">
+    <span>${sym} (${tf})</span>
+    <span style="color:${cls==='os'?'var(--red)':'var(--green)'};">${cond} ${val.toFixed(1)}</span>
+  </div><div style="color:var(--t3);font-size:9px;margin-top:2px;">${timeStr}${isExtreme?' · EXTREMO':''}</div>`;
+  if(box.children[0]&&box.children[0].textContent.includes('Sem alertas'))box.innerHTML='';
+  box.insertBefore(item,box.firstChild);
+  while(box.children.length>50)box.removeChild(box.lastChild);
+}
+function goldClearAlertLog(){
+  const box=document.getElementById('gold-alert-log');
+  if(box)box.innerHTML='<div style="padding:10px;color:var(--t3);text-align:center;font-size:10px;">Sem alertas ainda</div>';
+}
+function goldToggleAlerts(){
+  goldAlertsEnabled=!goldAlertsEnabled;
+  const btn=document.getElementById('gold-btn-alerts');
+  if(btn){
+    btn.textContent=goldAlertsEnabled?'🔔 ON':'🔔 OFF';
+    btn.classList.toggle('on',goldAlertsEnabled);
+  }
+  if(goldAlertsEnabled)showInfoToast('Alertas','Alertas da aba Gold ativados.');
+}
+
+// GLOBO 3D (canvas) — decorativo, so mostra contagem de cotacoes recebidas
+let goldGlobeRAF=null;
+function initGoldGlobe(){
+  if(goldGlobeStarted)return;
+  goldGlobeStarted=true;
+  const canvas=document.getElementById('gold-globe-canvas');
+  if(!canvas)return;
+  const ctx=canvas.getContext('2d');
+  let angle=0;
+  const cities=[
+    {name:'NY',lat:40.71,lon:-74.00},{name:'LDN',lat:51.50,lon:-0.12},
+    {name:'TKY',lat:35.67,lon:139.65},{name:'HK',lat:22.31,lon:114.16},
+    {name:'SYD',lat:-33.86,lon:151.20},{name:'FRA',lat:50.11,lon:8.68},
+    {name:'SIN',lat:1.35,lon:103.81},{name:'SP',lat:-23.55,lon:-46.63}
+  ];
+  function render(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    const cx=canvas.width/2, cy=canvas.height/2, R=Math.min(cx,cy)*0.85;
+    angle+=0.008;
+    const grad=ctx.createRadialGradient(cx,cy,R*0.8,cx,cy,R*1.2);
+    grad.addColorStop(0,'rgba(245,166,35,0.08)');
+    grad.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=grad;
+    ctx.beginPath();ctx.arc(cx,cy,R*1.2,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='rgba(245,166,35,0.3)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.arc(cx,cy,R,0,Math.PI*2);ctx.stroke();
+    for(let lon=0;lon<360;lon+=30){
+      const radLon=((lon+angle*50)*Math.PI)/180;
+      ctx.strokeStyle='rgba(255,255,255,0.08)';
+      ctx.beginPath();
+      for(let lat=-90;lat<=90;lat+=10){
+        const radLat=(lat*Math.PI)/180;
+        const x=R*Math.cos(radLat)*Math.sin(radLon);
+        const y=R*Math.sin(radLat);
+        const z=R*Math.cos(radLat)*Math.cos(radLon);
+        if(z>0){
+          const px=cx+x, py=cy-y;
+          if(lat===-90)ctx.moveTo(px,py);else ctx.lineTo(px,py);
+        }
+      }
+      ctx.stroke();
+    }
+    for(let lat=-60;lat<=60;lat+=30){
+      const radLat=(lat*Math.PI)/180;
+      const rLat=R*Math.cos(radLat), yLat=cy-R*Math.sin(radLat);
+      ctx.strokeStyle=lat===0?'rgba(245,166,35,0.35)':'rgba(255,255,255,0.06)';
+      ctx.beginPath();ctx.ellipse(cx,yLat,rLat,rLat*0.3,0,0,Math.PI*2);ctx.stroke();
+    }
+    const time=Date.now()*0.003;
+    cities.forEach((city,idx)=>{
+      const radLat=(city.lat*Math.PI)/180;
+      const radLon=((city.lon+angle*50)*Math.PI)/180;
+      const x=R*Math.cos(radLat)*Math.sin(radLon);
+      const y=R*Math.sin(radLat);
+      const z=R*Math.cos(radLat)*Math.cos(radLon);
+      if(z>0){
+        const px=cx+x, py=cy-y;
+        const pulseR=3+Math.sin(time*3+idx)*3;
+        ctx.strokeStyle='rgba(245,166,35,0.6)';ctx.lineWidth=1;
+        ctx.beginPath();ctx.arc(px,py,pulseR,0,Math.PI*2);ctx.stroke();
+        ctx.fillStyle='#F5A623';
+        ctx.beginPath();ctx.arc(px,py,2.5,0,Math.PI*2);ctx.fill();
+        ctx.fillStyle='rgba(255,255,255,0.65)';
+        ctx.font='8px monospace';
+        ctx.fillText(city.name,px+5,py+3);
+      }
+    });
+    goldGlobeRAF=requestAnimationFrame(render);
+  }
+  render();
+}
+
+function goldInitOnce(){
+  if(goldInited)return;
+  goldInited=true;
+  renderGoldTable();
+  renderGoldWatchlist();
+  selectGoldAsset('BTCUSD');
+  initGoldGlobe();
+  goldConnectWS();
+  goldLoadAllBinanceRsi();
+}
+
+window.goldSetCategory=goldSetCategory;
+window.goldOnSearch=goldOnSearch;
+window.goldToggleAlerts=goldToggleAlerts;
+window.goldClearAlertLog=goldClearAlertLog;
+window.selectGoldAsset=selectGoldAsset;
+
+
 function toggleGoldTab() {
   goldOpen = !goldOpen;
   const cw = document.querySelector('.chart-wrap');
   if(cw) cw.style.display = goldOpen ? 'none' : '';
   const el = document.getElementById('gold-view');
   if(el) el.classList.toggle('show', goldOpen);
+  if(goldOpen) goldInitOnce();
 }
 
 window.toggleTerminalTab = toggleTerminalTab;
@@ -4719,12 +5282,6 @@ async function openMtfCharts() {
   const mtfView = document.getElementById('mtf-view');
   if (!document.getElementById('mtf-chart-1')) {
      mtfView.innerHTML = `
-        <div id="mtf-center-compass" style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); z-index:100; width:160px; height:160px; background:rgba(19, 25, 34, 0.7); backdrop-filter:blur(8px); border-radius:16px; border:1px solid rgba(255,255,255,0.05); display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:2px; overflow:hidden; box-shadow:0 8px 32px rgba(0,0,0,0.5);">
-            <div style="background:rgba(0,0,0,0.3); display:flex; flex-direction:column; align-items:center; justify-content:center;"><span id="mtf-comp-lbl-1" style="font-size:9px; color:var(--t2);">TF 1</span></div>
-            <div style="background:rgba(0,0,0,0.3); display:flex; flex-direction:column; align-items:center; justify-content:center;"><span id="mtf-comp-lbl-2" style="font-size:9px; color:var(--t2);">TF 2</span></div>
-            <div style="background:rgba(0,0,0,0.3); display:flex; flex-direction:column; align-items:center; justify-content:center;"><span id="mtf-comp-lbl-3" style="font-size:9px; color:var(--t2);">TF 3</span></div>
-            <div style="background:rgba(0,0,0,0.3); display:flex; flex-direction:column; align-items:center; justify-content:center;"><span id="mtf-comp-lbl-4" style="font-size:9px; color:var(--t2);">TF 4</span></div>
-        </div>
         <div class="multi-cell"><div class="multi-hd"><span class="multi-sym">15m</span></div><div class="multi-chart" id="mtf-chart-1"></div></div>
         <div class="multi-cell"><div class="multi-hd"><span class="multi-sym">1h</span></div><div class="multi-chart" id="mtf-chart-2"></div></div>
         <div class="multi-cell"><div class="multi-hd"><span class="multi-sym">4h</span></div><div class="multi-chart" id="mtf-chart-3"></div></div>
@@ -5059,8 +5616,8 @@ function renderDirecaoHistory(){
 }
 
 // Escreve o badge ESTADO do modal da Bussola. O estado ja e calculado por
-// updateDirecaoTracking (direcaoState) — antes nada ligava esse valor ao
-// elemento, entao o badge ficava em '--' permanentemente.
+// updateDirecaoTracking (direcaoState); nada ligava esse valor ao elemento,
+// entao o badge ficava em '--' permanentemente.
 function renderDirecaoStateBadge(cls){
   const badge=document.getElementById('direcao-state-badge');
   if(!badge)return;
@@ -5089,47 +5646,3 @@ function updateDirecaoPanel(closes,e8,e16,e55,e98,e200,m56,m89,atrV){
 
 // ══════════════════════════════════════════════════════
 
-
-
-window.changeRsiTf = async function(val) {
-  rsiCustomTf = val;
-  if(val === 'current') {
-    customRsiData = null;
-    const closes=candles.map(c=>c.close);
-    const rD=rsiCalc(closes,P.rsiLen),sD=stochCalc(rD,P.stochLen),kD=sma(sD,P.kSmooth),dD=sma(kD,P.dSmooth);
-    const map=a=>a.map((v,i)=>({time:candles[i].time,value:v})).filter(o=>o.value!=null);
-    stochK.setData(map(kD));stochD.setData(map(dD));
-  } else {
-    await updateCustomRsi();
-  }
-};
-
-async function updateCustomRsi() {
-  if (rsiCustomTf === 'current') return;
-  const d = await fetchCandles(currentSym, rsiCustomTf, 500);
-  if(!d) return;
-  const closes = d.map(c=>c.close);
-  const rD=rsiCalc(closes,P.rsiLen),sD=stochCalc(rD,P.stochLen),kD=sma(sD,P.kSmooth),dD=sma(kD,P.dSmooth);
-  
-  // Interpolate to current candles time
-  const mapCustom = (arr) => {
-    let res = [];
-    for(let i=0; i<candles.length; i++) {
-       const ct = candles[i].time;
-       // find the latest custom candle that is <= ct
-       let val = null;
-       for(let j=d.length-1; j>=0; j--) {
-          if (d[j].time <= ct) {
-             val = arr[j];
-             break;
-          }
-       }
-       if (val != null) res.push({ time: ct, value: val });
-    }
-    return res;
-  };
-  
-  customRsiData = { k: mapCustom(kD), d: mapCustom(dD) };
-  stochK.setData(customRsiData.k);
-  stochD.setData(customRsiData.d);
-}
