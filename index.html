@@ -12,9 +12,17 @@
   <div class="vectra-splash-inner">
     
     <div class="totem-wrapper">
-      <img src="./vectra-totem.jpg" alt="Vectra" class="vectra-splash-img">
+      <!-- autoplay so roda com muted; playsinline evita o iOS abrir em tela cheia.
+           Sem loop de proposito: o fim do video e o gatilho pra entrar no app.
+           O <img> dentro do <video> e o fallback de quem nao decodifica o mp4. -->
+      <video id="vectra-totem-video" class="vectra-splash-img"
+             autoplay muted playsinline preload="auto" poster="./vectra-totem.jpg">
+        <!-- Para trocar o video do splash, mude so esta linha. Disponiveis:
+             ./vectra-totem-person.mp4  e  ./vectra-totem-performer.mp4 -->
+        <source src="./vectra-totem-person.mp4" type="video/mp4">
+        <img src="./vectra-totem.jpg" alt="Vectra" class="vectra-splash-img">
+      </video>
       <div class="totem-sweep"></div>
-      <img src="./vectra-totem.jpg" class="vectra-floor-reflection">
     </div>
     <div class="vectra-splash-sparks">
       <span class="spark" style="--x:34.5%;--y:19.3%;--d:1.17s"></span>
@@ -52,8 +60,34 @@
     if(!dismissed) dismiss();
     else splash.classList.add('hide'); // If already dismissed, hide it on click (for screensaver mode)
   });
-  // // setTimeout(dismiss,3400); /* Tela de Descanso Infinita na Entrada */
+  // Saida do splash: exige DUAS condicoes, e tem um teto.
+  //   1) o video ja apareceu por CORTE_MS  — senao pisca e some;
+   //   2) o app terminou de carregar        — senao revela um dashboard pela metade.
+  // O main.js e grande e bloqueia a thread principal enquanto monta os
+  // graficos, entao so o relogio nao serve: um timeout de 3,5s so e atendido
+  // quando a thread liberar, e cortar antes disso mostraria a tela incompleta.
+  // TETO_MS e a rede de seguranca: o splash cobre tudo (z-index 99999), entao
+  // nenhuma falha (mp4 ausente, codec, autoplay barrado, carga travada) pode
+  // deixar o usuario preso numa tela preta.
+  var video=document.getElementById("vectra-totem-video");
+  var CORTE_MS=3500, TETO_MS=15000;
+  var tempoOk=false, appOk=false;
+  function sair(){if(tempoOk&&appOk)dismiss();}
+  setTimeout(function(){tempoOk=true;sair();},CORTE_MS);
+  if(document.readyState==="complete"){appOk=true;}
+  else window.addEventListener("load",function(){appOk=true;sair();});
+  setTimeout(dismiss,TETO_MS);
+  if(video){
+    // Falha do video nao deve prolongar a espera: libera a parte dele.
+    video.addEventListener("error",function(){tempoOk=true;sair();});
+    var t=video.play&&video.play();
+    if(t&&t.catch)t.catch(function(){tempoOk=true;sair();}); // autoplay barrado
+  }
 
+  // Nao deixa o video rodando por baixo do app depois que o splash sai.
+  splash.addEventListener("transitionend",function(){
+    if(dismissed&&video&&!video.paused)video.pause();
+  });
   window.toggleScreensaver = function() {
     splash.classList.remove('hide');
     dismissed = true; // prevent the timeout from firing again if it hasn't
