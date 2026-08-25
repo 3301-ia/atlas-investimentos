@@ -4783,6 +4783,7 @@ window.toggleBussolaModal = function() { console.log('BUSSOLA TOGGLE CALLED. ang
       renderDirecaoCompass(direcaoAngles);
       if(typeof classifyDirecao === 'function') {
          renderDirecaoReadout(direcaoAngles, classifyDirecao(direcaoAngles));
+         renderDirecaoStateBadge(classifyDirecao(direcaoAngles));
       }
       if(typeof renderDirecaoHistory === 'function') {
          renderDirecaoHistory();
@@ -4875,6 +4876,7 @@ const DIRECAO_MAS=[
   {key:'ma56',lbl:'MA56',color:C.ma56},
   {key:'ma89',lbl:'MA89',color:C.ma89},
 ];
+const DIRECAO_STATE_LBL={ensaio:'ENSAIO',explosao:'EXPLOSAO',continuacao:'CONTINUACAO',recuo:'RECUO',reversao:'REVERSAO',indefinido:'NEUTRO'};
 const DIRECAO_LOOKBACK=5; // velas usadas pra medir a inclinacao de cada media
 // Ganho de sensibilidade original era 3x, mas foi removido (1x) para mostrar o grau real.
 const DIRECAO_GAIN=1;
@@ -5043,7 +5045,7 @@ function renderDirecaoHistory(){
     list.innerHTML='<div style="padding:5px 9px;font-size:11px;color:var(--t3);">Sem mudanca de momentum ainda...</div>';
     return;
   }
-  const lbl={ensaio:'ENSAIO',explosao:'EXPLOSAO',continuacao:'CONTINUACAO',recuo:'RECUO',reversao:'REVERSAO',indefinido:'NEUTRO'};
+  const lbl=DIRECAO_STATE_LBL;
   list.innerHTML=direcaoHistory.slice(0,30).map(h=>{
     const t=new Date(h.time).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
     const sideCls=h.direcao==='alta'?'buy':h.direcao==='baixa'?'sell':'';
@@ -5054,6 +5056,21 @@ function renderDirecaoHistory(){
       <span class="sig-px">${h.avgAngle!=null?h.avgAngle.toFixed(0)+'°':'--'}</span>
     </div>`;
   }).join('');
+}
+
+// Escreve o badge ESTADO do modal da Bussola. O estado ja e calculado por
+// updateDirecaoTracking (direcaoState) — antes nada ligava esse valor ao
+// elemento, entao o badge ficava em '--' permanentemente.
+function renderDirecaoStateBadge(cls){
+  const badge=document.getElementById('direcao-state-badge');
+  if(!badge)return;
+  const estado=DIRECAO_STATE_LBL[direcaoState]||'NEUTRO';
+  const dir=cls&&cls.direcao?cls.direcao.toUpperCase():null;
+  const neutro=direcaoState==='indefinido'||!dir;
+  badge.textContent=neutro?estado:estado+' '+dir;
+  badge.className='sp-sec-val';
+  badge.style.color=neutro?'var(--goldd)':cls.direcao==='alta'?'var(--green)':'var(--red)';
+  badge.style.fontWeight=neutro?'':'900';
 }
 
 function updateDirecaoPanel(closes,e8,e16,e55,e98,e200,m56,m89,atrV){
@@ -5067,6 +5084,7 @@ function updateDirecaoPanel(closes,e8,e16,e55,e98,e200,m56,m89,atrV){
   const cls=updateDirecaoTracking(angles);
   renderDirecaoCompass(angles);
   renderDirecaoReadout(angles,cls);
+  renderDirecaoStateBadge(cls);
 }
 
 // ══════════════════════════════════════════════════════
