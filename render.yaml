@@ -2,9 +2,10 @@ services:
   - type: web
     name: atlas-v10
     env: static
-    # Site estatico puro: index.html + style.css + src/main.js.
-    # Nao ha etapa de build — o main.js e script classico (o index.html
-    # usa handlers inline que dependem do escopo global) e o Vite nao
-    # empacota script sem type="module", o que gerava um dist sem
-    # nenhum JavaScript.
+    # Site estatico puro: index.html + style.css + src/main.js na raiz.
+    # Sem etapa de build. O main.js e script classico (o index.html usa
+    # handlers inline que dependem do escopo global) e o Vite nao
+    # empacota script sem type="module" — o build gerava um ./dist sem
+    # nenhum JavaScript, que era o que ia pro ar.
+    buildCommand: echo "site estatico, sem etapa de build"
     staticPublishPath: ./
