@@ -1,5 +1,30 @@
 
-import * as LightweightCharts from 'lightweight-charts';
+function aggregateCandles(candles, factor) {
+  if (!candles || candles.length === 0) return candles;
+  const result = [];
+  let current = null;
+  let count = 0;
+  for (let i = 0; i < candles.length; i++) {
+    const c = candles[i];
+    if (count === 0) {
+      current = { time: c.time, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume };
+    } else {
+      current.high = Math.max(current.high, c.high);
+      current.low = Math.min(current.low, c.low);
+      current.close = c.close;
+      current.volume += c.volume;
+    }
+    count++;
+    if (count === factor || i === candles.length - 1) {
+      result.push(current);
+      count = 0;
+    }
+  }
+  return result;
+}
+
+
+// LightweightCharts is loaded via CDN in index.html
 
 // ══════════════════════════════════════════════════════
 // CONFIG
@@ -158,6 +183,8 @@ let signals=[], alertsOn=false, currentMarkers=[];
 let fibState=mkFib(), lastSig={atlasB:-99,atlasS:-99,goldB:-99,goldS:-99,stressB:-99,stressS:-99,rbB:-99,rbS:-99,sqzBk:-99,sqzS:-99,h1B:-99,h1S:-99};
 let bullFlowPrev=false, bearFlowPrev=false;
 let wsKline=null;
+let rsiCustomTf = "current";
+let customRsiData = null;
 // Estado incremental: guarda o ultimo valor CONFIRMADO de cada indicador para
 // que os ticks ao vivo sejam calculados em O(1) em vez de recalcular tudo.
 let liveState={ema8:null,ema16:null,ema55:null,ema98:null,ema200:null,
@@ -491,6 +518,8 @@ function runSignals(closes,highs,lows,opens){
   updateFibPanel();
   updateAntecipadorPanel(computeAntecipador(candles));
   updateRsiInversoPanel(closes);
+  try{updateDirecaoPanel(closes,e8,e16,e55,e98,e200,m56,m89,atrV);}catch(e){console.error('BUSSOLA ERROR:', e);}
+
   updateSentimentPanel(); // assincrono, nao trava o resto do recalculo
   if(atrV[n-1]!=null)updateRiskPanel(closes[n-1],atrV[n-1]);
   document.getElementById('st-info').textContent=`${currentSym.replace('USDT','')} · ${currentTF} · ${signals.length} sinais`;
@@ -887,7 +916,14 @@ function applySeriesData(){
   maS.ema98.setData(map(e98));maS.ema200.setData(map(e200));maS.ma56.setData(map(m56));maS.ma89.setData(map(m89));
 
   const rD=rsiCalc(closes,P.rsiLen),sD=stochCalc(rD,P.stochLen),kD=sma(sD,P.kSmooth),dD=sma(kD,P.dSmooth);
-  stochK.setData(map(kD));stochD.setData(map(dD));
+  
+  if(rsiCustomTf === "current") {
+    stochK.setData(map(kD));stochD.setData(map(dD));
+  } else if (customRsiData) {
+    stochK.setData(customRsiData.k);
+    stochD.setData(customRsiData.d);
+  }
+
   return {closes,e8,e16,e55,e98,e200,m56,m89,rD,kD,dD};
 }
 
@@ -1228,15 +1264,29 @@ function interpretVolumeConfirm(candles){
 }
 
 async function fetchCandles(sym,tf,limit=500){
+  let fetchTf = tf;
+  let aggFactor = 1;
+
+  if (tf === '5h') { fetchTf = '1h'; aggFactor = 5; }
+  else if (tf === '3M') { fetchTf = '1M'; aggFactor = 3; }
+  else if (tf === '6M') { fetchTf = '1M'; aggFactor = 6; }
+  else if (tf === '9M') { fetchTf = '1M'; aggFactor = 9; }
+  else if (tf === '12M') { fetchTf = '1M'; aggFactor = 12; }
+
+  const realLimit = Math.min(limit * aggFactor, 1500);
+
   for(const src of DATA_SOURCES){
     try{
-      const url = src.build ? src.build(sym,tf,limit) : null;
-      if(!url)continue; // essa fonte nao tem esse timeframe — pula pra proxima
+      const url = src.build ? src.build(sym,fetchTf,realLimit) : null;
+      if(!url)continue;
       const r=await fetch(url,{signal:AbortSignal.timeout(3500)});
       if(!r.ok)continue;
       const raw=await r.json();
-      const parsed=src.parse(raw);
+      let parsed=src.parse(raw);
       if(parsed&&parsed.length>0){
+        if (aggFactor > 1) {
+            parsed = aggregateCandles(parsed, aggFactor);
+        }
         lastDataSource=src.name;
         updateDataSourceBadge(src.name, src.name!=='binance');
         return parsed;
@@ -1413,7 +1463,7 @@ function updateLiveIndicators(time,px){
       const hist=[...liveState.rsiHist,rs.value].slice(-(P.stochLen+P.kSmooth+P.dSmooth+5));
       const sD=stochCalc(hist,P.stochLen),kD=sma(sD,P.kSmooth),dD=sma(kD,P.dSmooth);
       const kv=kD[kD.length-1],dv=dD[dD.length-1];
-      up(stochK,kv);up(stochD,dv);
+      if(rsiCustomTf === "current"){ up(stochK,kv);up(stochD,dv); }
       // H1 so recalcula a cada 15s (antes rodava a cada trade sobre 200 velas)
       if(Date.now()-h1StochAt>15000){h1StochCache=calcH1Stoch();h1StochAt=Date.now();}
       if(kv!=null)updateStochPanel(kv,dv,h1StochCache);
@@ -3841,6 +3891,7 @@ async function changeTF(tf){
   await loadAll();
 }
 async function loadAll(){
+  if(rsiCustomTf !== "current") setTimeout(updateCustomRsi, 500);
   const mySeq=++loadSeq, mySym=currentSym, myTf=currentTF;
   document.getElementById('ws-st').textContent='Carregando...';
   const d=await fetchCandles(mySym,myTf,1000);
@@ -4438,7 +4489,167 @@ window.archiveStudyObservation = typeof archiveStudyObservation !== 'undefined' 
 window.refreshPhiRibbonAndBorders = typeof refreshPhiRibbonAndBorders !== 'undefined' ? refreshPhiRibbonAndBorders : null;
 window.updateLiveCandleBorder = typeof updateLiveCandleBorder !== 'undefined' ? updateLiveCandleBorder : null;
 
-// EXPORTAÇÕES GLOBAIS (Gerado automaticamente)
+
+
+
+// UI TOGGLES RESTORED
+let terminalOpen = false;
+let bussolaOpen = false;
+let potentialOpen = false;
+let goldOpen = false;
+
+
+async function updateTerminalUI() {
+  const tCards = document.getElementById('terminal-cards');
+  if(!tCards) return;
+  tCards.innerHTML = '<div style="color:var(--t3);font-size:11px;padding:20px;text-align:center;">Carregando leitura terminal...</div>';
+  
+  const sym = currentSym;
+  // Terminal timeframes from user screenshot
+  const tfs = ['3m', '15m', '1h', '4h', '5h', '6h', '12h', '1d', '1w', '1M', '3M', '6M', '9M', '12M'];
+  let html = '<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:10px; padding:16px;">';
+  
+  try {
+    const promises = tfs.map(t => fetchCandles(sym, t, 50));
+    const results = await Promise.all(promises);
+    
+    for(let i = 0; i < tfs.length; i++) {
+       const t = tfs[i];
+       const data = results[i];
+       if(data && data.length > 0) {
+          const last = data[data.length-1];
+          // Very basic rendering for now to show the TF is working
+          html += `<div style="background:var(--bg2); padding:10px; border-radius:8px; border:1px solid var(--bd2); text-align:center;">
+            <div style="font-weight:bold; color:var(--gold); font-size:14px; margin-bottom:4px;">${t.toUpperCase()}</div>
+            <div style="font-family:var(--mono); color:var(--t2); font-size:12px;">$${last.close.toFixed(2)}</div>
+          </div>`;
+       } else {
+          html += `<div style="background:var(--bg2); padding:10px; border-radius:8px; border:1px dashed var(--red); text-align:center; opacity:0.6;">
+            <div style="font-weight:bold; color:var(--t3); font-size:14px; margin-bottom:4px;">${t.toUpperCase()}</div>
+            <div style="font-size:10px; color:var(--red);">Sem dados</div>
+          </div>`;
+       }
+    }
+  } catch(e) {
+    html = `<div style="color:red;padding:20px;">Falha ao carregar dados do Terminal. ${e.message}</div>`;
+  }
+  html += '</div>';
+  tCards.innerHTML = html;
+}
+
+// Hook it to the toggle
+function toggleTerminalTab() {
+  terminalOpen = !terminalOpen;
+  const cw = document.querySelector('.chart-wrap');
+  if(cw) cw.style.display = terminalOpen ? 'none' : '';
+  const el = document.getElementById('terminal-view');
+  if(el) el.classList.toggle('show', terminalOpen);
+  if(terminalOpen) updateTerminalUI();
+}
+window.toggleTerminalTab = toggleTerminalTab;
+window.updateTerminalUI = updateTerminalUI;
+
+
+function toggleBussolaModal() {
+  const el = document.getElementById('bussola-modal');
+  if(!el) return;
+  const isHidden = el.style.display === 'none' || el.style.display === '';
+  el.style.display = isHidden ? 'flex' : 'none';
+}
+window.toggleBussolaModal = toggleBussolaModal;
+
+
+function togglePotential() {
+  const card = document.getElementById('potential-card');
+  if (!card) return;
+  const show = card.style.display === 'none' || card.style.display === '';
+  card.style.display = show ? 'flex' : 'none';
+  if (show) updatePotential();
+}
+
+
+function updatePotential() {
+  const card = document.getElementById('potential-card');
+  if(!card || card.style.display === 'none') return;
+  
+  const levEl = document.getElementById('pot-lev');
+  const lotEl = document.getElementById('pot-lot');
+  const stopEl = document.getElementById('pot-stop-price');
+  const targetEl = document.getElementById('pot-target-price');
+  const eqEl = document.getElementById('pot-equity');
+  const riskPctEl = document.getElementById('pot-risk-pct');
+  
+  if(!levEl) return;
+  
+  const lev = parseFloat(levEl.value) || 800;
+  const lot = parseFloat(lotEl.value) || 0;
+  const stop = parseFloat(stopEl.value) || 0;
+  const target = parseFloat(targetEl.value) || 0;
+  const equity = parseFloat(eqEl.value) || 0;
+  const riskPct = parseFloat(riskPctEl.value) || 0;
+  
+  // Use the last close price from candles
+  let price = 0;
+  if(typeof candles !== 'undefined' && candles.length > 0) {
+      price = candles[candles.length - 1].close;
+  }
+  
+  document.getElementById('pot-price').textContent = price.toFixed(2);
+  
+  // Basic forex/crypto logic: Notional = Lot * ContractSize * Price. 
+  // Let's assume standard Deriv crypto/forex Contract Size = 1 for simplicity if not defined.
+  // Actually, standard lot is 100,000 for forex. For BTCUSD on Deriv it might be 1.
+  // Let's assume 1.
+  const contractSize = 1;
+  const notional = lot * contractSize * price;
+  const margin = lev > 0 ? notional / lev : 0;
+  const tickValue = lot * contractSize; // value of $1 move in price
+  const liqDist = tickValue > 0 ? margin / tickValue : 0;
+  
+  document.getElementById('pot-notional').textContent = '$' + notional.toFixed(2);
+  document.getElementById('pot-margin').textContent = '$' + margin.toFixed(2);
+  document.getElementById('pot-tick').textContent = '$' + tickValue.toFixed(4);
+  document.getElementById('pot-liq').textContent = '$' + liqDist.toFixed(2);
+  
+  const stopDist = stop > 0 ? Math.abs(price - stop) : 0;
+  const targetDist = target > 0 ? Math.abs(price - target) : 0;
+  
+  document.getElementById('pot-stop-dist').textContent = '$' + stopDist.toFixed(2);
+  document.getElementById('pot-target-dist').textContent = '$' + targetDist.toFixed(2);
+  
+  const riskReal = stopDist * tickValue;
+  const rewardReal = targetDist * tickValue;
+  const rr = riskReal > 0 ? rewardReal / riskReal : 0;
+  
+  document.getElementById('pot-risk-real').textContent = '$' + riskReal.toFixed(2);
+  document.getElementById('pot-reward-real').textContent = '$' + rewardReal.toFixed(2);
+  document.getElementById('pot-rr').textContent = rr.toFixed(2);
+  
+  const riskGoal = equity * (riskPct / 100);
+  document.getElementById('pot-risk-goal').textContent = '$' + riskGoal.toFixed(2);
+  
+  const suggestedLot = (stopDist > 0 && contractSize > 0) ? riskGoal / (stopDist * contractSize) : 0;
+  document.getElementById('pot-lot-suggested').textContent = suggestedLot.toFixed(3);
+}
+
+window.togglePotential = togglePotential;
+window.updatePotential = updatePotential;
+
+
+function toggleGoldTab() {
+  goldOpen = !goldOpen;
+  const cw = document.querySelector('.chart-wrap');
+  if(cw) cw.style.display = goldOpen ? 'none' : '';
+  const el = document.getElementById('gold-view');
+  if(el) el.classList.toggle('show', goldOpen);
+}
+
+window.toggleTerminalTab = toggleTerminalTab;
+window.toggleBussolaModal = toggleBussolaModal;
+window.togglePotential = togglePotential;
+window.toggleGoldTab = toggleGoldTab;
+
+// EXPORTACOES GLOBAIS (Gerado automaticamente)
 window.archiveStudyObservation = typeof archiveStudyObservation !== 'undefined' ? archiveStudyObservation : null;
 window.changeSym = typeof changeSym !== 'undefined' ? changeSym : null;
 window.changeTF = typeof changeTF !== 'undefined' ? changeTF : null;
@@ -4478,3 +4689,429 @@ async function changeMtfTf(index, newTf){
   }
 }
 window.changeMtfTf = changeMtfTf;
+
+
+// ====================================
+// MULTI-TF LOGIC RESTORATION
+// ====================================
+let mtfCharts = [];
+let mtfSeries = [];
+
+function toggleMtfView() {
+  if (typeof window.mtfViewOpen === 'undefined') window.mtfViewOpen = false;
+  window.mtfViewOpen = !window.mtfViewOpen;
+  
+  const el = document.getElementById('mtf-view');
+  if(!el) return;
+  
+  if (window.mtfViewOpen) {
+    el.classList.add('show');
+    openMtfCharts();
+  } else {
+    el.classList.remove('show');
+    closeMtfCharts();
+  }
+}
+
+async function openMtfCharts() {
+  const containerIds = ['mtf-chart-1', 'mtf-chart-2', 'mtf-chart-3', 'mtf-chart-4'];
+  // Provide elements if missing in html
+  const mtfView = document.getElementById('mtf-view');
+  if (!document.getElementById('mtf-chart-1')) {
+     mtfView.innerHTML = `
+        <div id="mtf-center-compass" style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); z-index:100; width:160px; height:160px; background:rgba(19, 25, 34, 0.7); backdrop-filter:blur(8px); border-radius:16px; border:1px solid rgba(255,255,255,0.05); display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:2px; overflow:hidden; box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+            <div style="background:rgba(0,0,0,0.3); display:flex; flex-direction:column; align-items:center; justify-content:center;"><span id="mtf-comp-lbl-1" style="font-size:9px; color:var(--t2);">TF 1</span></div>
+            <div style="background:rgba(0,0,0,0.3); display:flex; flex-direction:column; align-items:center; justify-content:center;"><span id="mtf-comp-lbl-2" style="font-size:9px; color:var(--t2);">TF 2</span></div>
+            <div style="background:rgba(0,0,0,0.3); display:flex; flex-direction:column; align-items:center; justify-content:center;"><span id="mtf-comp-lbl-3" style="font-size:9px; color:var(--t2);">TF 3</span></div>
+            <div style="background:rgba(0,0,0,0.3); display:flex; flex-direction:column; align-items:center; justify-content:center;"><span id="mtf-comp-lbl-4" style="font-size:9px; color:var(--t2);">TF 4</span></div>
+        </div>
+        <div class="multi-cell"><div class="multi-hd"><span class="multi-sym">15m</span></div><div class="multi-chart" id="mtf-chart-1"></div></div>
+        <div class="multi-cell"><div class="multi-hd"><span class="multi-sym">1h</span></div><div class="multi-chart" id="mtf-chart-2"></div></div>
+        <div class="multi-cell"><div class="multi-hd"><span class="multi-sym">4h</span></div><div class="multi-chart" id="mtf-chart-3"></div></div>
+        <div class="multi-cell"><div class="multi-hd"><span class="multi-sym">1d</span></div><div class="multi-chart" id="mtf-chart-4"></div></div>
+     `;
+  }
+  
+  closeMtfCharts();
+  
+  const sym = typeof currentSym !== 'undefined' ? currentSym : 'BTCUSDT';
+  const tfs = ['15m', '1h', '4h', '1d'];
+  
+  for(let i = 0; i < 4; i++) {
+     const cId = containerIds[i];
+     const el = document.getElementById(cId);
+     if(!el) continue;
+     
+     const chart = LightweightCharts.createChart(el, {
+        layout: { background: { color: 'transparent' }, textColor: '#8b9bb4' },
+        grid: { vertLines: { color: 'rgba(255,255,255,0.02)' }, horzLines: { color: 'rgba(255,255,255,0.02)' } },
+        timeScale: { timeVisible: true }
+     });
+     
+     const series = chart.addCandlestickSeries({
+        upColor: '#00ffaa', downColor: '#ff4444', borderUpColor: '#00ffaa', borderDownColor: '#ff4444', wickUpColor: '#00ffaa', wickDownColor: '#ff4444'
+     });
+     
+     mtfCharts.push(chart);
+     mtfSeries.push(series);
+     
+     try {
+       const data = await fetchCandles(sym, tfs[i], 300);
+       if(data && data.length) series.setData(data);
+     } catch(e) {}
+  }
+}
+
+function closeMtfCharts() {
+  mtfCharts.forEach(c => c.remove());
+  mtfCharts = [];
+  mtfSeries = [];
+}
+
+window.toggleMtfView = toggleMtfView;
+
+// Re-assign modals explicitly to ensure they work on click
+
+window.toggleBussolaModal = function() { console.log('BUSSOLA TOGGLE CALLED. angles:', direcaoAngles);
+  const m = document.getElementById('bussola-modal');
+  if(!m) return;
+  if(m.style.display === 'block' || m.style.display === 'flex'){
+    m.style.display = 'none';
+  } else {
+    m.style.display = 'flex';
+    if(typeof renderDirecaoCompass === 'function' && typeof direcaoAngles !== 'undefined'){
+      renderDirecaoCompass(direcaoAngles);
+      if(typeof classifyDirecao === 'function') {
+         renderDirecaoReadout(direcaoAngles, classifyDirecao(direcaoAngles));
+      }
+      if(typeof renderDirecaoHistory === 'function') {
+         renderDirecaoHistory();
+      }
+    }
+  }
+};
+
+
+window.togglePotential = function() {
+  const el = document.getElementById('potential-card');
+  if(!el) return;
+  const isHidden = el.style.display === 'none' || el.style.display === '';
+  el.style.display = isHidden ? 'flex' : 'none';
+};
+
+window.toggleTerminalTab = function() {
+  const el = document.getElementById('terminal-view');
+  if(!el) return;
+  if(el.classList.contains('show')){
+    el.classList.remove('show');
+    document.querySelector('.chart-wrap').style.display = '';
+  } else {
+    el.classList.add('show');
+    document.querySelector('.chart-wrap').style.display = 'none';
+    if(typeof updateTerminalUI !== 'undefined') updateTerminalUI();
+  }
+};
+
+
+function updateBussolaUI() {
+    const el = document.getElementById('bussola-modal');
+    if(!el || el.style.display === 'none') return;
+    
+    const svg = document.getElementById('direcao-compass');
+    const readout = document.getElementById('direcao-readout');
+    const pointer = document.getElementById('direcao-force-pointer');
+    const badge = document.getElementById('direcao-state-badge');
+    const hist = document.getElementById('direcao-history-list');
+    
+    if(!svg || typeof mtfGlobalBussolaScore === 'undefined') return;
+    
+    const score = mtfGlobalBussolaScore || 0;
+    
+    if(pointer) {
+        // map -100 to 100 into 100% to 0% (top to bottom)
+        let pct = 50 - (score / 2);
+        if(pct < 0) pct = 0;
+        if(pct > 100) pct = 100;
+        pointer.style.top = pct + '%';
+    }
+    
+    if(badge) {
+        if(score > 33) { badge.textContent = 'BULLISH'; badge.className = 'sp-sec-val pot-green'; }
+        else if(score < -33) { badge.textContent = 'BEARISH'; badge.className = 'sp-sec-val pot-red'; }
+        else { badge.textContent = 'FLAT'; badge.className = 'sp-sec-val pot-gold'; }
+    }
+    
+    if(readout) {
+        readout.innerHTML = `<div>Forca Relativa: ${score.toFixed(1)}</div>`;
+    }
+}
+
+window.updatePotential = updatePotential;
+
+
+
+// DIRECAO (BUSSOLA) — angulo de cada media em graus, normalizado por ATR
+// (nao por pixel do grafico, que muda com zoom): inclinacao = variacao da
+// media em unidades de ATR por vela, convertida pra grau via atan(). Assim
+// 45 graus sempre significa "andou ~1 ATR por vela", comparavel entre
+// ativos/timeframes diferentes.
+//
+// Tambem le o momentum do mercado com uma maquina de estados simples:
+//   ENSAIO      — maioria das medias quase horizontal (o squeeze antes da
+//                 explosao, o "ensaio" que o proprio ATLAS ja detecta como
+//                 squeeze do feixe, so que aqui em graus).
+//   EXPLOSAO    — saiu de um ENSAIO com angulo forte pro mesmo lado (gera
+//                 sinal de verdade, entra no log de SINAIS e beipa).
+//   CONTINUACAO — segue esticado e alinhado (nao veio de um ensaio recente).
+//   RECUO       — alguma media perdeu boa parte do seu pico de angulo —
+//                 comecando a reverter.
+// ══════════════════════════════════════════════════════
+const DIRECAO_MAS=[
+  {key:'ema8',lbl:'EMA8',color:C.ema8},
+  {key:'ema16',lbl:'EMA16',color:C.ema16},
+  {key:'ema55',lbl:'EMA55',color:C.ema55},
+  {key:'ema98',lbl:'EMA98',color:C.ema98},
+  {key:'ema200',lbl:'EMA200',color:C.ema200},
+  {key:'ma56',lbl:'MA56',color:C.ma56},
+  {key:'ma89',lbl:'MA89',color:C.ma89},
+];
+const DIRECAO_LOOKBACK=5; // velas usadas pra medir a inclinacao de cada media
+// Ganho de sensibilidade original era 3x, mas foi removido (1x) para mostrar o grau real.
+const DIRECAO_GAIN=1;
+let direcaoPeakSum = 0, direcaoSumSign = 1, lastExhaustionPeak = 0;
+let direcaoAngles={}, direcaoState='indefinido', direcaoPrevState='indefinido';
+let direcaoPeakAngle={}, direcaoWasFlat=true, direcaoHistory=[];
+const DIRECAO_HISTORY_CAP=60;
+
+function maAngleDeg(series,atrArr,idx,lookback){
+  if(!series||!atrArr||idx<lookback||idx>=series.length)return null;
+  const now=series[idx],then=series[idx-lookback],atrNow=atrArr[idx];
+  if(now==null||then==null||atrNow==null||atrNow===0)return null;
+  const slope=(now-then)/(lookback*atrNow);
+  return Math.atan(slope*DIRECAO_GAIN)*180/Math.PI;
+}
+
+function classifyDirecao(angles){
+  const vals=Object.values(angles).filter(v=>v!=null);
+  if(!vals.length)return{avgAngle:null,isFlat:true,isSteep:false,direcao:null};
+  const avgAngle=vals.reduce((a,b)=>a+b,0)/vals.length;
+  const flatCount=vals.filter(v=>Math.abs(v)<4).length;
+  const dirSign=avgAngle>=0?1:-1;
+  const alignedCount=vals.filter(v=>Math.sign(v)===dirSign&&Math.abs(v)>=4).length;
+  return {
+      avgAngle,
+      sumAngle: vals.reduce((a,b)=>a+b,0),
+      isFlat:flatCount>=Math.ceil(vals.length*0.6),
+      isSteep:Math.abs(avgAngle)>=12&&alignedCount>=Math.ceil(vals.length*0.6),
+      direcao:avgAngle>=0?'alta':'baixa',
+    };
+}
+
+function updateDirecaoTracking(angles){
+  const cls=classifyDirecao(angles);
+  Object.entries(angles).forEach(([k,v])=>{
+    if(v==null)return;
+    const av=Math.abs(v);
+    if(direcaoPeakAngle[k]==null||av>direcaoPeakAngle[k])direcaoPeakAngle[k]=av;
+  });
+
+  const sumAngle = cls.sumAngle;
+  if(sumAngle!=null){
+    if(Math.sign(sumAngle)!==direcaoSumSign){
+      direcaoPeakSum = sumAngle;
+      direcaoSumSign = Math.sign(sumAngle);
+      lastExhaustionPeak = 0;
+    }else{
+      if(Math.abs(sumAngle) > Math.abs(direcaoPeakSum)){
+        direcaoPeakSum = sumAngle;
+      }
+    }
+    if(Math.abs(direcaoPeakSum) >= 40){
+      const loss = Math.abs(direcaoPeakSum) - Math.abs(sumAngle);
+      if(loss >= 13 && direcaoPeakSum !== lastExhaustionPeak){
+        const idx = candles.length - 1;
+        const price = candles[idx] ? candles[idx].close : null;
+        if(price != null) addSig('EXAUSTAO', direcaoPeakSum > 0 ? 'SELL' : 'BUY', idx, price);
+        lastExhaustionPeak = direcaoPeakSum;
+      }
+    }
+  }
+
+  let newState='indefinido';
+  if(cls.isFlat){
+    newState='ensaio';
+    direcaoWasFlat=true;
+    direcaoPeakAngle={};
+  }else if(cls.isSteep){
+    newState=direcaoWasFlat?'explosao':'continuacao';
+    direcaoWasFlat=false;
+  }else{
+    const recuando=Object.entries(angles).some(([k,v])=>{
+      if(v==null||direcaoPeakAngle[k]==null)return false;
+      return direcaoPeakAngle[k]>=35&&(direcaoPeakAngle[k]-Math.abs(v))>=20;
+    });
+    newState=recuando?'recuo':'indefinido';
+    }
+    
+    // Se a direcao mudar em relacao ao ultimo estado de tendencia
+    if(cls.isSteep && direcaoHistory.length > 0) {
+       const lastTrend = direcaoHistory.find(h => h.state === 'explosao' || h.state === 'continuacao');
+       if(lastTrend && lastTrend.direcao !== cls.direcao) {
+           newState = 'reversao';
+       }
+    }
+
+  if(newState!==direcaoPrevState){
+    const idx=candles.length-1;
+    const price=candles[idx]?candles[idx].close:null;
+    direcaoHistory.unshift({state:newState,prevState:direcaoPrevState,direcao:cls.direcao,avgAngle:cls.avgAngle,time:Date.now()});
+    if(direcaoHistory.length>DIRECAO_HISTORY_CAP)direcaoHistory.length=DIRECAO_HISTORY_CAP;
+    direcaoPrevState=newState;
+    // Sinal de verdade so na EXPLOSAO (entrada de continuidade) — ENSAIO e
+    // RECUO sao so avisos visuais, nao entram no log de sinais nem beipam.
+    if(newState==='explosao'&&price!=null)addSig('DIRECAO',cls.direcao==='alta'?'BUY':'SELL',idx,price);
+    renderDirecaoHistory();
+  }
+  direcaoState=newState;
+  return cls;
+}
+
+function renderDirecaoCompass(angles){
+  const svg=document.getElementById('direcao-compass');
+  if(!svg)return;
+  const cx=55,cy=55,r=48,needleLen=42;
+  let inner=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--bd3)" stroke-width="1"/>`;
+  inner+=`<line x1="${cx-r}" y1="${cy}" x2="${cx+r}" y2="${cy}" stroke="var(--bd2)" stroke-width="1" stroke-dasharray="2,3"/>`;
+  inner+=`<line x1="${cx}" y1="${cy-r}" x2="${cx}" y2="${cy+r}" stroke="var(--bd2)" stroke-width="1" stroke-dasharray="2,3"/>`;
+  let legendHTML = '';
+      DIRECAO_MAS.forEach(({key,color})=>{
+          const ang=angles[key];
+          if(ang==null)return;
+          const rad=ang*Math.PI/180;
+          const x2=cx+needleLen*Math.cos(rad),y2=cy-needleLen*Math.sin(rad);
+          inner+= `<line x1="${cx}" y1="${cy}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${color}" stroke-width="2" stroke-linecap="round"/>`;
+          
+          legendHTML += `<div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+              <span style="display:flex; align-items:center; gap:4px;"><span style="width:6px;height:6px;border-radius:50%;background:${color};display:inline-block;"></span> ${key.toUpperCase()}</span>
+              <span style="color:${ang > 0 ? 'var(--green)' : 'var(--red)'};">${Math.round(ang)}&deg;</span>
+          </div>`;
+      });
+      inner+= `<circle cx="${cx}" cy="${cy}" r="3" fill="var(--text)"/>`;
+      svg.innerHTML=inner;
+      // (nao atualiza nenhum "mtf-compass-legend-N" aqui — essa e a bussola
+      // UNICA/global, sem indice. As 4 bussolas do Multi-TF tem sua propria
+      // funcao separada, indexada de verdade, mais abaixo no arquivo. Um
+      // resquicio de copy-paste dessa outra funcao tinha ficado aqui
+      // referenciando uma variavel `index` que nunca existe neste escopo —
+      // era isso que disparava o "ReferenceError: index is not defined" em
+      // TODA atualizacao de vela/tick.)
+}
+
+function renderDirecaoReadout(angles, cls){
+    const box=document.getElementById('direcao-readout');
+    if(!box)return;
+    box.innerHTML=DIRECAO_MAS.map(({key,lbl,color})=>{
+      const v=angles[key];
+      const txt=v==null?'--':(v>=0?'+':'')+v.toFixed(0)+'°';
+      const strong=v!=null&&Math.abs(v)>=60;
+      return `<div style="display:flex;justify-content:space-between;"><span style="color:${color};">${lbl}</span><span style="color:${v==null?'var(--t3)':v>=0?'var(--green)':'var(--red)'};font-weight:${strong?900:700};">${txt}</span></div>`;
+    }).join('');
+    
+    // Add Forca Total
+    if(cls.sumAngle!=null){
+      const sumTxt=(cls.sumAngle>=0?'+':'')+cls.sumAngle.toFixed(0)+'°';
+      const peakTxt=(direcaoPeakSum>=0?'+':'')+direcaoPeakSum.toFixed(0)+'°';
+      const strong=Math.abs(cls.sumAngle)>=40;
+      box.innerHTML += `<div style="display:flex;justify-content:space-between;margin-top:4px;border-top:1px solid var(--bd2);padding-top:4px;"><span style="color:var(--text);font-weight:bold;">FORCA TOTAL</span><span style="color:${cls.sumAngle>=0?'var(--green)':'var(--red)'};font-weight:${strong?900:700};">${sumTxt} <span style="font-size:9px;color:var(--t3);font-weight:normal;">(Pico: ${peakTxt})</span></span></div>`;
+      
+      // Update the force meter pointer
+      const pointer = document.getElementById('direcao-force-pointer');
+      if (pointer) {
+         // clamp between -50 and +50 for the visual meter (previously -150 to +150)
+         let clamped = cls.sumAngle;
+         if(clamped < -50) clamped = -50;
+         if(clamped > 50) clamped = 50;
+         const percent = 50 - (clamped / 50) * 50;
+         pointer.style.top = percent + '%';
+      }
+    }
+  }
+function renderDirecaoHistory(){
+  const list=document.getElementById('direcao-history-list');
+  if(!list)return;
+  if(!direcaoHistory.length){
+    list.innerHTML='<div style="padding:5px 9px;font-size:11px;color:var(--t3);">Sem mudanca de momentum ainda...</div>';
+    return;
+  }
+  const lbl={ensaio:'ENSAIO',explosao:'EXPLOSAO',continuacao:'CONTINUACAO',recuo:'RECUO',reversao:'REVERSAO',indefinido:'NEUTRO'};
+  list.innerHTML=direcaoHistory.slice(0,30).map(h=>{
+    const t=new Date(h.time).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    const sideCls=h.direcao==='alta'?'buy':h.direcao==='baixa'?'sell':'';
+    return`<div class="sig-item" style="grid-template-columns:34px 76px 1fr 44px;">
+      <span class="sig-time">${t}</span>
+      <span class="sig-type sig-direcao">${lbl[h.state]}</span>
+      <span class="sig-side ${sideCls}">${h.direcao?h.direcao.toUpperCase():'--'}</span>
+      <span class="sig-px">${h.avgAngle!=null?h.avgAngle.toFixed(0)+'°':'--'}</span>
+    </div>`;
+  }).join('');
+}
+
+function updateDirecaoPanel(closes,e8,e16,e55,e98,e200,m56,m89,atrV){
+  console.log('updateDirecaoPanel CALLED');
+  console.log('closes length', closes.length);
+  const idx=closes.length-1;
+  const seriesByKey={ema8:e8,ema16:e16,ema55:e55,ema98:e98,ema200:e200,ma56:m56,ma89:m89};
+  const angles={};
+  DIRECAO_MAS.forEach(({key})=>{angles[key]=maAngleDeg(seriesByKey[key],atrV,idx,DIRECAO_LOOKBACK);});
+  direcaoAngles=angles; console.log('updateDirecaoPanel angles:', angles);
+  const cls=updateDirecaoTracking(angles);
+  renderDirecaoCompass(angles);
+  renderDirecaoReadout(angles,cls);
+}
+
+// ══════════════════════════════════════════════════════
+
+
+
+window.changeRsiTf = async function(val) {
+  rsiCustomTf = val;
+  if(val === 'current') {
+    customRsiData = null;
+    const closes=candles.map(c=>c.close);
+    const rD=rsiCalc(closes,P.rsiLen),sD=stochCalc(rD,P.stochLen),kD=sma(sD,P.kSmooth),dD=sma(kD,P.dSmooth);
+    const map=a=>a.map((v,i)=>({time:candles[i].time,value:v})).filter(o=>o.value!=null);
+    stochK.setData(map(kD));stochD.setData(map(dD));
+  } else {
+    await updateCustomRsi();
+  }
+};
+
+async function updateCustomRsi() {
+  if (rsiCustomTf === 'current') return;
+  const d = await fetchCandles(currentSym, rsiCustomTf, 500);
+  if(!d) return;
+  const closes = d.map(c=>c.close);
+  const rD=rsiCalc(closes,P.rsiLen),sD=stochCalc(rD,P.stochLen),kD=sma(sD,P.kSmooth),dD=sma(kD,P.dSmooth);
+  
+  // Interpolate to current candles time
+  const mapCustom = (arr) => {
+    let res = [];
+    for(let i=0; i<candles.length; i++) {
+       const ct = candles[i].time;
+       // find the latest custom candle that is <= ct
+       let val = null;
+       for(let j=d.length-1; j>=0; j--) {
+          if (d[j].time <= ct) {
+             val = arr[j];
+             break;
+          }
+       }
+       if (val != null) res.push({ time: ct, value: val });
+    }
+    return res;
+  };
+  
+  customRsiData = { k: mapCustom(kD), d: mapCustom(dD) };
+  stochK.setData(customRsiData.k);
+  stochD.setData(customRsiData.d);
+}
