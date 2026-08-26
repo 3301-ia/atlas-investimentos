@@ -745,11 +745,19 @@ tr.gold-selected td{background:rgba(245,166,35,.06);}
   100%{transform:scale(.015) scaleY(.016);opacity:0;}
 }
 #vectra-splash.fechando .totem-sweep{opacity:0;transition:opacity .3s ease-in;}
+/* O texto sai por ANIMACAO, nao por transition. Medido: trocar
+   "animation:none" e a opacidade no mesmo quadro nao interpola — o
+   navegador nao transiciona a partir de um valor que vinha de uma animacao
+   removida, entao o GLOBAL DATA INTELLIGENCE saltava de 1 para 0 no ato.
+   Substituir uma animacao por outra resolve, e o fill "both" segura a
+   opacidade em 1 durante os 0,22s de atraso. */
 #vectra-splash.fechando .vectra-splash-word,
 #vectra-splash.fechando .vectra-splash-tag{
-  animation:none;
-  opacity:0;transform:translate3d(0,8px,0);
-  transition:opacity .5s ease-in,transform .5s ease-in;
+  animation:vectraTextoSai .55s ease-in .22s both;
+}
+@keyframes vectraTextoSai{
+  from{opacity:1;transform:translate3d(0,0,0);}
+  to{opacity:0;transform:translate3d(0,8px,0);}
 }
 #vectra-splash.fechando .vectra-splash-sparks{opacity:0;transition:opacity .5s ease-in;}
 
@@ -759,7 +767,7 @@ tr.gold-selected td{background:rgba(245,166,35,.06);}
     transition:opacity .3s ease-in;}
   .ribbon-burst{display:none;}
 }
-.vectra-splash-inner{position:relative;display:flex;flex-direction:column;align-items:center;animation:vectraZoom .7s cubic-bezier(.2,.75,.3,1) forwards;will-change:transform;}
+.vectra-splash-inner{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;animation:vectraZoom .7s cubic-bezier(.2,.75,.3,1) forwards;will-change:transform;}
 
 /* Totem 3D Wrapper - Indestrutível (Geometria Absoluta) */
 .totem-wrapper{
@@ -782,30 +790,49 @@ tr.gold-selected td{background:rgba(245,166,35,.06);}
   -webkit-box-reflect:below 2px linear-gradient(to bottom, rgba(255,255,255,0) 65%, rgba(255,255,255,0.4) 100%);
 }
 
-/* ONDA DE RIBBON — a entrada explode do ponto central em aneis nas cores
-   das medias do grafico. Fica sobre o totem so no primeiro segundo e meio;
-   depois some sozinha (forwards) e o video segue limpo. pointer-events:none
-   pra nao roubar o clique que pula o splash. */
-.ribbon-burst{position:absolute;inset:0;z-index:4;pointer-events:none;
-  display:grid;place-items:center;}
-.ribbon-burst i{position:absolute;width:100%;height:100%;border-radius:50%;
-  border:2px solid var(--c);opacity:0;
-  box-shadow:0 0 22px -4px var(--c);
-  animation:ribbonOnda 1.6s cubic-bezier(.12,.85,.25,1) var(--d) forwards;}
-.rb-ponto{position:absolute;width:10px;height:10px;border-radius:50%;
+/* ONDA DE RIBBON PHI — senoides harmonicas atravessando o preto atras do
+   totem. O brilho e o mesmo tratamento neon das linhas de dentro do circulo:
+   um drop-shadow na cor do proprio traco. As ondas ocupam a tela inteira
+   (nao so a area do totem) justamente pra preencher o preto. */
+/* filho direto do #vectra-splash: dentro do .totem-wrapper o transform do
+   wrapper quebrava o position:fixed e as ondas ficavam presas em 560px */
+.ribbon-burst{position:absolute;inset:0;z-index:1;pointer-events:none;
+  display:grid;place-items:center;overflow:hidden;}
+.rb-svg{position:absolute;width:130%;height:100%;
+  animation:rbEntra 1.5s cubic-bezier(.2,.75,.25,1) both;}
+.rb-svg path{
+  /* o brilho sai na cor do proprio traco (cada path define seu `color`),
+     que e o mesmo tratamento neon das linhas de dentro do circulo */
+  filter:drop-shadow(0 0 4px currentColor);
+  opacity:.42;
+  /* cada onda corre num tempo proprio; --dur vem do markup */
+  animation:rbCorre var(--dur) linear infinite,
+            rbPulsa calc(var(--dur) / 2.5) ease-in-out infinite alternate;
+  animation-delay:calc(var(--i) * -1.7s), calc(var(--i) * .3s);}
+/* o ponto central so acende e apaga: e a semente de onde as ondas saem */
+.rb-ponto{position:absolute;width:10px;height:10px;border-radius:50%;z-index:2;
   background:#fff;box-shadow:0 0 26px 8px rgba(245,166,35,.85);
   animation:ribbonPonto 1s ease-out forwards;}
-@keyframes ribbonOnda{
-  0%{transform:scale(.03);opacity:0;border-width:6px;}
-  10%{opacity:1;}
-  70%{opacity:.55;}
-  100%{transform:scale(1.9);opacity:0;border-width:1px;}
+@keyframes rbEntra{
+  0%{opacity:0;transform:scaleY(.04);}
+  55%{opacity:1;}
+  100%{opacity:1;transform:scaleY(1);}
+}
+@keyframes rbCorre{
+  from{transform:translateX(0);}
+  to{transform:translateX(-50%);}   /* o path tem 2x a largura: emenda invisivel */
+}
+@keyframes rbPulsa{
+  from{opacity:.34;}
+  to{opacity:.78;}
 }
 @keyframes ribbonPonto{
   0%{transform:scale(0);opacity:0;}
   14%{transform:scale(1.6);opacity:1;}
   100%{transform:scale(.2);opacity:0;}
 }
+/* no fechamento as ondas saem antes, pra nao competir com o recolhimento */
+#vectra-splash.fechando .ribbon-burst{opacity:0;transition:opacity .45s ease-in;}
 
 /* O Scanner Laser */
 .totem-sweep{
@@ -880,10 +907,15 @@ tr.gold-selected td{background:rgba(245,166,35,.06);}
   position:relative;z-index:3;margin-top:10px;
   font-family:var(--mono);font-size:10px;font-weight:400;
   color:rgba(245,166,35,0.7);
-  text-transform:uppercase;opacity:0; letter-spacing:0.45em;
+  /* opacity:1 na base + fill "both" na animacao. Com opacity:0 aqui, quem
+     deixava a tag visivel era o "forwards"; ao remover a animacao no
+     fechamento o fill some e ela SALTAVA para 0, sem transicao — era isso
+     que cortava a leitura do GLOBAL DATA INTELLIGENCE. O "backwards" do
+     "both" mantem ela invisivel durante os 0,3s de atraso da entrada. */
+  text-transform:uppercase;opacity:1; letter-spacing:0.45em;
   filter:drop-shadow(0 1px 2px rgba(0,0,0,0.8));
   will-change:transform, opacity;
-  animation:vectraTagReveal 1.2s 0.3s cubic-bezier(0.0, 0.9, 0.1, 1) forwards;
+  animation:vectraTagReveal 1.2s 0.3s cubic-bezier(0.0, 0.9, 0.1, 1) both;
 }
 /* Entrada: 0,7s em vez de 2,5s. Com 2,5s quase um terco do video de 8s
    rodava semitransparente — nao dava pra ver a abertura inteira — e a
