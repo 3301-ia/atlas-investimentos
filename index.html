@@ -60,28 +60,38 @@
     if(!dismissed) dismiss();
     else splash.classList.add('hide'); // If already dismissed, hide it on click (for screensaver mode)
   });
-  // Saida do splash: exige DUAS condicoes, e tem um teto.
-  //   1) o video ja apareceu por CORTE_MS  — senao pisca e some;
-   //   2) o app terminou de carregar        — senao revela um dashboard pela metade.
-  // O main.js e grande e bloqueia a thread principal enquanto monta os
-  // graficos, entao so o relogio nao serve: um timeout de 3,5s so e atendido
-  // quando a thread liberar, e cortar antes disso mostraria a tela incompleta.
-  // TETO_MS e a rede de seguranca: o splash cobre tudo (z-index 99999), entao
-  // nenhuma falha (mp4 ausente, codec, autoplay barrado, carga travada) pode
-  // deixar o usuario preso numa tela preta.
+  // Saida do splash. O splash cobre a tela inteira (z-index 99999) e antes so
+  // saia no clique, entao a regra e: sempre existe um caminho de saida.
+  //
+  // Os 3,5s contam a partir do momento em que o video COMECA A TOCAR, nao do
+  // carregamento da pagina. O arquivo tem ~2,3MB: contar do load faria o
+  // splash sair antes de o video exibir um frame numa conexao lenta — que e
+  // exatamente o sintoma de "o video nao abriu".
   var video=document.getElementById("vectra-totem-video");
-  var CORTE_MS=3500, TETO_MS=15000;
+  var CORTE_MS=3500;    // quanto tempo o video fica em cena depois de comecar
+  var ESPERA_MAX=5000;  // se nao comecou ate aqui, nao vale mais segurar a entrada
+  var TETO_MS=15000;    // teto absoluto: nada prende o usuario alem disso
   var tempoOk=false, appOk=false;
   function sair(){if(tempoOk&&appOk)dismiss();}
-  setTimeout(function(){tempoOk=true;sair();},CORTE_MS);
-  if(document.readyState==="complete"){appOk=true;}
+  function liberarTempo(){if(!tempoOk){tempoOk=true;sair();}}
+  function contarDoInicioDoVideo(){setTimeout(liberarTempo,CORTE_MS);}
+
+  if(document.readyState==="complete")appOk=true;
   else window.addEventListener("load",function(){appOk=true;sair();});
   setTimeout(dismiss,TETO_MS);
-  if(video){
-    // Falha do video nao deve prolongar a espera: libera a parte dele.
-    video.addEventListener("error",function(){tempoOk=true;sair();});
+
+  if(!video){
+    contarDoInicioDoVideo();
+  }else{
+    // "playing" e o unico evento que garante que ha imagem em cena.
+    video.addEventListener("playing",contarDoInicioDoVideo,{once:true});
+    // Sem video nao ha o que esperar: mp4 ausente, codec nao suportado ou
+    // autoplay barrado liberam a entrada na hora.
+    video.addEventListener("error",liberarTempo);
     var t=video.play&&video.play();
-    if(t&&t.catch)t.catch(function(){tempoOk=true;sair();}); // autoplay barrado
+    if(t&&t.catch)t.catch(liberarTempo);
+    // Rede lenta demais: entra assim que o app estiver pronto.
+    setTimeout(liberarTempo,ESPERA_MAX);
   }
 
   // Nao deixa o video rodando por baixo do app depois que o splash sai.
