@@ -51,47 +51,53 @@
   var splash=document.getElementById('vectra-splash');
   if(!splash)return;
   var dismissed=false;
+  var FECHA_MS=800; // igual a transicao de .fechando no CSS
+
+  // Saida em duas etapas: o circulo recolhe pro centro (.fechando) e so
+  // depois o fundo preto some (.hide). Um fade seco perdia o efeito.
   function dismiss(){
     if(dismissed)return;
     dismissed=true;
-    splash.classList.add('hide');
+    splash.classList.add("fechando");
+    setTimeout(function(){splash.classList.add("hide");},FECHA_MS);
   }
-  splash.addEventListener('click', function() {
-    if(!dismissed) dismiss();
-    else splash.classList.add('hide'); // If already dismissed, hide it on click (for screensaver mode)
+  splash.addEventListener("click",function(){
+    if(!dismissed)dismiss();
+    else splash.classList.add("hide"); // modo tela de descanso
   });
-  // Saida do splash. O splash cobre a tela inteira (z-index 99999) e antes so
-  // saia no clique, entao a regra e: sempre existe um caminho de saida.
-  //
-  // Os 3,5s contam a partir do momento em que o video COMECA A TOCAR, nao do
-  // carregamento da pagina. O arquivo tem ~2,3MB: contar do load faria o
-  // splash sair antes de o video exibir um frame numa conexao lenta — que e
-  // exatamente o sintoma de "o video nao abriu".
+
+  // O video toca INTEIRO antes de entrar — "ended" e quem manda. As demais
+  // saidas existem so pra ele nunca prender a entrada, ja que o splash cobre
+  // tudo (z-index 99999) e antes so saia no clique.
   var video=document.getElementById("vectra-totem-video");
-  var CORTE_MS=3500;    // quanto tempo o video fica em cena depois de comecar
-  var ESPERA_MAX=5000;  // se nao comecou ate aqui, nao vale mais segurar a entrada
-  var TETO_MS=15000;    // teto absoluto: nada prende o usuario alem disso
+  var ESPERA_MAX=6000;  // nao comecou a tocar ate aqui: entra assim que der
+  var TETO_MS=25000;    // teto absoluto, cobre o video de 8s com folga
   var tempoOk=false, appOk=false;
   function sair(){if(tempoOk&&appOk)dismiss();}
   function liberarTempo(){if(!tempoOk){tempoOk=true;sair();}}
-  function contarDoInicioDoVideo(){setTimeout(liberarTempo,CORTE_MS);}
 
   if(document.readyState==="complete")appOk=true;
   else window.addEventListener("load",function(){appOk=true;sair();});
   setTimeout(dismiss,TETO_MS);
 
   if(!video){
-    contarDoInicioDoVideo();
+    liberarTempo();
   }else{
-    // "playing" e o unico evento que garante que ha imagem em cena.
-    video.addEventListener("playing",contarDoInicioDoVideo,{once:true});
-    // Sem video nao ha o que esperar: mp4 ausente, codec nao suportado ou
-    // autoplay barrado liberam a entrada na hora.
+    // Medido: com <source>, nem o <video> nem o <source> disparam "error" de
+    // forma confiavel quando o arquivo nao existe. O sinal que de fato muda e
+    // networkState === 3 (NETWORK_NO_SOURCE), entao e ele que vigiamos.
+    var vigia=setInterval(function(){
+      if(video.networkState===3||video.error){clearInterval(vigia);liberarTempo();}
+    },300);
+    function pararVigia(){clearInterval(vigia);}
+    video.addEventListener("playing",pararVigia,{once:true});
+    video.addEventListener("ended",function(){pararVigia();liberarTempo();});
     video.addEventListener("error",liberarTempo);
     var t=video.play&&video.play();
-    if(t&&t.catch)t.catch(liberarTempo);
-    // Rede lenta demais: entra assim que o app estiver pronto.
-    setTimeout(liberarTempo,ESPERA_MAX);
+    if(t&&t.catch)t.catch(function(){pararVigia();liberarTempo();}); // autoplay barrado
+    // Ultimo recurso: comecou a carregar mas nunca saiu do zero.
+    setTimeout(function(){if(video.currentTime===0){pararVigia();liberarTempo();}},ESPERA_MAX);
+
   }
 
   // Nao deixa o video rodando por baixo do app depois que o splash sai.
@@ -99,7 +105,8 @@
     if(dismissed&&video&&!video.paused)video.pause();
   });
   window.toggleScreensaver = function() {
-    splash.classList.remove('hide');
+    splash.classList.remove("hide");
+    splash.classList.remove("fechando"); // senao volta com o totem encolhido
     dismissed = true; // prevent the timeout from firing again if it hasn't
   };
 })();

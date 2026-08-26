@@ -716,13 +716,39 @@ tr.gold-selected td{background:rgba(245,166,35,.06);}
   cursor:pointer;transition:opacity .6s ease,visibility .6s ease;
 }
 #vectra-splash.hide{opacity:0;visibility:hidden;pointer-events:none;}
+
+/* FECHAMENTO — o circulo recolhe pro centro e so entao o preto some.
+   Duas etapas em vez de um fade seco: a classe .fechando encolhe o totem,
+   e o .hide entra depois. O float infinito precisa ser cancelado aqui,
+   senao a animacao do wrapper sobrescreve o transform do fechamento. */
+#vectra-splash.fechando .totem-wrapper{
+  animation:none;
+  transform:scale(.04) rotate(10deg);
+  opacity:0;
+  transition:transform .8s cubic-bezier(.55,0,.85,.3),opacity .8s ease-in;
+}
+#vectra-splash.fechando .totem-sweep{opacity:0;transition:opacity .3s ease-in;}
+#vectra-splash.fechando .vectra-splash-word,
+#vectra-splash.fechando .vectra-splash-tag{
+  animation:none;
+  opacity:0;transform:translate3d(0,8px,0);
+  transition:opacity .5s ease-in,transform .5s ease-in;
+}
+#vectra-splash.fechando .vectra-splash-sparks{opacity:0;transition:opacity .5s ease-in;}
+
+/* Quem pediu menos movimento nao ganha o recolhimento, so o fade. */
+@media (prefers-reduced-motion:reduce){
+  #vectra-splash.fechando .totem-wrapper{transition:opacity .3s;transform:none;}
+}
 .vectra-splash-inner{position:relative;display:flex;flex-direction:column;align-items:center;animation:vectraZoom 2.5s cubic-bezier(0.0, 0.9, 0.1, 1) forwards;will-change:transform;}
 
 /* Totem 3D Wrapper - Indestrutível (Geometria Absoluta) */
 .totem-wrapper{
   position:relative;
-  width:420px; height:420px; /* Tamanho Fixo e Imponente */
-  min-width:420px; min-height:420px;
+  /* Grande de proposito, mas preso a viewport pra nao vazar em telas
+     baixas: 72vmin acompanha a menor dimensao da janela. */
+  width:min(72vmin,560px); height:min(72vmin,560px);
+  min-width:0; min-height:0;
   flex-shrink:0;
   z-index:2;
   animation:vectraFloatHD 3s ease-in-out infinite alternate;
