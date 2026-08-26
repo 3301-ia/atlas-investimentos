@@ -790,48 +790,56 @@ tr.gold-selected td{background:rgba(245,166,35,.06);}
   -webkit-box-reflect:below 2px linear-gradient(to bottom, rgba(255,255,255,0) 65%, rgba(255,255,255,0.4) 100%);
 }
 
-/* ONDA DE RIBBON PHI — senoides harmonicas atravessando o preto atras do
-   totem. O brilho e o mesmo tratamento neon das linhas de dentro do circulo:
-   um drop-shadow na cor do proprio traco. As ondas ocupam a tela inteira
-   (nao so a area do totem) justamente pra preencher o preto. */
-/* filho direto do #vectra-splash: dentro do .totem-wrapper o transform do
-   wrapper quebrava o position:fixed e as ondas ficavam presas em 560px */
+/* ABERTURA — aneis, ponto e raios, todos atras do video (z-index 1 contra
+   o z-index 2 do .vectra-splash-inner). Fica no #vectra-splash e nao dentro
+   do .totem-wrapper: o transform do wrapper quebra o posicionamento e
+   prenderia tudo aos 560px do totem em vez de cobrir a tela. */
 .ribbon-burst{position:absolute;inset:0;z-index:1;pointer-events:none;
   display:grid;place-items:center;overflow:hidden;}
-.rb-svg{position:absolute;width:130%;height:100%;
-  animation:rbEntra 1.5s cubic-bezier(.2,.75,.25,1) both;}
-.rb-svg path{
-  /* o brilho sai na cor do proprio traco (cada path define seu `color`),
-     que e o mesmo tratamento neon das linhas de dentro do circulo */
-  filter:drop-shadow(0 0 4px currentColor);
-  opacity:.42;
-  /* cada onda corre num tempo proprio; --dur vem do markup */
-  animation:rbCorre var(--dur) linear infinite,
-            rbPulsa calc(var(--dur) / 2.5) ease-in-out infinite alternate;
-  animation-delay:calc(var(--i) * -1.7s), calc(var(--i) * .3s);}
-/* o ponto central so acende e apaga: e a semente de onde as ondas saem */
+
+/* 1. ANEIS — expandem e recolhem, convergindo pro centro */
+.rb-aneis{position:absolute;width:min(72vmin,560px);height:min(72vmin,560px);}
+.rb-aneis i{position:absolute;inset:0;border-radius:50%;
+  border:2px solid var(--c);opacity:0;
+  box-shadow:0 0 22px -4px var(--c);
+  animation:rbAnel .95s cubic-bezier(.2,.8,.3,1) var(--d) forwards;}
+@keyframes rbAnel{
+  0%{transform:scale(.05);opacity:0;border-width:5px;}
+  18%{opacity:1;}
+  55%{transform:scale(1.55);opacity:.9;border-width:2px;}
+  100%{transform:scale(.02);opacity:0;border-width:6px;}
+}
+
+/* 2. PONTO — a semente de onde os raios saem */
 .rb-ponto{position:absolute;width:10px;height:10px;border-radius:50%;z-index:2;
-  background:#fff;box-shadow:0 0 26px 8px rgba(245,166,35,.85);
-  animation:ribbonPonto 1s ease-out forwards;}
-@keyframes rbEntra{
-  0%{opacity:0;transform:scaleY(.04);}
-  55%{opacity:1;}
-  100%{opacity:1;transform:scaleY(1);}
-}
-@keyframes rbCorre{
-  from{transform:translateX(0);}
-  to{transform:translateX(-50%);}   /* o path tem 2x a largura: emenda invisivel */
-}
-@keyframes rbPulsa{
-  from{opacity:.34;}
-  to{opacity:.78;}
-}
-@keyframes ribbonPonto{
+  background:#fff;box-shadow:0 0 30px 10px rgba(245,166,35,.9);opacity:0;
+  animation:rbPonto .5s ease-out .82s forwards;}
+@keyframes rbPonto{
   0%{transform:scale(0);opacity:0;}
-  14%{transform:scale(1.6);opacity:1;}
-  100%{transform:scale(.2);opacity:0;}
+  35%{transform:scale(1.8);opacity:1;}
+  100%{transform:scale(.15);opacity:0;}
 }
-/* no fechamento as ondas saem antes, pra nao competir com o recolhimento */
+
+/* 3. RAIOS — as medias abrindo do ponto pra fora. O brilho e o mesmo
+   tratamento neon das linhas de dentro do circulo: drop-shadow na cor do
+   proprio traco. Escalam a partir do centro, entao nascem no ponto. */
+.rb-raios{position:absolute;width:150%;height:150%;}
+.rb-raios path{
+  filter:drop-shadow(0 0 5px currentColor);
+  opacity:0;transform-origin:800px 450px;
+  animation:rbRaio 1.5s cubic-bezier(.15,.85,.25,1) calc(.95s + var(--d)) forwards,
+            rbBrilho 4.5s ease-in-out calc(2.4s + var(--d)) infinite alternate;}
+@keyframes rbRaio{
+  0%{transform:scale(.02);opacity:0;}
+  22%{opacity:1;}
+  100%{transform:scale(1);opacity:.5;}
+}
+@keyframes rbBrilho{
+  from{opacity:.32;}
+  to{opacity:.7;}
+}
+
+/* no fechamento os raios saem antes, pra nao competir com o recolhimento */
 #vectra-splash.fechando .ribbon-burst{opacity:0;transition:opacity .45s ease-in;}
 
 /* O Scanner Laser */
