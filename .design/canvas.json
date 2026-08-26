@@ -1,0 +1,16 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html",  "x": 0,    "y": 0,    "w": 1280, "h": 800, "title": "Ritmo — linha do tempo" },
+    { "file": "Beat1.dc.html", "x": 1400, "y": 0,    "w": 1280, "h": 800, "title": "01 · Anticipação" },
+    { "file": "Beat2.dc.html", "x": 2800, "y": 0,    "w": 1280, "h": 800, "title": "02 · Close estourado" },
+    { "file": "Beat3.dc.html", "x": 0,    "y": 940,  "w": 1280, "h": 800, "title": "03 · Plano geral" },
+    { "file": "Beat4.dc.html", "x": 1400, "y": 940,  "w": 1280, "h": 800, "title": "04 · Tipografia" },
+    { "file": "Beat5.dc.html", "x": 2800, "y": 940,  "w": 1280, "h": 800, "title": "05 · Pulso de dados" },
+    { "file": "Beat6.dc.html", "x": 0,    "y": 1880, "w": 1280, "h": 800, "title": "06 · Respiro" },
+    { "file": "Beat7.dc.html", "x": 1400, "y": 1880, "w": 1280, "h": 800, "title": "07 · Fechamento" }
+  ],
+  "annotations": [
+    { "id": "brief", "x": 2800, "y": 1880, "w": 460, "text": "O problema: hoje a abertura é um plano único de 8s, sem eventos internos.\n\nA proposta mantém os mesmos 8s mas quebra em 7 cortes. O plano mais longo tem 1,4s.\n\nComece pelo artboard Ritmo para bater o timing de relance." }
+  ],
+  "launch": { "view": "canvas" }
+}

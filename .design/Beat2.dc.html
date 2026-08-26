@@ -1,0 +1,95 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;600;800&family=JetBrains+Mono:wght@400;600;700&display=swap">
+  <style>
+    body{margin:0;background:#000;font-family:'IBM Plex Sans',system-ui,sans-serif;}
+    a{color:#F5A623;} a:hover{color:#D68C0F;}
+    .frame{width:1280px;height:800px;background:#000;position:relative;overflow:hidden;
+      display:flex;flex-direction:column;}
+    .hd{display:flex;align-items:baseline;gap:14px;padding:26px 34px 0;flex-shrink:0;}
+    .beat{font-family:'JetBrains Mono',monospace;font-size:46px;font-weight:700;
+      color:transparent;-webkit-text-stroke:1px #D68C0F;line-height:1;}
+    .time{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;
+      color:#F5A623;letter-spacing:.14em;}
+    .cue{font-size:13px;color:#6e7683;letter-spacing:.02em;margin-left:auto;
+      align-self:center;text-transform:uppercase;font-weight:600;}
+    .stage{flex:1;position:relative;display:flex;align-items:center;justify-content:center;min-height:0;}
+    .note{flex-shrink:0;border-top:1px solid #181818;padding:16px 34px 22px;
+      display:flex;gap:28px;align-items:flex-start;}
+    .note-k{font-family:'JetBrains Mono',monospace;font-size:10px;color:#D68C0F;
+      letter-spacing:.16em;text-transform:uppercase;width:74px;flex-shrink:0;padding-top:2px;}
+    .note-v{font-size:14px;line-height:1.55;color:#8b98a9;max-width:900px;}
+    .note-v b{color:#e6edf3;font-weight:600;}
+    .ease{font-family:'JetBrains Mono',monospace;font-size:11px;color:#5f6b7a;}
+    /* totem: representacao do globo metalico com as linhas neon */
+    .totem{border-radius:50%;position:relative;flex-shrink:0;
+      background:radial-gradient(circle at 34% 28%,#d8dde3 0%,#9aa1ab 34%,#4a5058 68%,#22262b 100%);
+      box-shadow:0 0 0 2px rgba(245,166,35,.55),0 0 90px rgba(245,166,35,.16);}
+    .totem svg{position:absolute;inset:0;width:100%;height:100%;}
+    .laser{position:absolute;inset:0;border-radius:50%;overflow:hidden;}
+    .laser i{position:absolute;top:-40%;left:-40%;width:180%;height:180%;display:block;
+      background:linear-gradient(115deg,transparent 47%,rgba(255,255,255,.72) 50%,transparent 53%);}
+    .word{font-size:22px;font-weight:300;letter-spacing:.35em;color:#fff;}
+    .tag{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.45em;
+      color:rgba(245,166,35,.7);text-transform:uppercase;margin-top:10px;}
+  </style>
+</helmet>
+<div class="frame">
+  <div class="hd">
+    <div class="beat">02</div>
+    <div class="time">0.7 — 1.9s</div>
+    <div class="cue">CORTE · close estourado</div>
+  </div>
+  <div class="stage">
+    <div class="totem" style="width:940px;height:940px;margin-top:120px;">
+      <svg viewBox="0 0 400 400" aria-hidden="true">
+        <defs><clipPath id="cp"><circle cx="200" cy="200" r="198"/></clipPath></defs>
+        <g clip-path="url(#cp)" fill="none" stroke-linecap="round">
+          <path d="M-10 250 C 70 130, 130 300, 210 170 S 340 90, 420 190" stroke="#EC3F3F" stroke-width="5" opacity=".95"/>
+          <path d="M-10 268 C 70 148, 130 318, 210 188 S 340 108, 420 208" stroke="#7C4DFF" stroke-width="4" opacity=".85"/>
+          <path d="M-10 286 C 70 166, 130 336, 210 206 S 340 126, 420 226" stroke="#377cfc" stroke-width="4" opacity=".8"/>
+          <path d="M-10 304 C 70 184, 130 354, 210 224 S 340 144, 420 244" stroke="#00A879" stroke-width="3" opacity=".7"/>
+          <path d="M40 330 C 120 300, 200 340, 300 250 S 380 200, 430 210" stroke="#F5A623" stroke-width="2.5" opacity=".9"/>
+          <g stroke-width="9" stroke-linecap="butt">
+            <path d="M108 214 V 268" stroke="#EC3F3F"/><path d="M136 186 V 250" stroke="#7C4DFF"/>
+            <path d="M164 232 V 286" stroke="#377cfc"/><path d="M192 150 V 224" stroke="#EC3F3F"/>
+            <path d="M220 178 V 240" stroke="#F5A623"/><path d="M248 128 V 206" stroke="#377cfc"/>
+            <path d="M276 162 V 232" stroke="#7C4DFF"/><path d="M304 196 V 258" stroke="#00A879"/>
+          </g>
+          <g stroke="#D68C0F" stroke-width="2.5" opacity=".9" fill="none">
+            <ellipse cx="200" cy="200" rx="196" ry="196"/>
+            <ellipse cx="200" cy="200" rx="186" ry="96" transform="rotate(-24 200 200)"/>
+            <path d="M250 40 L 396 -70 M272 46 L 418 -64 M294 52 L 440 -58" stroke-width="3"/>
+          </g>
+          <g fill="#c9ced6" opacity=".38">
+            <path d="M96 96 l38 -16 26 22 -20 26 -34 4z"/><path d="M188 74 l52 8 10 34 -44 12 -22 -30z"/>
+            <path d="M262 122 l48 -6 22 34 -38 26 -30 -20z"/><path d="M120 268 l40 10 6 40 -38 8 -14 -34z"/>
+          </g>
+        </g>
+      </svg>
+      <div class="laser"><i></i></div>
+    </div>
+  </div>
+<div class="note">
+  <div class="note-k">Em cena</div>
+  <div class="note-v">Corte seco para o totem em <b>escala 1.7</b> — as bordas sangram fora do quadro. Só o metal escovado e duas curvas neon são legíveis. O laser cruza uma vez.</div>
+</div>
+<div class="note">
+  <div class="note-k">Motion</div>
+  <div class="note-v">Entra já grande e deriva <b>1.7 → 1.55</b> em 1,2s, <span class="ease">ease-out</span>. O laser varre a diagonal em 0,9s. Sem rotação ainda.</div>
+</div>
+<div class="note">
+  <div class="note-k">Por quê</div>
+  <div class="note-v">O corte de nada para um close estourado é o que cria a dinâmica que faltava. O olho não tem tempo de ler o objeto inteiro — e é isso que puxa para o próximo plano.</div>
+</div>
+</div>
+</x-dc>
+</body>
+</html>

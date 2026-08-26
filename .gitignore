@@ -19,3 +19,11 @@ yarn-error.log*
 Thumbs.db
 .vscode/
 .idea/
+
+# Paginas publicadas a partir de .design/: saida gerada, nao fonte.
+#   abertura-vectra.html  — canvas do storyboard (2,5MB, editor embutido)
+#   preview-abertura.html — preview da animacao (3,1MB, o mp4 vai em base64,
+#                           duplicando um arquivo que ja esta versionado)
+# Os .dc.html e o canvas.json, que sao os fontes, continuam versionados.
+.design/abertura-vectra.html
+.design/preview-abertura.html
