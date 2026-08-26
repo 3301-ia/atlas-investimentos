@@ -1,0 +1,77 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;600;800&family=JetBrains+Mono:wght@400;600;700&display=swap">
+  <style>
+    body{margin:0;background:#000;font-family:'IBM Plex Sans',system-ui,sans-serif;}
+    a{color:#F5A623;} a:hover{color:#D68C0F;}
+    .frame{width:1280px;height:800px;background:#000;position:relative;overflow:hidden;
+      display:flex;flex-direction:column;}
+    .hd{display:flex;align-items:baseline;gap:14px;padding:26px 34px 0;flex-shrink:0;}
+    .beat{font-family:'JetBrains Mono',monospace;font-size:46px;font-weight:700;
+      color:transparent;-webkit-text-stroke:1px #D68C0F;line-height:1;}
+    .time{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;
+      color:#F5A623;letter-spacing:.14em;}
+    .cue{font-size:13px;color:#6e7683;letter-spacing:.02em;margin-left:auto;
+      align-self:center;text-transform:uppercase;font-weight:600;}
+    .stage{flex:1;position:relative;display:flex;align-items:center;justify-content:center;min-height:0;}
+    .note{flex-shrink:0;border-top:1px solid #181818;padding:16px 34px 22px;
+      display:flex;gap:28px;align-items:flex-start;}
+    .note-k{font-family:'JetBrains Mono',monospace;font-size:10px;color:#D68C0F;
+      letter-spacing:.16em;text-transform:uppercase;width:74px;flex-shrink:0;padding-top:2px;}
+    .note-v{font-size:14px;line-height:1.55;color:#8b98a9;max-width:900px;}
+    .note-v b{color:#e6edf3;font-weight:600;}
+    .ease{font-family:'JetBrains Mono',monospace;font-size:11px;color:#5f6b7a;}
+    /* totem: representacao do globo metalico com as linhas neon */
+    .totem{border-radius:50%;position:relative;flex-shrink:0;
+      background:radial-gradient(circle at 34% 28%,#d8dde3 0%,#9aa1ab 34%,#4a5058 68%,#22262b 100%);
+      box-shadow:0 0 0 2px rgba(245,166,35,.55),0 0 90px rgba(245,166,35,.16);}
+    .totem svg{position:absolute;inset:0;width:100%;height:100%;}
+    .laser{position:absolute;inset:0;border-radius:50%;overflow:hidden;}
+    .laser i{position:absolute;top:-40%;left:-40%;width:180%;height:180%;display:block;
+      background:linear-gradient(115deg,transparent 47%,rgba(255,255,255,.72) 50%,transparent 53%);}
+    .word{font-size:22px;font-weight:300;letter-spacing:.35em;color:#fff;}
+    .tag{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.45em;
+      color:rgba(245,166,35,.7);text-transform:uppercase;margin-top:10px;}
+  </style>
+</helmet>
+<div class="frame">
+  <div class="hd">
+    <div class="beat">07</div>
+    <div class="time">7.0 — 8.0s</div>
+    <div class="cue">Fechamento no centro</div>
+  </div>
+  <div class="stage">
+    <div style="position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;">
+      <div style="position:absolute;width:520px;height:520px;border-radius:50%;
+        background:radial-gradient(circle,rgba(245,166,35,.10) 0%,transparent 62%);"></div>
+      <div style="width:44px;height:44px;border-radius:50%;
+        background:radial-gradient(circle at 36% 30%,#e6edf3,#F5A623 58%,#6b4405);
+        box-shadow:0 0 44px 12px rgba(245,166,35,.55);"></div>
+      <div style="position:absolute;left:0;right:0;height:2px;
+        background:linear-gradient(90deg,transparent,rgba(230,237,243,.85) 22%,rgba(230,237,243,.85) 78%,transparent);
+        opacity:.55;"></div>
+    </div>
+  </div>
+<div class="note">
+  <div class="note-k">Em cena</div>
+  <div class="note-v">O texto sai primeiro. O totem recolhe até virar um ponto de luz no centro e uma linha horizontal se abre a partir dele, revelando o dashboard por trás.</div>
+</div>
+<div class="note">
+  <div class="note-k">Motion</div>
+  <div class="note-v">Texto: fade + 8px em 0,4s. Totem: <span class="ease">scale 1 → .04</span> com <span class="ease">cubic-bezier(.55,0,.85,.3)</span> em 0,8s. A linha abre em <b>0,35s</b> e o preto sai atrás dela.</div>
+</div>
+<div class="note">
+  <div class="note-k">Por quê</div>
+  <div class="note-v">A saída pelo centro devolve o olhar exatamente onde o gráfico começa. <b>Já implementado</b> — o que falta é o texto sair antes e a linha de revelação.</div>
+</div>
+</div>
+</x-dc>
+</body>
+</html>

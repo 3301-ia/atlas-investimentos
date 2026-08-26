@@ -19,3 +19,7 @@ yarn-error.log*
 Thumbs.db
 .vscode/
 .idea/
+
+# Canvas de design publicado: saida gerada a partir dos .dc.html deste
+# diretorio (2,5MB, o editor vai embutido). Os fontes ficam versionados.
+.design/abertura-vectra.html

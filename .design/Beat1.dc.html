@@ -1,0 +1,76 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;600;800&family=JetBrains+Mono:wght@400;600;700&display=swap">
+  <style>
+    body{margin:0;background:#000;font-family:'IBM Plex Sans',system-ui,sans-serif;}
+    a{color:#F5A623;} a:hover{color:#D68C0F;}
+    .frame{width:1280px;height:800px;background:#000;position:relative;overflow:hidden;
+      display:flex;flex-direction:column;}
+    .hd{display:flex;align-items:baseline;gap:14px;padding:26px 34px 0;flex-shrink:0;}
+    .beat{font-family:'JetBrains Mono',monospace;font-size:46px;font-weight:700;
+      color:transparent;-webkit-text-stroke:1px #D68C0F;line-height:1;}
+    .time{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;
+      color:#F5A623;letter-spacing:.14em;}
+    .cue{font-size:13px;color:#6e7683;letter-spacing:.02em;margin-left:auto;
+      align-self:center;text-transform:uppercase;font-weight:600;}
+    .stage{flex:1;position:relative;display:flex;align-items:center;justify-content:center;min-height:0;}
+    .note{flex-shrink:0;border-top:1px solid #181818;padding:16px 34px 22px;
+      display:flex;gap:28px;align-items:flex-start;}
+    .note-k{font-family:'JetBrains Mono',monospace;font-size:10px;color:#D68C0F;
+      letter-spacing:.16em;text-transform:uppercase;width:74px;flex-shrink:0;padding-top:2px;}
+    .note-v{font-size:14px;line-height:1.55;color:#8b98a9;max-width:900px;}
+    .note-v b{color:#e6edf3;font-weight:600;}
+    .ease{font-family:'JetBrains Mono',monospace;font-size:11px;color:#5f6b7a;}
+    /* totem: representacao do globo metalico com as linhas neon */
+    .totem{border-radius:50%;position:relative;flex-shrink:0;
+      background:radial-gradient(circle at 34% 28%,#d8dde3 0%,#9aa1ab 34%,#4a5058 68%,#22262b 100%);
+      box-shadow:0 0 0 2px rgba(245,166,35,.55),0 0 90px rgba(245,166,35,.16);}
+    .totem svg{position:absolute;inset:0;width:100%;height:100%;}
+    .laser{position:absolute;inset:0;border-radius:50%;overflow:hidden;}
+    .laser i{position:absolute;top:-40%;left:-40%;width:180%;height:180%;display:block;
+      background:linear-gradient(115deg,transparent 47%,rgba(255,255,255,.72) 50%,transparent 53%);}
+    .word{font-size:22px;font-weight:300;letter-spacing:.35em;color:#fff;}
+    .tag{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.45em;
+      color:rgba(245,166,35,.7);text-transform:uppercase;margin-top:10px;}
+  </style>
+</helmet>
+<div class="frame">
+  <div class="hd">
+    <div class="beat">01</div>
+    <div class="time">0.0 — 0.7s</div>
+    <div class="cue">Anticipação · corte seco</div>
+  </div>
+  <div class="stage">
+    <div style="position:relative;width:560px;height:560px;display:flex;align-items:center;justify-content:center;">
+      <svg viewBox="0 0 400 400" style="width:100%;height:100%;">
+        <circle cx="200" cy="200" r="196" fill="none" stroke="#D68C0F" stroke-width="2"
+          stroke-dasharray="1231" stroke-dashoffset="430" opacity=".9"/>
+        <circle cx="200" cy="200" r="196" fill="none" stroke="rgba(245,166,35,.10)" stroke-width="2"/>
+      </svg>
+      <div style="position:absolute;width:6px;height:6px;border-radius:50%;background:#F5A623;
+        box-shadow:0 0 18px 5px rgba(245,166,35,.65);top:8px;left:calc(50% - 3px);"></div>
+    </div>
+  </div>
+<div class="note">
+  <div class="note-k">Em cena</div>
+  <div class="note-v">Preto absoluto. Um único arco dourado de 1px risca o vazio, sentido horário, com um ponto de luz na ponta. Sem globo, sem texto.</div>
+</div>
+<div class="note">
+  <div class="note-k">Motion</div>
+  <div class="note-v">O arco desenha <b>0% → 65%</b> do círculo via <span class="ease">stroke-dashoffset</span>, com <span class="ease">cubic-bezier(.2,.7,.3,1)</span>. O ponto de luz lidera a ponta.</div>
+</div>
+<div class="note">
+  <div class="note-k">Por quê</div>
+  <div class="note-v">O plano único de 8s não tinha respiro inicial. Este beat é pura expectativa: sete décimos de segundo antes de qualquer coisa aparecer.</div>
+</div>
+</div>
+</x-dc>
+</body>
+</html>

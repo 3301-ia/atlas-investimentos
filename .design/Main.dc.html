@@ -1,0 +1,144 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;600;800&family=JetBrains+Mono:wght@400;600;700&display=swap">
+  <style>
+    body{margin:0;background:#000;font-family:'IBM Plex Sans',system-ui,sans-serif;}
+    a{color:#F5A623;} a:hover{color:#D68C0F;}
+    .frame{width:1280px;height:800px;background:#000;position:relative;overflow:hidden;
+      display:flex;flex-direction:column;}
+    .hd{display:flex;align-items:baseline;gap:14px;padding:26px 34px 0;flex-shrink:0;}
+    .beat{font-family:'JetBrains Mono',monospace;font-size:46px;font-weight:700;
+      color:transparent;-webkit-text-stroke:1px #D68C0F;line-height:1;}
+    .time{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;
+      color:#F5A623;letter-spacing:.14em;}
+    .cue{font-size:13px;color:#6e7683;letter-spacing:.02em;margin-left:auto;
+      align-self:center;text-transform:uppercase;font-weight:600;}
+    .stage{flex:1;position:relative;display:flex;align-items:center;justify-content:center;min-height:0;}
+    .note{flex-shrink:0;border-top:1px solid #181818;padding:16px 34px 22px;
+      display:flex;gap:28px;align-items:flex-start;}
+    .note-k{font-family:'JetBrains Mono',monospace;font-size:10px;color:#D68C0F;
+      letter-spacing:.16em;text-transform:uppercase;width:74px;flex-shrink:0;padding-top:2px;}
+    .note-v{font-size:14px;line-height:1.55;color:#8b98a9;max-width:900px;}
+    .note-v b{color:#e6edf3;font-weight:600;}
+    .ease{font-family:'JetBrains Mono',monospace;font-size:11px;color:#5f6b7a;}
+    /* totem: representacao do globo metalico com as linhas neon */
+    .totem{border-radius:50%;position:relative;flex-shrink:0;
+      background:radial-gradient(circle at 34% 28%,#d8dde3 0%,#9aa1ab 34%,#4a5058 68%,#22262b 100%);
+      box-shadow:0 0 0 2px rgba(245,166,35,.55),0 0 90px rgba(245,166,35,.16);}
+    .totem svg{position:absolute;inset:0;width:100%;height:100%;}
+    .laser{position:absolute;inset:0;border-radius:50%;overflow:hidden;}
+    .laser i{position:absolute;top:-40%;left:-40%;width:180%;height:180%;display:block;
+      background:linear-gradient(115deg,transparent 47%,rgba(255,255,255,.72) 50%,transparent 53%);}
+    .word{font-size:22px;font-weight:300;letter-spacing:.35em;color:#fff;}
+    .tag{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.45em;
+      color:rgba(245,166,35,.7);text-transform:uppercase;margin-top:10px;}
+  </style>
+</helmet>
+<div class="frame">
+  <div class="hd">
+    <div class="beat">RITMO</div>
+    <div class="time">8.0s · 7 CORTES</div>
+    <div class="cue">Linha do tempo consolidada</div>
+  </div>
+  <div class="stage" style="align-items:stretch;">
+    <div style="flex:1;display:flex;flex-direction:column;gap:18px;padding:22px 34px 0;">
+      <div style="display:grid;grid-template-columns:34px 168px 1fr 74px;gap:16px;">
+        <div></div><div></div>
+        <div style="display:flex;"><div style="flex:1;border-left:1px solid #141414;padding-left:6px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#3d454f;">0s</div><div style="flex:1;border-left:1px solid #141414;padding-left:6px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#3d454f;">1s</div><div style="flex:1;border-left:1px solid #141414;padding-left:6px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#3d454f;">2s</div><div style="flex:1;border-left:1px solid #141414;padding-left:6px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#3d454f;">3s</div><div style="flex:1;border-left:1px solid #141414;padding-left:6px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#3d454f;">4s</div><div style="flex:1;border-left:1px solid #141414;padding-left:6px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#3d454f;">5s</div><div style="flex:1;border-left:1px solid #141414;padding-left:6px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#3d454f;">6s</div><div style="flex:1;border-left:1px solid #141414;padding-left:6px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#3d454f;">7s</div></div>
+        <div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:34px 168px 1fr 74px;gap:16px;align-items:center;">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:#D68C0F;">01</div>
+        <div style="font-size:14px;color:#e6edf3;font-weight:500;">Anticipação</div>
+        <div style="height:14px;background:#0e0e0e;border-radius:3px;overflow:hidden;display:flex;">
+          <div style="width:0.0%;"></div>
+          <div style="width:11%;background:#D68C0F;border-radius:3px;opacity:.85;"></div>
+        </div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#5f6b7a;text-align:right;">0.0–0.7s</div>
+      </div>
+      <div style="display:grid;grid-template-columns:34px 168px 1fr 74px;gap:16px;align-items:center;">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:#EC3F3F;">02</div>
+        <div style="font-size:14px;color:#e6edf3;font-weight:500;">Close estourado</div>
+        <div style="height:14px;background:#0e0e0e;border-radius:3px;overflow:hidden;display:flex;">
+          <div style="width:8.8%;"></div>
+          <div style="width:17%;background:#EC3F3F;border-radius:3px;opacity:.85;"></div>
+        </div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#5f6b7a;text-align:right;">0.7–1.9s</div>
+      </div>
+      <div style="display:grid;grid-template-columns:34px 168px 1fr 74px;gap:16px;align-items:center;">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:#7C4DFF;">03</div>
+        <div style="font-size:14px;color:#e6edf3;font-weight:500;">Plano geral</div>
+        <div style="height:14px;background:#0e0e0e;border-radius:3px;overflow:hidden;display:flex;">
+          <div style="width:23.8%;"></div>
+          <div style="width:18%;background:#7C4DFF;border-radius:3px;opacity:.85;"></div>
+        </div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#5f6b7a;text-align:right;">1.9–3.2s</div>
+      </div>
+      <div style="display:grid;grid-template-columns:34px 168px 1fr 74px;gap:16px;align-items:center;">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:#377cfc;">04</div>
+        <div style="font-size:14px;color:#e6edf3;font-weight:500;">Tipografia</div>
+        <div style="height:14px;background:#0e0e0e;border-radius:3px;overflow:hidden;display:flex;">
+          <div style="width:40.0%;"></div>
+          <div style="width:17%;background:#377cfc;border-radius:3px;opacity:.85;"></div>
+        </div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#5f6b7a;text-align:right;">3.2–4.4s</div>
+      </div>
+      <div style="display:grid;grid-template-columns:34px 168px 1fr 74px;gap:16px;align-items:center;">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:#F5A623;">05</div>
+        <div style="font-size:14px;color:#e6edf3;font-weight:500;">Pulso de dados</div>
+        <div style="height:14px;background:#0e0e0e;border-radius:3px;overflow:hidden;display:flex;">
+          <div style="width:55.0%;"></div>
+          <div style="width:20%;background:#F5A623;border-radius:3px;opacity:.85;"></div>
+        </div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#5f6b7a;text-align:right;">4.4–5.8s</div>
+      </div>
+      <div style="display:grid;grid-template-columns:34px 168px 1fr 74px;gap:16px;align-items:center;">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:#00A879;">06</div>
+        <div style="font-size:14px;color:#e6edf3;font-weight:500;">Respiro</div>
+        <div style="height:14px;background:#0e0e0e;border-radius:3px;overflow:hidden;display:flex;">
+          <div style="width:72.5%;"></div>
+          <div style="width:17%;background:#00A879;border-radius:3px;opacity:.85;"></div>
+        </div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#5f6b7a;text-align:right;">5.8–7.0s</div>
+      </div>
+      <div style="display:grid;grid-template-columns:34px 168px 1fr 74px;gap:16px;align-items:center;">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:#e6edf3;">07</div>
+        <div style="font-size:14px;color:#e6edf3;font-weight:500;">Fechamento</div>
+        <div style="height:14px;background:#0e0e0e;border-radius:3px;overflow:hidden;display:flex;">
+          <div style="width:87.5%;"></div>
+          <div style="width:14%;background:#e6edf3;border-radius:3px;opacity:.85;"></div>
+        </div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#5f6b7a;text-align:right;">7.0–8.0s</div>
+      </div>
+      <div style="margin-top:12px;padding-top:18px;border-top:1px solid #181818;
+        display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:26px;">
+        <div>
+          <div class="note-k" style="width:auto;margin-bottom:7px;">Hoje</div>
+          <div class="note-v" style="font-size:13px;">Um plano único de 8s. O vídeo roda inteiro sem nenhum evento interno, depois o círculo fecha. <b>Zero cortes.</b></div>
+        </div>
+        <div>
+          <div class="note-k" style="width:auto;margin-bottom:7px;">Proposta</div>
+          <div class="note-v" style="font-size:13px;">Mesmos 8s, <b>7 cortes</b>. O plano mais longo tem 1,4s. Nada fica parado por mais de 1,2s — e essa pausa é deliberada, no beat 06.</div>
+        </div>
+        <div>
+          <div class="note-k" style="width:auto;margin-bottom:7px;">Corte rápido</div>
+          <div class="note-v" style="font-size:13px;">Se 8s pesar no uso diário: cortar os beats <b>02 e 06</b> fecha em <b>5,4s</b> e o ritmo se mantém.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="note">
+    <div class="note-k">Implementar</div>
+    <div class="note-v">Beats 01, 04 e 07 são CSS puro sobre o que já existe. Os beats 02, 03 e 05 dependem de <b>cortes no próprio arquivo de vídeo</b> — ou de trocar o mp4 por camadas separadas (globo, neon, arcos) animadas em CSS, o que dá controle total de timing e derruba os 2,3&nbsp;MB.</div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
