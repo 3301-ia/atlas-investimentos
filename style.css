@@ -713,7 +713,11 @@ tr.gold-selected td{background:rgba(245,166,35,.06);}
 #vectra-splash{
   position:fixed;inset:0;z-index:99999;background:#000;
   display:flex;align-items:center;justify-content:center;
-  cursor:pointer;transition:opacity .6s ease,visibility .6s ease;
+  cursor:pointer;
+  /* Fade de saida mais longo e com curva mais suave: o .hide entra antes
+     de o ponto terminar de fechar (FECHA_MS no index.html), entao os dois
+     se sobrepoem em vez de o preto ficar parado esperando. */
+  transition:opacity .85s cubic-bezier(.35,0,.15,1),visibility .85s linear;
 }
 #vectra-splash.hide{opacity:0;visibility:hidden;pointer-events:none;}
 
@@ -736,6 +740,8 @@ tr.gold-selected td{background:rgba(245,166,35,.06);}
   20%{transform:scale(1.06);opacity:1;}
   52%{transform:scale(1.06) scaleY(.016);opacity:1;}
   72%{transform:scale(1.06) scaleY(.016);opacity:1;}
+  /* o ponto continua visivel enquanto encolhe; so apaga nos ultimos 12% */
+  88%{transform:scale(.22) scaleY(.016);opacity:1;}
   100%{transform:scale(.015) scaleY(.016);opacity:0;}
 }
 #vectra-splash.fechando .totem-sweep{opacity:0;transition:opacity .3s ease-in;}
@@ -753,7 +759,7 @@ tr.gold-selected td{background:rgba(245,166,35,.06);}
     transition:opacity .3s ease-in;}
   .ribbon-burst{display:none;}
 }
-.vectra-splash-inner{position:relative;display:flex;flex-direction:column;align-items:center;animation:vectraZoom 2.5s cubic-bezier(0.0, 0.9, 0.1, 1) forwards;will-change:transform;}
+.vectra-splash-inner{position:relative;display:flex;flex-direction:column;align-items:center;animation:vectraZoom .7s cubic-bezier(.2,.75,.3,1) forwards;will-change:transform;}
 
 /* Totem 3D Wrapper - Indestrutível (Geometria Absoluta) */
 .totem-wrapper{
@@ -879,9 +885,13 @@ tr.gold-selected td{background:rgba(245,166,35,.06);}
   will-change:transform, opacity;
   animation:vectraTagReveal 1.2s 0.3s cubic-bezier(0.0, 0.9, 0.1, 1) forwards;
 }
+/* Entrada: 0,7s em vez de 2,5s. Com 2,5s quase um terco do video de 8s
+   rodava semitransparente — nao dava pra ver a abertura inteira — e a
+   explosao de ribbon (que dura 1,6s) aparecia por tras de um fade ainda
+   em curso, embolando as duas coisas. */
 @keyframes vectraZoom{
-  0%{transform:scale3d(0.92, 0.92, 1);opacity:0;}
-  100%{transform:scale3d(1, 1, 1);opacity:1;}
+  0%{transform:scale3d(.94,.94,1);opacity:0;}
+  100%{transform:scale3d(1,1,1);opacity:1;}
 }
 @keyframes vectraFloatHD{
   0%{transform:translate3d(0, 0, 0);}

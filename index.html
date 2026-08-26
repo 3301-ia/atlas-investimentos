@@ -65,7 +65,8 @@
   var splash=document.getElementById('vectra-splash');
   if(!splash)return;
   var dismissed=false;
-  var FECHA_MS=1000; // igual a animacao vectraFechar no CSS
+  var FECHA_MS=800;  // entra ANTES do fim de vectraFechar (.95s) pra o preto
+                     // comecar a sair junto com o ponto, sem intervalo morto
 
   // Saida em duas etapas: o circulo recolhe pro centro (.fechando) e so
   // depois o fundo preto some (.hide). Um fade seco perdia o efeito.
