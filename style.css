@@ -827,16 +827,44 @@ tr.gold-selected td{background:rgba(245,166,35,.06);}
 .rb-raios path{
   filter:drop-shadow(0 0 5px currentColor);
   opacity:0;transform-origin:800px 450px;
-  animation:rbRaio 1.5s cubic-bezier(.15,.85,.25,1) calc(.95s + var(--d)) forwards,
-            rbBrilho 4.5s ease-in-out calc(2.4s + var(--d)) infinite alternate;}
+  /* os raios explodem e depois cedem lugar ao ribbon: o rbRaio ja termina
+     em opacidade baixa e o rbSai apaga o resto */
+  animation:rbRaio 1.4s cubic-bezier(.15,.85,.25,1) calc(.95s + var(--d)) forwards,
+            rbSai 1.1s ease-in calc(2.5s + var(--d)) forwards;}
 @keyframes rbRaio{
   0%{transform:scale(.02);opacity:0;}
   22%{opacity:1;}
   100%{transform:scale(1);opacity:.5;}
 }
-@keyframes rbBrilho{
-  from{opacity:.32;}
-  to{opacity:.7;}
+@keyframes rbSai{
+  from{opacity:.5;}
+  to{opacity:0;}
+}
+
+/* 4. RIBBON — 17 EMAs reais da mesma serie de preco (13 a 610, os periodos
+   do PHI_ANCHORS mais os passos interpolados). Sao medias do MESMO dado,
+   entao convergem e abrem juntas como num grafico de verdade — e isso que
+   diferencia de senoides independentes, que apenas se cruzam. Entram quando
+   os raios estao se apagando, como se os feixes se resolvessem em mercado. */
+.rb-ribbon{position:absolute;width:150%;height:118%;
+  animation:rbRibbonEntra 1.6s cubic-bezier(.2,.75,.25,1) 2.35s both;}
+.rb-ribbon path{
+  filter:drop-shadow(0 0 4px currentColor);
+  opacity:.5;
+  animation:rbCorre var(--dur) linear infinite,
+            rbRespira calc(var(--dur) / 3) ease-in-out infinite alternate;
+  animation-delay:calc(var(--i) * -2.1s), calc(var(--i) * .22s);}
+@keyframes rbRibbonEntra{
+  0%{opacity:0;transform:scaleY(.10);}
+  100%{opacity:1;transform:scaleY(1);}
+}
+@keyframes rbCorre{
+  from{transform:translateX(0);}
+  to{transform:translateX(-50%);}   /* o path tem 2x a largura: emenda invisivel */
+}
+@keyframes rbRespira{
+  from{opacity:.30;}
+  to{opacity:.72;}
 }
 
 /* no fechamento os raios saem antes, pra nao competir com o recolhimento */
