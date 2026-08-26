@@ -23,6 +23,20 @@
         <img src="./vectra-totem.jpg" alt="Vectra" class="vectra-splash-img">
       </video>
       <div class="totem-sweep"></div>
+      <!-- Onda de ribbon: o ponto no centro estoura em aneis nas cores das
+           medias do proprio grafico (C.ema8, C.ema16, ... em main.js), cada
+           um com seu atraso. Some sozinho depois de ~1,6s, quando o video
+           ja assumiu a cena. -->
+      <div class="ribbon-burst" aria-hidden="true">
+        <span class="rb-ponto"></span>
+        <i style="--c:#2979FF;--d:0s"></i>
+        <i style="--c:#E91E63;--d:.07s"></i>
+        <i style="--c:#00897B;--d:.14s"></i>
+        <i style="--c:#F5A623;--d:.21s"></i>
+        <i style="--c:#6A1B9A;--d:.28s"></i>
+        <i style="--c:#FF6D9E;--d:.35s"></i>
+        <i style="--c:#00B8D9;--d:.42s"></i>
+      </div>
     </div>
     <div class="vectra-splash-sparks">
       <span class="spark" style="--x:34.5%;--y:19.3%;--d:1.17s"></span>
@@ -51,7 +65,7 @@
   var splash=document.getElementById('vectra-splash');
   if(!splash)return;
   var dismissed=false;
-  var FECHA_MS=800; // igual a transicao de .fechando no CSS
+  var FECHA_MS=1000; // igual a animacao vectraFechar no CSS
 
   // Saida em duas etapas: o circulo recolhe pro centro (.fechando) e so
   // depois o fundo preto some (.hide). Um fade seco perdia o efeito.

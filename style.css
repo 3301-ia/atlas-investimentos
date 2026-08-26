@@ -721,11 +721,22 @@ tr.gold-selected td{background:rgba(245,166,35,.06);}
    Duas etapas em vez de um fade seco: a classe .fechando encolhe o totem,
    e o .hide entra depois. O float infinito precisa ser cancelado aqui,
    senao a animacao do wrapper sobrescreve o transform do fechamento. */
+/* FECHAMENTO EM TRES TEMPOS:
+   1. abre — o totem cresce de leve e mostra a imagem inteira;
+   2. achata — vira uma linha horizontal COM O VIDEO AINDA VISIVEL
+      (opacidade fica em 1 ate o ultimo trecho, senao a imagem some antes
+      de a linha se formar e o efeito perde a leitura);
+   3. fecha — a linha recolhe ate o ponto no centro.
+   E animation, nao transition, porque sao tres estados encadeados. */
 #vectra-splash.fechando .totem-wrapper{
-  animation:none;
-  transform:scale(.04) rotate(10deg);
-  opacity:0;
-  transition:transform .8s cubic-bezier(.55,0,.85,.3),opacity .8s ease-in;
+  animation:vectraFechar .95s cubic-bezier(.45,0,.55,1) forwards;
+}
+@keyframes vectraFechar{
+  0%{transform:scale(1);opacity:1;}
+  20%{transform:scale(1.06);opacity:1;}
+  52%{transform:scale(1.06) scaleY(.016);opacity:1;}
+  72%{transform:scale(1.06) scaleY(.016);opacity:1;}
+  100%{transform:scale(.015) scaleY(.016);opacity:0;}
 }
 #vectra-splash.fechando .totem-sweep{opacity:0;transition:opacity .3s ease-in;}
 #vectra-splash.fechando .vectra-splash-word,
@@ -738,7 +749,9 @@ tr.gold-selected td{background:rgba(245,166,35,.06);}
 
 /* Quem pediu menos movimento nao ganha o recolhimento, so o fade. */
 @media (prefers-reduced-motion:reduce){
-  #vectra-splash.fechando .totem-wrapper{transition:opacity .3s;transform:none;}
+  #vectra-splash.fechando .totem-wrapper{animation:none;opacity:0;transform:none;
+    transition:opacity .3s ease-in;}
+  .ribbon-burst{display:none;}
 }
 .vectra-splash-inner{position:relative;display:flex;flex-direction:column;align-items:center;animation:vectraZoom 2.5s cubic-bezier(0.0, 0.9, 0.1, 1) forwards;will-change:transform;}
 
@@ -761,6 +774,31 @@ tr.gold-selected td{background:rgba(245,166,35,.06);}
   image-rendering:high-quality; z-index:2;
   
   -webkit-box-reflect:below 2px linear-gradient(to bottom, rgba(255,255,255,0) 65%, rgba(255,255,255,0.4) 100%);
+}
+
+/* ONDA DE RIBBON — a entrada explode do ponto central em aneis nas cores
+   das medias do grafico. Fica sobre o totem so no primeiro segundo e meio;
+   depois some sozinha (forwards) e o video segue limpo. pointer-events:none
+   pra nao roubar o clique que pula o splash. */
+.ribbon-burst{position:absolute;inset:0;z-index:4;pointer-events:none;
+  display:grid;place-items:center;}
+.ribbon-burst i{position:absolute;width:100%;height:100%;border-radius:50%;
+  border:2px solid var(--c);opacity:0;
+  box-shadow:0 0 22px -4px var(--c);
+  animation:ribbonOnda 1.6s cubic-bezier(.12,.85,.25,1) var(--d) forwards;}
+.rb-ponto{position:absolute;width:10px;height:10px;border-radius:50%;
+  background:#fff;box-shadow:0 0 26px 8px rgba(245,166,35,.85);
+  animation:ribbonPonto 1s ease-out forwards;}
+@keyframes ribbonOnda{
+  0%{transform:scale(.03);opacity:0;border-width:6px;}
+  10%{opacity:1;}
+  70%{opacity:.55;}
+  100%{transform:scale(1.9);opacity:0;border-width:1px;}
+}
+@keyframes ribbonPonto{
+  0%{transform:scale(0);opacity:0;}
+  14%{transform:scale(1.6);opacity:1;}
+  100%{transform:scale(.2);opacity:0;}
 }
 
 /* O Scanner Laser */
