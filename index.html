@@ -5,6 +5,19 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Atlas Dashboard v10.0</title>
 
+  <!-- As fontes vem antes do style.css de proposito: o navegador ja abre a
+       conexao com o Google e pede o CSS das fontes enquanto baixa o nosso,
+       em vez de so descobrir esse pedido depois de analisar style.css. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://unpkg.com" crossorigin>
+  <!-- media="print" faz o navegador baixar sem bloquear a primeira pintura;
+       o onload devolve pra "all" quando chega. Com display=swap o texto sai
+       na fonte de sistema e troca sozinho — se o Google estiver lento ou fora
+       do ar, a pagina aparece do mesmo jeito, em vez de esperar por ele. -->
+  <link rel="stylesheet" media="print" onload="this.media='all';this.onload=null"
+        href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap"></noscript>
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
@@ -146,13 +159,20 @@
   var video=document.getElementById("vectra-totem-video");
   var HOLD_MS=900;      // respiro apos o ultimo frame, com o texto legivel
   var ESPERA_MAX=6000;  // nao comecou a tocar ate aqui: entra assim que der
-  var TETO_MS=25000;    // teto absoluto, cobre o video de 8s com folga
+  var TETO_MS=13000;    // teto absoluto: 8s de video + respiro + fechamento
+                        // dao ~9,7s, entao 13s ja e folga. Acima disso o que
+                        // o usuario ve e so uma tela preta.
   var tempoOk=false, appOk=false;
   function sair(){if(tempoOk&&appOk)dismiss();}
   function liberarTempo(){if(!tempoOk){tempoOk=true;sair();}}
 
-  if(document.readyState==="complete")appOk=true;
-  else window.addEventListener("load",function(){appOk=true;sair();});
+  // Medido: com "load" o splash so podia sair depois do ULTIMO recurso da
+  // pagina — o script do unpkg e o proprio mp4 inclusos. Numa rede lenta isso
+  // segurava a tela preta por 12s (aqui: DOMContentLoaded 0,5s / load 12,5s).
+  // O que interessa e o app estar montado atras do splash, e com os scripts
+  // em defer isso acontece no DOMContentLoaded.
+  if(document.readyState!=="loading")appOk=true;
+  else document.addEventListener("DOMContentLoaded",function(){appOk=true;sair();});
   setTimeout(dismiss,TETO_MS);
 
   if(!video){
@@ -179,18 +199,6 @@
     // Ultimo recurso: comecou a carregar mas nunca saiu do zero.
     setTimeout(function(){if(video.currentTime===0){pararVigia();liberarTempo();}},ESPERA_MAX);
 
-  }
-
-  // Icone do cabecalho: posiciona o video num frame representativo e para.
-  // E so uma imagem — nunca deve reproduzir.
-  var logo=document.getElementById("logo-totem");
-  if(logo){
-    ["loadedmetadata","loadeddata","canplay"].forEach(function(ev){
-    logo.addEventListener(ev,function(){
-      try{logo.currentTime=Math.min(2,(logo.duration||3)/2);}catch(e){}
-      logo.pause();
-    });});
-    logo.addEventListener("play",function(){logo.pause();});
   }
 
   // Nao deixa o video rodando por baixo do app depois que o splash sai.
@@ -262,17 +270,7 @@
     <!-- TOPBAR -->
     <div class="topbar">
       <div class="logo" style="cursor:pointer;" onclick="toggleScreensaver()" title="Ativar Tela de Descanso">
-        <!-- O vectra-icon.png nunca existiu no repositorio (dava 404 e o
-             cabecalho ficava sem logo). Enquanto ele nao entra, o proprio
-             totem serve de icone: um <video> PAUSADO num frame funciona como
-             imagem, sem custo de reproducao, e o arquivo ja esta baixado por
-             causa do splash. O <img> continua como fallback de quem nao
-             decodificar o mp4. -->
-        <video id="logo-totem" class="logo-icon logo-icon-img" muted playsinline
-               preload="metadata" aria-label="Vectra" tabindex="-1">
-          <source src="./vectra-totem-person.mp4#t=2" type="video/mp4">
-          <img src="./vectra-icon.png" alt="Vectra" class="logo-icon logo-icon-img">
-        </video>
+        <img src="./vectra-icon.png" alt="Vectra" class="logo-icon logo-icon-img">
         <div><div class="logo-name">VECTRA</div><div class="logo-sub">GLOBAL DATA INTELLIGENCE</div></div>
       </div>
       <div class="sep"></div>
@@ -1095,8 +1093,14 @@
     </div>
   </div>
 
-<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
-<script src="./main.js?v=4"></script>
+<!-- defer nos dois: sem ele um <script src> trava o analisador ate o arquivo
+     chegar, entao uma rede ruim (ou o unpkg lento) congelava a pagina inteira,
+     inclusive a saida da abertura. Com defer os dois baixam em paralelo com a
+     leitura do HTML e executam nesta ordem, antes do DOMContentLoaded — que e
+     o que o main.js espera pra iniciar, e os onclick do HTML so disparam no
+     clique, bem depois. -->
+<script defer src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<script defer src="./main.js?v=4"></script>
 </body>
 
 </html>
