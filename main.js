@@ -638,6 +638,9 @@ function addSig(type,side,idx,price){
     if(liberados.length>200)liberados.shift();
     renderLiberados();
   }
+  // o placar so muda quando o motor reprocessa o historico, nao a cada tick
+  if(!addSig._agendado){ addSig._agendado=setTimeout(()=>{ addSig._agendado=null;
+    try{ atualizaPlacarSinais(); }catch(e){} },400); }
   renderSignalLog();
   // O motor varre o historico inteiro (da vela 250 ate a ultima) a cada
   // recalculo, e chamava showToast pra CADA sinal encontrado. Com o sino
@@ -645,7 +648,14 @@ function addSig(type,side,idx,price){
   // atras — era esse o disparo em massa "sem nocao". Sinal antigo entra no log
   // e no historico, mas so o das ultimas velas vira aviso.
   const naPonta = idx >= candles.length-2;
-  if(alertsOn&&naPonta)showToast(type,side,price);
+  if(alertsOn&&naPonta){
+    // o placar vai junto do aviso: "ATLAS BUY" sozinho e opiniao, com
+    // "18x 61% +0,34R" ao lado vira opiniao com historico
+    const pl=(typeof placarDe==="function")?placarDe(type,side):null;
+    const extra=pl&&pl.n>=3 ? "  \u00b7 "+pl.n+"x "+pl.acerto.toFixed(0)+"% "
+      +(pl.mediaR>=0?"+":"")+pl.mediaR.toFixed(2)+"R" : "";
+    showToast(type,side+extra,price);
+  }
   // addMarker(type,side,time,price); // Marcadores no gráfico desativados (performance extrema)
 }
 
@@ -3966,6 +3976,107 @@ function runBacktest(candlesArr,cfg){
 
   return computeBacktestStats(trades);
 }
+
+// ══════════════════════════════════════════════════════
+// PLACAR DOS SINAIS
+// ══════════════════════════════════════════════════════
+// O dashboard tinha 25 paineis de opiniao e nenhum numero dizendo se elas
+// funcionam. Aqui cada tipo de sinal ganha o seu historico: pego os sinais que
+// o motor achou nas velas carregadas, simulo o que aconteceu depois de cada um
+// e conto.
+//
+// A regua e a MESMA pra todos de proposito — stop a 1 ATR contra, alvo a 2 ATR
+// a favor, teto de 50 velas. O objetivo e comparar os tipos entre si, e pra
+// isso eles precisam ser medidos igual. Nao e promessa de resultado: e o que
+// aquele setup fez neste ativo e neste timeframe, no historico que esta na tela.
+//
+// O runBacktest nao serve aqui: ele gera as proprias entradas por cruzamento de
+// medias, nao avalia os sinais do motor.
+const PLACAR_STOP_ATR=1, PLACAR_ALVO_ATR=2, PLACAR_TETO_VELAS=50;
+let placarSinais={};
+
+function avaliaSinais(candlesArr,sinais){
+  const out={};
+  if(!candlesArr||candlesArr.length<60||!sinais||!sinais.length) return out;
+  const n=candlesArr.length;
+  const closes=candlesArr.map(c=>c.close), highs=candlesArr.map(c=>c.high), lows=candlesArr.map(c=>c.low);
+  const atrV=atrCalc(highs,lows,closes,P.atrLen);
+  // tempo -> indice, pra achar a vela de cada sinal sem varrer o array toda vez
+  const porTempo={};
+  for(let i=0;i<n;i++) porTempo[candlesArr[i].time]=i;
+
+  sinais.forEach(sig=>{
+    const i=porTempo[Math.floor(sig.time/1000)];
+    if(i==null||i>=n-2) return;                  // sinal da vela em curso ainda nao tem desfecho
+    const atr=atrV[i];
+    if(atr==null||!isFinite(atr)||atr<=0) return;
+    const compra=sig.side.includes("BUY")||sig.side.includes("BULL")||sig.side.includes("HIT");
+    const dir=compra?1:-1;
+    const entrada=sig.price;
+    const stop=entrada-dir*PLACAR_STOP_ATR*atr;
+    const alvo=entrada+dir*PLACAR_ALVO_ATR*atr;
+
+    let r=null;
+    const ate=Math.min(n-1,i+PLACAR_TETO_VELAS);
+    for(let j=i+1;j<=ate;j++){
+      // stop antes do alvo dentro da mesma vela: o conservador, senao o placar
+      // fica otimista de graca
+      if((dir===1&&lows[j]<=stop)||(dir===-1&&highs[j]>=stop)){ r=-1; break; }
+      if((dir===1&&highs[j]>=alvo)||(dir===-1&&lows[j]<=alvo)){ r=PLACAR_ALVO_ATR/PLACAR_STOP_ATR; break; }
+    }
+    // nao bateu nem um nem outro no teto: fecha no preco e mede em R
+    if(r===null) r=((closes[ate]-entrada)*dir)/(PLACAR_STOP_ATR*atr);
+
+    const chave=sig.type+" "+(compra?"COMPRA":"VENDA");
+    const g=out[chave]||(out[chave]={chave,n:0,ganhos:0,somaR:0,somaGanho:0,somaPerda:0});
+    g.n++;
+    if(r>0){ g.ganhos++; g.somaGanho+=r; } else { g.somaPerda+=Math.abs(r); }
+    g.somaR+=r;
+  });
+
+  Object.values(out).forEach(g=>{
+    g.acerto = g.n ? (g.ganhos/g.n*100) : 0;
+    g.mediaR = g.n ? (g.somaR/g.n) : 0;
+    g.pf = g.somaPerda>0 ? (g.somaGanho/g.somaPerda) : (g.somaGanho>0?99:0);
+  });
+  return out;
+}
+
+function atualizaPlacarSinais(){
+  try{ placarSinais=avaliaSinais(candles,signals); }catch(e){ placarSinais={}; }
+  renderPlacarSinais();
+}
+
+function renderPlacarSinais(){
+  const box=document.getElementById("placar-list"), cnt=document.getElementById("placar-count");
+  if(!box) return;
+  const linhas=Object.values(placarSinais).filter(g=>g.n>=3).sort((a,b)=>b.mediaR-a.mediaR);
+  if(cnt) cnt.textContent=linhas.length?linhas.length+" tipos":"--";
+  if(!linhas.length){
+    box.innerHTML='<div style="padding:5px 9px;font-size:9px;color:var(--t3);">Sem sinais suficientes no historico carregado (minimo 3 por tipo).</div>';
+    return;
+  }
+  box.innerHTML=linhas.map(g=>{
+    // a media em R e o numero que decide: acerto alto com R medio negativo e
+    // muito ganho pequeno pago por poucas perdas grandes
+    const cor=g.mediaR>=0.15?"#00C853":(g.mediaR<=-0.15?"#FF3B30":"#F5A623");
+    const compra=g.chave.includes("COMPRA");
+    return '<div class="sig-item" title="'+g.n+' sinais no historico carregado \u00b7 stop 1 ATR, alvo 2 ATR, teto de 50 velas">'
+      +'<span class="sig-side '+(compra?"buy":"sell")+'" style="min-width:76px;">'+g.chave+"</span>"
+      +'<span style="color:var(--t3);font-size:9px;">'+g.n+"x</span>"
+      +'<span style="color:var(--t2);font-size:9px;">'+g.acerto.toFixed(0)+"%</span>"
+      +'<span style="color:var(--t2);font-size:9px;">PF '+(g.pf>=99?"--":g.pf.toFixed(2))+"</span>"
+      +'<span class="sig-px" style="color:'+cor+';margin-left:auto;">'
+      +(g.mediaR>=0?"+":"")+g.mediaR.toFixed(2)+"R</span></div>";
+  }).join("");
+}
+
+// O placar de um tipo de sinal, pra mostrar junto do aviso
+function placarDe(type,side){
+  const compra=side.includes("BUY")||side.includes("BULL")||side.includes("HIT");
+  return placarSinais[type+" "+(compra?"COMPRA":"VENDA")]||null;
+}
+window.atualizaPlacarSinais=atualizaPlacarSinais;
 
 function computeBacktestStats(trades){
   const total=trades.length;
