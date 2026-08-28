@@ -1114,12 +1114,16 @@
 
 <!-- BUSSOLA MODAL -->
 
-<div id="bussola-modal" style="display:none;position:fixed;bottom:20px;left:80px;z-index:9999;background:rgba(20,24,32,0.9);border:1px solid var(--bd2);border-radius:10px;padding:12px;width:380px;box-shadow:0 4px 15px rgba(0,0,0,0.8);backdrop-filter:blur(4px);">
+<div id="bussola-modal" style="display:none;flex-direction:column;position:fixed;bottom:20px;left:80px;z-index:9999;background:rgba(20,24,32,0.9);border:1px solid var(--bd2);border-radius:10px;padding:12px;width:380px;box-shadow:0 4px 15px rgba(0,0,0,0.8);backdrop-filter:blur(4px);">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;border-bottom:1px solid var(--bd);padding-bottom:6px;">
     <span style="font-weight:bold;color:var(--goldd);font-size:12px;cursor:move;" class="drag-header">🧭 BÚSSOLA</span>
     <button onclick="toggleBussolaModal()" style="background:none;border:none;color:var(--t2);cursor:pointer;font-size:16px;line-height:1;">&times;</button>
   </div>
   
+  <!-- Com o modo Multi ligado, a bussola mostra os 4 ativos em vez do ativo do
+       grafico principal. O conteudo e montado em JS a partir do MULTI_SYMS. -->
+  <div id="bussola-body-multi" style="display:none;"></div>
+
   <div id="bussola-body-atual">
     <div class="sp-sec" style="background:none;border:none;padding:0;margin-bottom:4px;"><span>ESTADO</span><span class="sp-sec-val" id="direcao-state-badge" style="font-size:10px;">--</span></div>
     <div style="display:flex;gap:12px;align-items:center;">
