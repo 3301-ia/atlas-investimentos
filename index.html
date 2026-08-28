@@ -986,6 +986,17 @@
             </div>
 
             <!-- FIBONACCI -->
+            <!-- ALARMES: niveis avulsos que o usuario digita, alem dos que ja
+                 vem das ferramentas de fibo, das linhas de preco e das medias. -->
+            <div class="sp-sec"><span>ALARMES</span><span class="sp-sec-val" id="alarme-count" style="color:var(--gold);">0</span></div>
+            <div style="display:flex;gap:5px;padding:5px 9px;align-items:center;">
+              <input id="alarme-preco" type="number" step="any" placeholder="preco"
+                     onkeydown="if(event.key==='Enter')addAlarmeManual();"
+                     style="flex:1;min-width:0;padding:3px 6px;font-size:10px;font-family:var(--mono);">
+              <button class="btn" onclick="addAlarmeManual()" style="padding:3px 8px;font-size:10px;">+ alarme</button>
+            </div>
+            <div class="sig-list" id="alarme-list" style="max-height:130px;flex:none;"><div style="padding:5px 9px;font-size:9px;color:var(--t3);">Nenhum alarme manual.</div></div>
+
             <div class="sp-sec"><span>FIBONACCI</span><span id="fib-dir-badge" class="fib-dir-badge fib-flat">FLAT</span></div>
             <div class="fib-list" id="fib-list"><div style="color:var(--t3);font-size:9px;padding:4px 0;">Aguardando ancora...</div></div>
             </div>

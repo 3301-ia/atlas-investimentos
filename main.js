@@ -370,6 +370,7 @@ function runSignals(closes,highs,lows,opens){
   // e a liberacao e conferida no indice do sinal, que nem sempre e a ultima
   // vela — por isso guardo as series inteiras, nao so a ponta
   serieMedias={ema8:e8,ema16:e16,ma89:m89,ema200:e200};
+  if(typeof verificaCruzamentoMedias==="function") verificaCruzamentoMedias();
   const rL=rsiCalc(closes,P.rsiLen),sL=stochCalc(rL,P.stochLen),kL=sma(sL,P.kSmooth),dL=sma(kL,P.dSmooth);
   const atrV=atrCalc(highs,lows,closes,P.atrLen);
 
@@ -1490,6 +1491,86 @@ const ALARME_ESPERA_MS=60000;  // o mesmo nivel nao repete dentro de um minuto
 const ALARME_NOMES={ema8:"EMA8",ema16:"EMA16",ema55:"EMA55",ema98:"EMA98",
                     ema200:"EMA200",ma56:"MA56",ma89:"MA89"};
 
+// NIVEIS DE FIBO ESCOLHIDOS. Vigiar os 29 niveis de um fibo desenhado e
+// barulho: o preco atravessa varios num movimento so. Aqui da pra marcar os
+// que interessam clicando na lista do FIB MANUAL. Sem nenhum marcado a
+// vigilancia continua em todos, que era o comportamento anterior — assim quem
+// nao souber do recurso nao perde alarme.
+let fibNiveisMarcados=[];
+function chaveFibNiveis(){ return "fibniveis:"+(typeof currentSym!=="undefined"?currentSym:"?"); }
+function carregaFibNiveis(){
+  try{ fibNiveisMarcados=JSON.parse(localStorage.getItem(chaveFibNiveis())||"[]")||[]; }
+  catch(e){ fibNiveisMarcados=[]; }
+}
+function toggleFibNivel(lv){
+  const v=parseFloat(lv);
+  fibNiveisMarcados = fibNiveisMarcados.includes(v)
+    ? fibNiveisMarcados.filter(x=>x!==v) : fibNiveisMarcados.concat(v);
+  try{ localStorage.setItem(chaveFibNiveis(),JSON.stringify(fibNiveisMarcados)); }catch(e){}
+  if(typeof renderFibLegend==="function"){
+    try{ renderFibLegend(drawings().find(d=>d.type==="fibbo")); }catch(e){}
+  }
+  if(typeof showInfoToast==="function"){
+    showInfoToast("FIB", fibNiveisMarcados.includes(v)
+      ? "alarme ligado no nivel "+v : "alarme desligado no nivel "+v);
+  }
+}
+window.toggleFibNivel=toggleFibNivel;
+
+// ALARMES MANUAIS — um preco qualquer que o usuario digita, sem depender de
+// ter desenhado nada. Ficam no localStorage por simbolo: um alarme de 60000
+// no BTC nao faz sentido no ouro.
+function chaveAlarmes(){ return "alarmes:"+(typeof currentSym!=="undefined"?currentSym:"?"); }
+let alarmesManuais=[];
+
+function carregaAlarmesManuais(){
+  try{ alarmesManuais=JSON.parse(localStorage.getItem(chaveAlarmes())||"[]")||[]; }
+  catch(e){ alarmesManuais=[]; }
+  renderAlarmes();
+}
+function salvaAlarmesManuais(){
+  try{ localStorage.setItem(chaveAlarmes(),JSON.stringify(alarmesManuais)); }catch(e){}
+  renderAlarmes();
+}
+function addAlarmeManual(){
+  const inp=document.getElementById("alarme-preco");
+  const v=parseFloat(inp&&inp.value);
+  if(!isFinite(v)){ if(typeof showInfoToast==="function") showInfoToast("ALARMES","digite um preco"); return; }
+  if(alarmesManuais.some(a=>a.preco===v)){ if(typeof showInfoToast==="function") showInfoToast("ALARMES","ja existe alarme em "+v); return; }
+  alarmesManuais.push({preco:v,criado:Date.now()});
+  alarmesManuais.sort((a,b)=>b.preco-a.preco);
+  if(inp) inp.value="";
+  salvaAlarmesManuais();
+}
+function removeAlarmeManual(preco){
+  alarmesManuais=alarmesManuais.filter(a=>a.preco!==preco);
+  salvaAlarmesManuais();
+}
+function renderAlarmes(){
+  const cnt=document.getElementById("alarme-count"), list=document.getElementById("alarme-list");
+  if(cnt) cnt.textContent=alarmesManuais.length;
+  if(!list) return;
+  if(!alarmesManuais.length){
+    list.innerHTML='<div style="padding:5px 9px;font-size:9px;color:var(--t3);">Nenhum alarme manual.</div>';
+    return;
+  }
+  const px=(typeof candles!=="undefined"&&candles.length)?candles[candles.length-1].close:null;
+  list.innerHTML=alarmesManuais.map(a=>{
+    const acima=px!=null&&a.preco>px;
+    const cor=px==null?"var(--t2)":(acima?"#00C853":"#FF3B30");
+    const dist=px==null?"":" ("+(acima?"+":"")+((a.preco-px)/px*100).toFixed(2)+"%)";
+    return '<div class="sig-item"><span class="sig-time">'+(acima?"\u25b2":"\u25bc")+'</span>'
+      +'<span class="sig-px" style="color:'+cor+'">'+a.preco+'</span>'
+      +'<span class="sig-side" style="color:var(--t3);font-weight:400;">'+dist+'</span>'
+      +'<button class="toast-x" onclick="removeAlarmeManual('+a.preco+')" '
+      +'style="margin-left:auto;">x</button></div>';
+  }).join("");
+}
+window.addAlarmeManual=addAlarmeManual;
+window.removeAlarmeManual=removeAlarmeManual;
+window.renderAlarmes=renderAlarmes;
+window.carregaAlarmesManuais=carregaAlarmesManuais;
+
 // Todos os niveis que valem alarme agora, ja com o preco de cada um.
 function niveisDeAlarme(){
   const out=[];
@@ -1503,10 +1584,15 @@ function niveisDeAlarme(){
       const diff=d.p0.price-d.p1.price;
       const lvs=d.type==="fibretr"?fibRetrLevels:[...fibLevels,...fibBreakLevels];
       lvs.forEach(lv=>{
+        // com niveis marcados, so eles; sem nenhum, todos
+        if(fibNiveisMarcados.length&&!fibNiveisMarcados.includes(lv)) return;
         const pr=d.p1.price+diff*lv;
         if(isFinite(pr)) out.push({chave:"fib:"+i+":"+lv,rotulo:"FIB",nome:String(lv),preco:pr});
       });
     }
+  });
+  alarmesManuais.forEach(a=>{
+    if(isFinite(a.preco)) out.push({chave:"manual:"+a.preco,rotulo:"ALARME",nome:String(a.preco),preco:a.preco});
   });
   if(ultimasEmas) Object.keys(ultimasEmas).forEach(k=>{
     const v=ultimasEmas[k];
@@ -1514,6 +1600,39 @@ function niveisDeAlarme(){
   });
   return out;
 }
+
+// CRUZAMENTO ENTRE MEDIAS. Isto e outro evento: nao e o preco cruzando um
+// nivel, e uma media passando pela outra. Detecto pelo SINAL DA DIFERENCA:
+// enquanto (a - b) mantem o sinal nao houve cruzamento; quando ele vira,
+// cruzou. Comparo o penultimo com o ultimo valor da serie, entao o alarme
+// toca uma vez por cruzamento e nao a cada tick com as medias coladas.
+const PARES_MEDIAS=[
+  ["ema8","ema16"], ["ema8","ma89"], ["ema16","ma89"],
+  ["ema8","ema200"], ["ema16","ema200"], ["ma89","ema200"],
+];
+const cruzamentoAnterior={};
+
+function verificaCruzamentoMedias(){
+  if(!alertsOn||!serieMedias) return;
+  PARES_MEDIAS.forEach(([a,b])=>{
+    const sa=serieMedias[a], sb=serieMedias[b];
+    if(!sa||!sb||sa.length<2) return;
+    const n=sa.length-1;
+    const agoraDif=sa[n]-sb[n], antesDif=sa[n-1]-sb[n-1];
+    if([agoraDif,antesDif].some(v=>v==null||!isFinite(v))||agoraDif===0) return;
+    if(Math.sign(agoraDif)===Math.sign(antesDif)) return;  // nao cruzou
+    const chave=a+"x"+b;
+    // a mesma vela nao dispara duas vezes quando o motor reprocessa
+    const marca=(typeof candles!=="undefined"&&candles.length)?candles[candles.length-1].time:n;
+    if(cruzamentoAnterior[chave]===marca) return;
+    cruzamentoAnterior[chave]=marca;
+    const subiu=agoraDif>0;
+    const nome=(ALARME_NOMES[a]||a)+(subiu?" \u2191 ":" \u2193 ")+(ALARME_NOMES[b]||b);
+    const preco=(typeof candles!=="undefined"&&candles.length)?candles[candles.length-1].close:sa[n];
+    showToast("CRUZE",(subiu?"\u25b2 ":"\u25bc ")+nome,preco);
+  });
+}
+window.verificaCruzamentoMedias=verificaCruzamentoMedias;
 
 function verificaAlarmes(preco){
   const ant=alarmePrecoAnterior;
@@ -4062,6 +4181,8 @@ function resetLive(){
 }
 async function changeSym(sym){
   currentSym=sym;candles=[];resetLive();
+  // alarmes e niveis de fibo sao guardados por simbolo
+  carregaAlarmesManuais(); carregaFibNiveis();
   const sel=document.getElementById('sym-select');
   if(sel&&sel.value!==sym)sel.value=sym;
   await loadAll();
@@ -4570,7 +4691,11 @@ function renderFibLegend(d){
     // destaca o nivel que o preco ja atingiu — pra quebra, so conta fechamento
     // abaixo, entao usa close (nao high/low) igual a regra combinada
     const hit = px!=null && (isBreak ? px<=price : (diff>0 ? px>=price : px<=price));
-    return `<div class="mfib-item" style="opacity:${hit?1:.62};">
+    // clicar no nivel liga/desliga o alarme dele
+    const alarmado=fibNiveisMarcados.includes(lv);
+    return `<div class="mfib-item" style="opacity:${hit?1:.62};cursor:pointer;"
+      onclick="toggleFibNivel(${lv})" title="clique para ligar/desligar o alarme deste nivel">
+      <span style="width:11px;display:inline-block;font-size:9px;">${alarmado?'\u{1F514}':''}</span>
       <span class="mfib-dot" style="background:${col};"></span>
       <span class="mfib-lvl" style="color:${col};">${lv}${isBreak?' <span style="color:var(--goldd);font-weight:700;">quebra</span>':''}</span>
       <span class="mfib-px">${price.toFixed(2)}</span></div>`;
@@ -4609,6 +4734,7 @@ let catF='all';
 
 function initApp(){
   initTheme();
+  carregaAlarmesManuais(); carregaFibNiveis();
   const cb=document.getElementById('cat-bar');
   if(cb && !cb.children.length){
     const catBtn=document.createElement('button');catBtn.className='cp active';catBtn.textContent='TODOS';catBtn.setAttribute('data-cat','all');catBtn.onclick=function(){setCat(this);};cb.appendChild(catBtn);
