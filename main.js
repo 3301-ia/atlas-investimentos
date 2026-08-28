@@ -638,6 +638,10 @@ function addSig(type,side,idx,price){
     if(liberados.length>200)liberados.shift();
     renderLiberados();
   }
+  // o placar so muda quando o motor reprocessa o historico, nao a cada tick
+  if(!addSig._agendado){ addSig._agendado=setTimeout(()=>{ addSig._agendado=null;
+    try{ atualizaPlacarSinais(); }catch(e){}
+    try{ renderContraArgumento(); }catch(e){} },400); }
   renderSignalLog();
   // O motor varre o historico inteiro (da vela 250 ate a ultima) a cada
   // recalculo, e chamava showToast pra CADA sinal encontrado. Com o sino
@@ -645,7 +649,14 @@ function addSig(type,side,idx,price){
   // atras — era esse o disparo em massa "sem nocao". Sinal antigo entra no log
   // e no historico, mas so o das ultimas velas vira aviso.
   const naPonta = idx >= candles.length-2;
-  if(alertsOn&&naPonta)showToast(type,side,price);
+  if(alertsOn&&naPonta){
+    // o placar vai junto do aviso: "ATLAS BUY" sozinho e opiniao, com
+    // "18x 61% +0,34R" ao lado vira opiniao com historico
+    const pl=(typeof placarDe==="function")?placarDe(type,side):null;
+    const extra=pl&&pl.n>=3 ? "  \u00b7 "+pl.n+"x "+pl.acerto.toFixed(0)+"% "
+      +(pl.mediaR>=0?"+":"")+pl.mediaR.toFixed(2)+"R" : "";
+    showToast(type,side+extra,price);
+  }
   // addMarker(type,side,time,price); // Marcadores no gráfico desativados (performance extrema)
 }
 
@@ -2832,7 +2843,7 @@ function startMultiTimers(){
     const bm=document.getElementById("bussola-modal");
     if(bm&&bm.style.display==="flex"&&multiViewOpen&&(Date.now()-multiBussolaUlt)>2000){
       multiBussolaUlt=Date.now();
-      try{ renderBussolaMulti(); }catch(e){}
+      try{ renderBussolaMulti(); renderCorrelacao(); }catch(e){}
     }
     MULTI_SYMS.forEach(sym=>{
       const mc=multiCharts[sym],el=document.getElementById(`multi-timer-${sym}`);
@@ -3966,6 +3977,241 @@ function runBacktest(candlesArr,cfg){
 
   return computeBacktestStats(trades);
 }
+
+// ══════════════════════════════════════════════════════
+// CONTRA-ARGUMENTO
+// ══════════════════════════════════════════════════════
+// Todo o resto do dashboard responde "por que entrar". Nada respondia "o que
+// pesa contra" — e o que evita operacao ruim nao e mais confirmacao, e a
+// objecao que voce nao viu.
+//
+// Cada verificacao devolve um item ou nada. Nenhuma delas e um veto: sao
+// argumentos, com peso, pra voce decidir sabendo o que esta ignorando.
+
+function contraArgumentos(){
+  const itens=[];
+  if(!candles||candles.length<210) return itens;
+  const closes=candles.map(c=>c.close), highs=candles.map(c=>c.high), lows=candles.map(c=>c.low);
+  const vols=candles.map(c=>c.volume==null?null:c.volume);
+  const i=closes.length-1, px=closes[i];
+  const atrV=atrCalc(highs,lows,closes,P.atrLen), atr=atrV[i];
+  const e200=ema(closes,200), e8=ema(closes,8), e16=ema(closes,16);
+
+  // 1. PRECO ESTICADO. Longe demais da media longa, a reversao a media joga
+  //    contra: o movimento pode continuar, mas o preco de entrada e ruim.
+  if(atr>0&&e200[i]!=null){
+    const dist=Math.abs(px-e200[i])/atr;
+    if(dist>=3){
+      itens.push({peso:dist>=5?2:1,
+        txt:"preco a "+dist.toFixed(1)+" ATR da EMA200 — esticado, entrada cara",
+        det:"quanto mais longe da media longa, pior o preco de entrada e maior o espaco pra devolver"});
+    }
+  }
+
+  // 2. VOLUME FRACO. Movimento sem volume costuma nao sustentar. So conta se a
+  //    fonte trouxe volume — nem todas trazem.
+  const volOk=vols.slice(-30).every(v=>v!=null&&isFinite(v));
+  if(volOk){
+    const med=vols.slice(-31,-1).reduce((a,b)=>a+b,0)/30;
+    if(med>0&&vols[i]<med*0.6){
+      itens.push({peso:1,
+        txt:"volume da vela em "+((vols[i]/med)*100).toFixed(0)+"% da media de 30",
+        det:"movimento sem volume costuma nao sustentar"});
+    }
+  }
+
+  // 3. TIMEFRAMES BRIGANDO. Se o Multi-TF esta aberto e os tempos discordam, a
+  //    entrada e contra um dos lados por definicao.
+  if(typeof mtfEstado!=="undefined"&&mtfEstado.filter(Boolean).length>=2){
+    const somas=mtfEstado.filter(Boolean).map(e=>e.cls.sumAngle).filter(v=>v!=null);
+    if(somas.length>=2){
+      const pos=somas.filter(v=>v>0).length, neg=somas.length-pos;
+      if(pos&&neg){
+        itens.push({peso:2,
+          txt:"timeframes discordam: "+pos+" pra cima, "+neg+" pra baixo",
+          det:"entrar aqui e ir contra pelo menos um dos tempos"});
+      }
+    }
+  }
+
+  // 4. SEM LIBERACAO. A sua propria regra: EMA8 e EMA16 das duas acima ou das
+  //    duas abaixo da MA89 e da EMA200.
+  if(typeof estadoLiberacao==="function"){
+    const est=estadoLiberacao(null);
+    if(!est){
+      itens.push({peso:2,txt:"medias embaralhadas — sinal nao liberado",
+        det:"pela sua regra, EMA8 e EMA16 precisam estar as duas do mesmo lado da MA89 e da EMA200"});
+    }
+  }
+
+  // 5. O PLACAR DO PROPRIO SETUP. Se o ultimo sinal e de um tipo que historicamente
+  //    perde, isso pesa mais que qualquer leitura de grafico.
+  if(typeof placarDe==="function"&&signals&&signals.length){
+    const ult=signals[signals.length-1];
+    const pl=placarDe(ult.type,ult.side);
+    if(pl&&pl.n>=5&&pl.mediaR<0){
+      itens.push({peso:2,
+        txt:ult.type+" "+ult.side+" rende "+pl.mediaR.toFixed(2)+"R em "+pl.n+" vezes aqui",
+        det:"o historico deste setup neste ativo e timeframe e negativo"});
+    }
+  }
+
+  // 6. CARTEIRA CONCENTRADA. Quatro posicoes correlacionadas sao uma aposta so.
+  if(typeof multiViewOpen!=="undefined"&&multiViewOpen&&typeof correlacaoMulti==="function"){
+    const c=correlacaoMulti();
+    if(c&&Math.abs(c.media)>=0.7){
+      itens.push({peso:1,
+        txt:"ativos do Multi correlacionados ("+c.media.toFixed(2)+")",
+        det:"abrir nos quatro nao divide risco, multiplica o mesmo"});
+    }
+  }
+
+  // 7. EMA8 x EMA16 ACABOU DE VIRAR CONTRA o lado esticado — sinal de que o
+  //    impulso curto ja perdeu forca.
+  if(e8[i]!=null&&e16[i]!=null&&e8[i-1]!=null&&e16[i-1]!=null){
+    const agora=Math.sign(e8[i]-e16[i]), antes=Math.sign(e8[i-1]-e16[i-1]);
+    if(agora!==antes&&agora!==0){
+      itens.push({peso:1,
+        txt:"EMA8 acabou de cruzar a EMA16 pra "+(agora>0?"cima":"baixo"),
+        det:"o impulso curto mudou de lado agora — esperar confirmar costuma sair mais barato"});
+    }
+  }
+
+  return itens.sort((a,b)=>b.peso-a.peso);
+}
+
+function renderContraArgumento(){
+  const box=document.getElementById("contra-list"), cnt=document.getElementById("contra-count");
+  if(!box) return;
+  let itens=[];
+  try{ itens=contraArgumentos(); }catch(e){ itens=[]; }
+  const peso=itens.reduce((s,x)=>s+x.peso,0);
+  if(cnt){
+    cnt.textContent=itens.length?itens.length+" ("+peso+")":"nenhum";
+    cnt.style.color=peso>=4?"#FF3B30":(peso>=2?"#F5A623":"#00C853");
+  }
+  if(!itens.length){
+    box.innerHTML='<div style="padding:5px 9px;font-size:9px;color:#00C853;">Nada pesando contra no momento.</div>';
+    return;
+  }
+  box.innerHTML=itens.map(x=>{
+    const cor=x.peso>=2?"#FF3B30":"#F5A623";
+    // layout proprio: o .sig-item tem colunas de largura fixa e espremia o
+    // texto numa palavra por linha
+    return '<div title="'+x.det+'" style="display:flex;align-items:flex-start;gap:5px;'
+      +'padding:4px 9px;border-bottom:1px solid var(--bd);">'
+      +'<span style="color:'+cor+';font-size:8px;line-height:1.6;flex-shrink:0;">'
+      +(x.peso>=2?"\u25cf\u25cf":"\u25cf")+"</span>"
+      +'<span style="font-size:9px;color:var(--t2);line-height:1.45;">'+x.txt+"</span></div>";
+  }).join("");
+}
+window.renderContraArgumento=renderContraArgumento;
+window.contraArgumentos=contraArgumentos;
+
+// ══════════════════════════════════════════════════════
+// PLACAR DOS SINAIS
+// ══════════════════════════════════════════════════════
+// O dashboard tinha 25 paineis de opiniao e nenhum numero dizendo se elas
+// funcionam. Aqui cada tipo de sinal ganha o seu historico: pego os sinais que
+// o motor achou nas velas carregadas, simulo o que aconteceu depois de cada um
+// e conto.
+//
+// A regua e a MESMA pra todos de proposito — stop a 1 ATR contra, alvo a 2 ATR
+// a favor, teto de 50 velas. O objetivo e comparar os tipos entre si, e pra
+// isso eles precisam ser medidos igual. Nao e promessa de resultado: e o que
+// aquele setup fez neste ativo e neste timeframe, no historico que esta na tela.
+//
+// O runBacktest nao serve aqui: ele gera as proprias entradas por cruzamento de
+// medias, nao avalia os sinais do motor.
+const PLACAR_STOP_ATR=1, PLACAR_ALVO_ATR=2, PLACAR_TETO_VELAS=50;
+let placarSinais={};
+
+function avaliaSinais(candlesArr,sinais){
+  const out={};
+  if(!candlesArr||candlesArr.length<60||!sinais||!sinais.length) return out;
+  const n=candlesArr.length;
+  const closes=candlesArr.map(c=>c.close), highs=candlesArr.map(c=>c.high), lows=candlesArr.map(c=>c.low);
+  const atrV=atrCalc(highs,lows,closes,P.atrLen);
+  // tempo -> indice, pra achar a vela de cada sinal sem varrer o array toda vez
+  const porTempo={};
+  for(let i=0;i<n;i++) porTempo[candlesArr[i].time]=i;
+
+  sinais.forEach(sig=>{
+    const i=porTempo[Math.floor(sig.time/1000)];
+    if(i==null||i>=n-2) return;                  // sinal da vela em curso ainda nao tem desfecho
+    const atr=atrV[i];
+    if(atr==null||!isFinite(atr)||atr<=0) return;
+    const compra=sig.side.includes("BUY")||sig.side.includes("BULL")||sig.side.includes("HIT");
+    const dir=compra?1:-1;
+    const entrada=sig.price;
+    const stop=entrada-dir*PLACAR_STOP_ATR*atr;
+    const alvo=entrada+dir*PLACAR_ALVO_ATR*atr;
+
+    let r=null;
+    const ate=Math.min(n-1,i+PLACAR_TETO_VELAS);
+    for(let j=i+1;j<=ate;j++){
+      // stop antes do alvo dentro da mesma vela: o conservador, senao o placar
+      // fica otimista de graca
+      if((dir===1&&lows[j]<=stop)||(dir===-1&&highs[j]>=stop)){ r=-1; break; }
+      if((dir===1&&highs[j]>=alvo)||(dir===-1&&lows[j]<=alvo)){ r=PLACAR_ALVO_ATR/PLACAR_STOP_ATR; break; }
+    }
+    // nao bateu nem um nem outro no teto: fecha no preco e mede em R
+    if(r===null) r=((closes[ate]-entrada)*dir)/(PLACAR_STOP_ATR*atr);
+
+    const chave=sig.type+" "+(compra?"COMPRA":"VENDA");
+    const g=out[chave]||(out[chave]={chave,n:0,ganhos:0,somaR:0,somaGanho:0,somaPerda:0});
+    g.n++;
+    if(r>0){ g.ganhos++; g.somaGanho+=r; } else { g.somaPerda+=Math.abs(r); }
+    g.somaR+=r;
+  });
+
+  Object.values(out).forEach(g=>{
+    g.acerto = g.n ? (g.ganhos/g.n*100) : 0;
+    g.mediaR = g.n ? (g.somaR/g.n) : 0;
+    g.pf = g.somaPerda>0 ? (g.somaGanho/g.somaPerda) : (g.somaGanho>0?99:0);
+  });
+  return out;
+}
+
+function atualizaPlacarSinais(){
+  try{ placarSinais=avaliaSinais(candles,signals); }catch(e){ placarSinais={}; }
+  renderPlacarSinais();
+}
+
+function renderPlacarSinais(){
+  const box=document.getElementById("placar-list"), cnt=document.getElementById("placar-count");
+  if(!box) return;
+  const linhas=Object.values(placarSinais).filter(g=>g.n>=3).sort((a,b)=>b.mediaR-a.mediaR);
+  if(cnt) cnt.textContent=linhas.length?linhas.length+" tipos":"--";
+  if(!linhas.length){
+    box.innerHTML='<div style="padding:5px 9px;font-size:9px;color:var(--t3);">Sem sinais suficientes no historico carregado (minimo 3 por tipo).</div>';
+    return;
+  }
+  box.innerHTML=linhas.map(g=>{
+    // a media em R e o numero que decide: acerto alto com R medio negativo e
+    // muito ganho pequeno pago por poucas perdas grandes
+    const cor=g.mediaR>=0.15?"#00C853":(g.mediaR<=-0.15?"#FF3B30":"#F5A623");
+    const compra=g.chave.includes("COMPRA");
+    // grid de colunas fixas: com o .sig-item o nome do tipo colidia com o "103x"
+    return '<div title="'+g.n+' sinais no historico carregado \u00b7 stop 1 ATR, alvo 2 ATR, teto de 50 velas"'
+      +' style="display:grid;grid-template-columns:1fr auto auto auto auto;gap:6px;align-items:center;'
+      +'padding:4px 9px;border-bottom:1px solid var(--bd);font-size:9px;">'
+      +'<span style="color:'+(compra?"#00C853":"#FF3B30")+';font-weight:800;white-space:nowrap;'
+      +'overflow:hidden;text-overflow:ellipsis;">'+g.chave+"</span>"
+      +'<span style="color:var(--t3);">'+g.n+"x</span>"
+      +'<span style="color:var(--t2);">'+g.acerto.toFixed(0)+"%</span>"
+      +'<span style="color:var(--t2);">PF '+(g.pf>=99?"--":g.pf.toFixed(2))+"</span>"
+      +'<span style="color:'+cor+';font-weight:800;font-family:var(--mono);">'
+      +(g.mediaR>=0?"+":"")+g.mediaR.toFixed(2)+"R</span></div>";
+  }).join("");
+}
+
+// O placar de um tipo de sinal, pra mostrar junto do aviso
+function placarDe(type,side){
+  const compra=side.includes("BUY")||side.includes("BULL")||side.includes("HIT");
+  return placarSinais[type+" "+(compra?"COMPRA":"VENDA")]||null;
+}
+window.atualizaPlacarSinais=atualizaPlacarSinais;
 
 function computeBacktestStats(trades){
   const total=trades.length;
@@ -5197,6 +5443,80 @@ const BUSSOLA_MEDIAS=[
   {key:"ema98",p:98},{key:"ema200",p:200},
 ];
 
+// CORRELACAO ENTRE OS ATIVOS. Quando as quatro bussolas apontam pro mesmo
+// lado, isso NAO e quatro confirmacoes — pode ser uma aposta so, quadruplicada.
+// BTC, ETH, ouro e prata andam juntos em boa parte do tempo, e sem esse numero
+// da pra abrir quatro posicoes achando que diversificou.
+//
+// Correlacao de Pearson sobre os RETORNOS (nao sobre os precos: preco e serie
+// nao estacionaria, e dois ativos subindo dao correlacao alta mesmo sem terem
+// nada a ver um com o outro).
+const CORR_VELAS=120;
+
+function correlacao(a,b){
+  const n=Math.min(a.length,b.length);
+  if(n<20) return null;
+  const x=a.slice(-n), y=b.slice(-n);
+  const mx=x.reduce((s,v)=>s+v,0)/n, my=y.reduce((s,v)=>s+v,0)/n;
+  let sxy=0,sxx=0,syy=0;
+  for(let i=0;i<n;i++){ const dx=x[i]-mx, dy=y[i]-my; sxy+=dx*dy; sxx+=dx*dx; syy+=dy*dy; }
+  const d=Math.sqrt(sxx*syy);
+  return d>0 ? sxy/d : null;
+}
+
+function retornosDe(velas,quantas){
+  if(!velas||velas.length<2) return [];
+  const c=velas.slice(-(quantas+1)).map(v=>v.close);
+  const r=[];
+  for(let i=1;i<c.length;i++){ if(c[i-1]>0) r.push((c[i]-c[i-1])/c[i-1]); }
+  return r;
+}
+
+// Devolve os pares e o "aglomerado": a maior correlacao media de um ativo com
+// os outros, que e o numero que diz se a carteira e uma aposta so.
+function correlacaoMulti(){
+  const ret={};
+  MULTI_SYMS.forEach(s=>{
+    const mc=multiCharts[s];
+    if(mc&&mc.candles&&mc.candles.length>20) ret[s]=retornosDe(mc.candles,CORR_VELAS);
+  });
+  const simbolos=Object.keys(ret);
+  if(simbolos.length<2) return null;
+  const pares=[];
+  for(let i=0;i<simbolos.length;i++) for(let j=i+1;j<simbolos.length;j++){
+    const c=correlacao(ret[simbolos[i]],ret[simbolos[j]]);
+    if(c!=null) pares.push({a:simbolos[i],b:simbolos[j],c});
+  }
+  if(!pares.length) return null;
+  const media=pares.reduce((s,p)=>s+p.c,0)/pares.length;
+  const maior=pares.reduce((m,p)=>Math.abs(p.c)>Math.abs(m.c)?p:m,pares[0]);
+  return {pares,media,maior};
+}
+window.correlacaoMulti=correlacaoMulti;
+
+function renderCorrelacao(){
+  const box=document.getElementById("corr-box");
+  if(!box) return;
+  const r=correlacaoMulti();
+  if(!r){ box.innerHTML='<div style="font-size:9px;color:var(--t3);">sem dado suficiente</div>'; return; }
+  // acima de 0,7 os ativos andam praticamente juntos: quatro posicoes viram uma
+  const aviso = Math.abs(r.media)>=0.7
+    ? "os ativos andam juntos: 4 posicoes = 1 aposta"
+    : (Math.abs(r.media)>=0.4 ? "correlacao moderada" : "andam separados");
+  const cor = Math.abs(r.media)>=0.7?"#FF3B30":(Math.abs(r.media)>=0.4?"#F5A623":"#00C853");
+  box.innerHTML='<div style="display:flex;justify-content:space-between;font-size:9px;margin-bottom:3px;">'
+    +'<span style="color:var(--t2);">media dos pares</span>'
+    +'<span style="color:'+cor+';font-weight:800;font-family:var(--mono);">'+r.media.toFixed(2)+"</span></div>"
+    +'<div style="font-size:9px;color:'+cor+';margin-bottom:4px;">'+aviso+"</div>"
+    +r.pares.map(p=>{
+      const c2=Math.abs(p.c)>=0.7?"#FF3B30":(Math.abs(p.c)>=0.4?"#F5A623":"var(--t2)");
+      return '<div style="display:flex;justify-content:space-between;font-size:9px;">'
+        +'<span style="color:var(--t3);">'+p.a.replace("USDT","")+" x "+p.b.replace("USDT","")+"</span>"
+        +'<span style="color:'+c2+';font-family:var(--mono);">'+p.c.toFixed(2)+"</span></div>";
+    }).join("");
+}
+window.renderCorrelacao=renderCorrelacao;
+
 function renderBussolaMulti(){
   const box=document.getElementById("bussola-body-multi");
   if(!box) return;
@@ -5265,10 +5585,12 @@ function toggleBussolaModal() {
   const atual=document.getElementById("bussola-body-atual");
   if(atual) atual.style.display=noMulti?"none":"";
   if(multi) multi.style.display=noMulti?"grid":"none";
+  const cx=document.getElementById("corr-box");
+  if(cx) cx.style.display=noMulti?"block":"none";
   // 380px nao comportam o grid 2x2 — as caixas transbordavam por cima do titulo
   el.style.width=noMulti?"440px":"380px";
 
-  if(noMulti){ renderBussolaMulti(); return; }
+  if(noMulti){ renderBussolaMulti(); renderCorrelacao(); return; }
 
   if(typeof renderDirecaoCompass==="function" && typeof direcaoAngles!=="undefined"){
     renderDirecaoCompass(direcaoAngles);
@@ -5449,6 +5771,39 @@ function updatePotential() {
   const suggestedLot = (stopDist > 0 && contractSize > 0) ? riskGoal / (stopDist * contractSize) : 0;
   document.getElementById('pot-lot-suggested').textContent = suggestedLot.toFixed(3);
 }
+
+// O lote sugerido ja saia certo — risco em dinheiro dividido pela distancia do
+// stop — mas o stop tinha que ser digitado a mao ou vir de um clique no fib.
+// Adivinhar o stop e o erro que estraga a conta toda, entao aqui ele sai da
+// volatilidade: 1,5 ATR do preco, no lado certo conforme a direcao escolhida.
+const STOP_ATR_MULT=1.5;
+function stopPorATR(){
+  if(!candles||candles.length<P.atrLen+2){
+    if(typeof showInfoToast==="function") showInfoToast("STOP","sem velas suficientes");
+    return;
+  }
+  const highs=candles.map(c=>c.high), lows=candles.map(c=>c.low), closes=candles.map(c=>c.close);
+  const atrV=atrCalc(highs,lows,closes,P.atrLen);
+  const atr=atrV[atrV.length-1];
+  if(atr==null||!isFinite(atr)||atr<=0){
+    if(typeof showInfoToast==="function") showInfoToast("STOP","ATR indisponivel");
+    return;
+  }
+  const px=closes[closes.length-1];
+  // ttSide diz se a operacao e de alta ou de baixa; o stop vai do lado oposto
+  const paraCima=(typeof ttSide==="undefined")||ttSide==="up";
+  const stop=paraCima ? px-STOP_ATR_MULT*atr : px+STOP_ATR_MULT*atr;
+  const el=document.getElementById("pot-stop-price");
+  if(el){
+    el.value=stop.toFixed(2);
+    if(typeof updatePotential==="function") updatePotential();
+  }
+  if(typeof showInfoToast==="function"){
+    showInfoToast("STOP","stop a "+STOP_ATR_MULT+" ATR: "+stop.toFixed(2)
+      +"  (ATR "+atr.toFixed(2)+")");
+  }
+}
+window.stopPorATR=stopPorATR;
 
 window.togglePotential = togglePotential;
 window.updatePotential = updatePotential;
