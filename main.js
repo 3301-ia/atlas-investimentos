@@ -2770,17 +2770,69 @@ function closeMultiCharts(){
 // Timer de contagem regressiva em cada painel do Multi — serve pra auditar
 // se a troca de vela de cada ativo esta acontecendo no horario certo.
 let multiTimerInterval=null;
+// O Multi dependia SO do WebSocket: carregava o historico uma vez e so andava
+// se chegasse tick. Com o WS caido, as velas envelheciam, o contador travava
+// em 00:00 e os precos congelavam — sem nada avisando que a conexao morreu.
+// Agora o mesmo intervalo de 1s que desenha o contador vigia a chegada de
+// dado e recarrega o historico quando ele para.
+let multiUltimoTick=0;
+let multiBussolaUlt=0;
+let multiUltimaRecarga=0;
+const MULTI_SEM_DADO_MS=20000;   // sem tick por 20s = alguma coisa errada
+const MULTI_RECARGA_MS=30000;    // no maximo uma recarga a cada 30s
+
+async function recarregaMulti(){
+  const agora=Date.now();
+  if(agora-multiUltimaRecarga<MULTI_RECARGA_MS) return;
+  multiUltimaRecarga=agora;
+  const mySession=multiSession;
+  for(const sym of MULTI_SYMS){
+    if(mySession!==multiSession) return;
+    const mc=multiCharts[sym];
+    if(!mc) continue;
+    try{
+      const d=await fetchCandles(sym,currentTF,300);
+      if(d&&d.length&&mySession===multiSession){
+        mc.candles=d;
+        applyMultiSeries(sym);
+        const px=document.getElementById(`multi-px-${sym}`);
+        if(px) px.textContent="$"+d[d.length-1].close.toFixed(sym.startsWith("XAG")?3:2);
+      }
+    }catch(e){ /* a proxima tentativa cobre */ }
+  }
+  // o WS pode ter morrido sem disparar onclose
+  if(multiWS&&multiWS.readyState>1){ try{multiWS.close();}catch(e){} multiWS=null; }
+  if(!multiWS&&multiViewOpen) openMultiWS();
+}
+
 function startMultiTimers(){
   if(multiTimerInterval)clearInterval(multiTimerInterval);
+  multiUltimoTick=Date.now();
   multiTimerInterval=setInterval(()=>{
     const tfSec=tfToSeconds(currentTF);
     const nowSec=Math.floor((Date.now()+serverTimeOffset)/1000);
+    const semDado=(Date.now()-multiUltimoTick)>MULTI_SEM_DADO_MS;
+    if(semDado) recarregaMulti();
+    // as 4 bussolas acompanham enquanto o modal estiver aberto. A cada 2s, nao
+    // a cada segundo: sao 5 EMAs e um ATR sobre 300 velas vezes 4 ativos.
+    const bm=document.getElementById("bussola-modal");
+    if(bm&&bm.style.display==="flex"&&multiViewOpen&&(Date.now()-multiBussolaUlt)>2000){
+      multiBussolaUlt=Date.now();
+      try{ renderBussolaMulti(); }catch(e){}
+    }
     MULTI_SYMS.forEach(sym=>{
       const mc=multiCharts[sym],el=document.getElementById(`multi-timer-${sym}`);
       if(!mc||!el||!mc.candles.length)return;
       const last=mc.candles[mc.candles.length-1];
       const diff=(last.time+tfSec)-nowSec;
-      if(diff<=0){el.textContent='00:00';return;}
+      // vela vencida com o dado parado e sinal de conexao morta, nao de mercado
+      // parado: diz isso em vez de fingir uma contagem em 00:00
+      if(diff<=0){
+        el.textContent=semDado?"sem dado":"00:00";
+        el.style.color=semDado?"var(--red)":"";
+        return;
+      }
+      el.style.color="";
       const h=Math.floor(diff/3600),m=Math.floor((diff%3600)/60),s=diff%60;
       el.textContent=h>0?`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`:`${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
     });
@@ -4155,6 +4207,7 @@ function scheduleMultiTick(sym,price,ts){
 }
 
 function applyMultiTick(sym,price,ts_ms){
+  multiUltimoTick=Date.now();   // o vigia usa isto pra saber se ainda chega dado
   const mc=multiCharts[sym];if(!mc||!mc.candles.length||!mc.live)return;
   let last=mc.candles[mc.candles.length-1];
   const tfSec=tfToSeconds(currentTF);
@@ -5093,15 +5146,96 @@ window.toggleTerminalTab = toggleTerminalTab;
 window.updateTerminalUI = updateTerminalUI;
 
 
-function toggleBussolaModal() {
-  const el = document.getElementById('bussola-modal');
-  if(!el) return;
-  const isHidden = el.style.display === 'none' || el.style.display === '';
-  if(isHidden){
-    const cg=document.getElementById('confluator-gold-modal');
-    if(cg && cg.style.display!=='none')toggleConfluatorGoldModal();
+// A BUSSOLA DOS 4 ATIVOS. Com o modo Multi ligado, o modal deixa de mostrar o
+// ativo do grafico principal e passa a mostrar os quatro do painel, cada um
+// com a sua bussola e o seu placar. Reusa o maAngleDeg e o classifyDirecao,
+// entao a leitura e a mesma do painel lateral e do Multi-TF.
+const BUSSOLA_MEDIAS=[
+  {key:"ema8",p:8},{key:"ema16",p:16},{key:"ema55",p:55},
+  {key:"ema98",p:98},{key:"ema200",p:200},
+];
+
+function renderBussolaMulti(){
+  const box=document.getElementById("bussola-body-multi");
+  if(!box) return;
+  // a moldura de cada ativo so e criada uma vez; depois so os valores mudam
+  if(!box.children.length){
+    box.style.display="grid";
+    box.style.gridTemplateColumns="1fr 1fr";
+    box.style.gap="8px";
+    box.innerHTML=MULTI_SYMS.map(sym=>
+      '<div style="border:1px solid var(--bd2);border-radius:6px;padding:6px;">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">'
+      +'<span style="font-size:10px;font-weight:800;">'+sym.replace("USDT","")+"</span>"
+      +'<span id="bm-est-'+sym+'" style="font-size:9px;font-weight:700;color:var(--t3);">--</span></div>'
+      +'<div style="display:flex;gap:6px;align-items:center;">'
+      +'<svg id="bm-svg-'+sym+'" width="62" height="62" viewBox="0 0 110 110" style="flex-shrink:0;"></svg>'
+      +'<div style="font-size:9px;font-family:var(--mono);line-height:1.5;" id="bm-leg-'+sym+'"></div>'
+      +"</div></div>").join("");
   }
-  el.style.display = isHidden ? 'flex' : 'none';
+
+  MULTI_SYMS.forEach(sym=>{
+    const mc=multiCharts[sym];
+    const est=document.getElementById("bm-est-"+sym), leg=document.getElementById("bm-leg-"+sym);
+    if(!mc||!mc.candles||mc.candles.length<210){
+      if(est){ est.textContent="sem dado"; est.style.color="var(--t3)"; }
+      if(leg) leg.innerHTML="";
+      return;
+    }
+    const closes=mc.candles.map(c=>c.close), highs=mc.candles.map(c=>c.high), lows=mc.candles.map(c=>c.low);
+    const atrV=atrCalc(highs,lows,closes,14), idx=closes.length-1;
+    const angles={};
+    BUSSOLA_MEDIAS.forEach(m=>{ angles[m.key]=maAngleDeg(ema(closes,m.p),atrV,idx,DIRECAO_LOOKBACK); });
+    const cls=classifyDirecao(angles);
+    renderDirecaoCompass(angles,"bm-svg-"+sym);
+    const soma=cls.sumAngle;
+    const rotulo=cls.isFlat?"LATERAL":(cls.direcao==="alta"?"ALTA":"BAIXA");
+    const cor=cls.isFlat?"#8b9bb4":(cls.direcao==="alta"?"#00C853":"#FF3B30");
+    if(est){ est.textContent=rotulo; est.style.color=cor; }
+    if(leg){
+      const graus=BUSSOLA_MEDIAS.map(m=>{
+        const a=angles[m.key];
+        return '<div style="color:'+clarear(C[m.key],.45)+'">'+m.key.toUpperCase()+" "
+          +(a==null?"--":(a>=0?"+":"")+a.toFixed(0)+"\u00b0")+"</div>";}).join("");
+      leg.innerHTML=graus+'<div style="color:'+cor+';font-weight:700;">soma '
+        +(soma==null?"--":(soma>=0?"+":"")+soma.toFixed(0)+"\u00b0")+"</div>";
+    }
+  });
+}
+window.renderBussolaMulti=renderBussolaMulti;
+
+// Esta era a TERCEIRA definicao do mesmo toggle: havia duas sobrescritas mais
+// abaixo, e so a ultima rodava. Ficou uma so, com o que cada uma fazia.
+function toggleBussolaModal() {
+  const el = document.getElementById("bussola-modal");
+  if(!el) return;
+  const aberto = el.style.display === "flex" || el.style.display === "block";
+  if(aberto){ el.style.display="none"; return; }
+
+  const cg=document.getElementById("confluator-gold-modal");
+  if(cg && cg.style.display!=="none" && typeof toggleConfluatorGoldModal==="function") toggleConfluatorGoldModal();
+  el.style.display="flex";
+
+  // multiViewOpen e "let" no escopo do modulo, entao NAO existe em window:
+  // usar window.multiViewOpen dava undefined e os dois corpos apareciam juntos
+  const noMulti=(typeof multiViewOpen!=="undefined")&&!!multiViewOpen;
+  const multi=document.getElementById("bussola-body-multi");
+  const atual=document.getElementById("bussola-body-atual");
+  if(atual) atual.style.display=noMulti?"none":"";
+  if(multi) multi.style.display=noMulti?"grid":"none";
+  // 380px nao comportam o grid 2x2 — as caixas transbordavam por cima do titulo
+  el.style.width=noMulti?"440px":"380px";
+
+  if(noMulti){ renderBussolaMulti(); return; }
+
+  if(typeof renderDirecaoCompass==="function" && typeof direcaoAngles!=="undefined"){
+    renderDirecaoCompass(direcaoAngles);
+    if(typeof classifyDirecao==="function"){
+      renderDirecaoReadout(direcaoAngles, classifyDirecao(direcaoAngles));
+      renderDirecaoStateBadge(classifyDirecao(direcaoAngles));
+    }
+    if(typeof renderDirecaoHistory==="function") renderDirecaoHistory();
+  }
 }
 window.toggleBussolaModal = toggleBussolaModal;
 
@@ -5931,16 +6065,7 @@ function mtfDesenhaCelula(n,data,linhas){
 function mtfDesenhaLegenda(n,angles,cls){
   const el=document.getElementById("mtf-compass-legend-"+n);
   if(!el) return;
-  // A caixa da legenda e escura (rgba(19,25,34,.7)) e as cores das medias sao
-  // escuras tambem — EMA8 azul, EMA16 rosa e EMA55 verde sumiam no fundo.
-  // Clareio cada cor na direcao do branco so pra legenda; as linhas do grafico
-  // continuam com a cor original.
-  const clarear=(hex,f)=>{
-    const n=parseInt(hex.slice(1),16);
-    const r=(n>>16)&255, g=(n>>8)&255, b=n&255;
-    const m=v=>Math.round(v+(255-v)*f);
-    return "rgb("+m(r)+","+m(g)+","+m(b)+")";
-  };
+  // legenda sobre fundo escuro: as cores das medias precisam ser clareadas
   const linhas=MTF_MEDIAS.map(m=>{
     const a=angles[m.key];
     const txt=(a==null)?"--":(a>=0?"+":"")+a.toFixed(0)+"\u00b0";
@@ -6153,26 +6278,8 @@ window.toggleMtfView = toggleMtfView;
 
 // Re-assign modals explicitly to ensure they work on click
 
-window.toggleBussolaModal = function() {
-  const m = document.getElementById('bussola-modal');
-  if(!m) return;
-  if(m.style.display === 'block' || m.style.display === 'flex'){
-    m.style.display = 'none';
-  } else {
-    m.style.display = 'flex';
-    if(typeof renderDirecaoCompass === 'function' && typeof direcaoAngles !== 'undefined'){
-      renderDirecaoCompass(direcaoAngles);
-      if(typeof classifyDirecao === 'function') {
-         renderDirecaoReadout(direcaoAngles, classifyDirecao(direcaoAngles));
-         renderDirecaoStateBadge(classifyDirecao(direcaoAngles));
-      }
-      if(typeof renderDirecaoHistory === 'function') {
-         renderDirecaoHistory();
-      }
-    }
-  }
-};
-
+// A sobrescrita que existia aqui foi fundida na definicao la de cima — era
+// ela que de fato rodava, e por isso a versao com os 4 ativos nao aparecia.
 
 window.togglePotential = function() {
   const el = document.getElementById('potential-card');
@@ -6240,6 +6347,18 @@ window.updatePotential = updatePotential;
 //   RECUO       — alguma media perdeu boa parte do seu pico de angulo —
 //                 comecando a reverter.
 // ══════════════════════════════════════════════════════
+// As caixas de legenda sao escuras e varias cores de media tambem — EMA8 azul,
+// EMA55 verde e EMA200 roxo sumiam no fundo. Clareio a cor na direcao do
+// branco so no texto; as linhas do grafico seguem com a cor original, senao
+// deixariam de casar com o grafico principal.
+function clarear(hex,f){
+  const n=parseInt(String(hex).slice(1),16);
+  if(!isFinite(n)) return hex;
+  const r=(n>>16)&255, g=(n>>8)&255, b=n&255;
+  const m=v=>Math.round(v+(255-v)*(f==null?.45:f));
+  return "rgb("+m(r)+","+m(g)+","+m(b)+")";
+}
+
 const DIRECAO_MAS=[
   {key:'ema8',lbl:'EMA8',color:C.ema8},
   {key:'ema16',lbl:'EMA16',color:C.ema16},
