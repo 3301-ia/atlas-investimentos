@@ -364,6 +364,9 @@ function runSignals(closes,highs,lows,opens){
   const n=closes.length; if(n<250)return;
   const e8=ema(closes,8),e16=ema(closes,16),e55=ema(closes,55),e98=ema(closes,98),e200=ema(closes,200);
   const m56=sma(closes,56),m89=sma(closes,89),r14=rsiCalc(closes,14);
+  // o alarme das medias precisa do ultimo valor de cada uma a cada tick
+  ultimasEmas={ema8:e8[n-1],ema16:e16[n-1],ema55:e55[n-1],ema98:e98[n-1],ema200:e200[n-1],
+               ma56:m56[n-1],ma89:m89[n-1]};
   const rL=rsiCalc(closes,P.rsiLen),sL=stochCalc(rL,P.stochLen),kL=sma(sL,P.kSmooth),dL=sma(kL,P.dSmooth);
   const atrV=atrCalc(highs,lows,closes,P.atrLen);
 
@@ -1408,7 +1411,81 @@ function forceChartTick(price, ts_ms){
   requestAnimationFrame(()=>{tickScheduled=false;const t=pendingTick;pendingTick=null;if(t)applyTick(t.price,t.ts);});
 }
 
+// ══════════════════════════════════════════════════════
+// ALARMES DE NIVEL
+// ══════════════════════════════════════════════════════
+// Toca quando o preco CRUZA o nivel, nao quando chega perto: guardo o preco
+// do tick anterior e so disparo se o nivel ficou entre os dois. Sem isso, um
+// preco oscilando em cima do nivel dispararia a cada tick.
+// Cobre as tres fontes pedidas: as ferramentas de fibo (todos os niveis
+// desenhados), as linhas horizontais de preco e as medias.
+// Usa o mesmo botao de sino que ja existia (alertsOn) e o mesmo toast + beep
+// dos sinais, pra nao criar um segundo sistema de aviso.
+let ultimasEmas=null;
+let alarmePrecoAnterior=null;
+const alarmeUltimoDisparo={};
+const ALARME_ESPERA_MS=60000;  // o mesmo nivel nao repete dentro de um minuto
+
+const ALARME_NOMES={ema8:"EMA8",ema16:"EMA16",ema55:"EMA55",ema98:"EMA98",
+                    ema200:"EMA200",ma56:"MA56",ma89:"MA89"};
+
+// Todos os niveis que valem alarme agora, ja com o preco de cada um.
+function niveisDeAlarme(){
+  const out=[];
+  let lista=[];
+  try{ lista=drawings()||[]; }catch(e){ lista=[]; }
+  lista.forEach((d,i)=>{
+    if(d.type==="horizontal"&&d.p0&&isFinite(d.p0.price)){
+      out.push({chave:"preco:"+i,rotulo:"PRECO",nome:d.p0.price.toFixed(2),preco:d.p0.price});
+    }
+    if((d.type==="fibbo"||d.type==="fibretr")&&d.p0&&d.p1){
+      const diff=d.p0.price-d.p1.price;
+      const lvs=d.type==="fibretr"?fibRetrLevels:[...fibLevels,...fibBreakLevels];
+      lvs.forEach(lv=>{
+        const pr=d.p1.price+diff*lv;
+        if(isFinite(pr)) out.push({chave:"fib:"+i+":"+lv,rotulo:"FIB",nome:String(lv),preco:pr});
+      });
+    }
+  });
+  if(ultimasEmas) Object.keys(ultimasEmas).forEach(k=>{
+    const v=ultimasEmas[k];
+    if(v!=null&&isFinite(v)) out.push({chave:"media:"+k,rotulo:"MEDIA",nome:ALARME_NOMES[k]||k,preco:v});
+  });
+  return out;
+}
+
+function verificaAlarmes(preco){
+  const ant=alarmePrecoAnterior;
+  alarmePrecoAnterior=preco;
+  // sino desligado: sigo guardando o preco, senao o primeiro tick depois de
+  // ligar compararia contra um valor velho e dispararia tudo de uma vez
+  if(!alertsOn||ant==null||ant===preco||!isFinite(preco)) return;
+  const baixo=Math.min(ant,preco), alto=Math.max(ant,preco), subindo=preco>ant;
+  const agora=Date.now();
+  // Num tick normal o preco cruza um nivel, no maximo. Mas um gap de abertura
+  // ou uma recarga do historico pode pular dezenas de uma vez — e sao dezenas
+  // de beeps. Toco os quatro primeiros e resumo o resto num aviso so.
+  const TETO_POR_TICK=4;
+  const cruzados=niveisDeAlarme().filter(nv=>{
+    if(!(nv.preco>baixo&&nv.preco<=alto)) return false;
+    const ultimo=alarmeUltimoDisparo[nv.chave];
+    return !(ultimo&&agora-ultimo<ALARME_ESPERA_MS);
+  });
+  // do mais proximo do preco novo pro mais distante: o ultimo cruzado importa mais
+  cruzados.sort((x,y)=>Math.abs(x.preco-preco)-Math.abs(y.preco-preco));
+  cruzados.forEach(nv=>{ alarmeUltimoDisparo[nv.chave]=agora; });
+  cruzados.slice(0,TETO_POR_TICK).forEach(nv=>{
+    showToast(nv.rotulo,(subindo?"\u25b2 ":"\u25bc ")+nv.nome,preco);
+  });
+  const resto=cruzados.length-TETO_POR_TICK;
+  if(resto>0&&typeof showInfoToast==="function"){
+    showInfoToast("ALARMES","mais "+resto+" niveis cruzados neste movimento");
+  }
+}
+window.verificaAlarmes=verificaAlarmes;
+
 function applyTick(price, ts_ms){
+  verificaAlarmes(price);
   if(!candles.length||!candleSeries)return;
   let last=candles[candles.length-1];
   const tfSec=tfToSeconds(currentTF);
@@ -1654,7 +1731,8 @@ function openWS(){
 // ══════════════════════════════════════════════════════
 function showToast(type,side,price){
   const a=document.getElementById('toasts'),t=document.createElement('div');
-  const isBuy=side.includes('BUY')||side.includes('BULL')||side.includes('HIT');
+  // os alarmes de nivel usam a seta pra dizer o lado do cruzamento
+  const isBuy=side.includes('BUY')||side.includes('BULL')||side.includes('HIT')||side.includes('\u25b2');
   t.className=`toast ${type==='FIB'?'fib':isBuy?'buy':'sell'}`;
   t.innerHTML=`<div class="toast-hd"><span class="toast-title">${type} ${side}</span><button class="toast-x" onclick="this.closest('.toast').remove()">x</button></div><div class="toast-msg">${currentSym.replace('USDT','')} ${currentTF}</div><div class="toast-px">@ ${price.toFixed(2)}</div>`;
   a.appendChild(t);setTimeout(()=>{try{t.remove();}catch{}},8000);beep();
