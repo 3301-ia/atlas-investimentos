@@ -988,6 +988,11 @@
             </div>
 
             <!-- FIBONACCI -->
+            <!-- CONTRA-ARGUMENTO: tudo aqui do lado diz por que entrar. Esta
+                 secao diz o que pesa contra — e o que evita operacao ruim. -->
+            <div class="sp-sec"><span>CONTRA-ARGUMENTO</span><span class="sp-sec-val" id="contra-count" style="color:var(--red);">--</span></div>
+            <div class="sig-list" id="contra-list" style="max-height:170px;flex:none;"><div style="padding:5px 9px;font-size:9px;color:var(--t3);">Carregando...</div></div>
+
             <!-- PLACAR: como cada tipo de sinal se saiu no historico carregado.
                  Mesma regua pra todos (stop 1 ATR, alvo 2 ATR, teto 50 velas),
                  pra os tipos serem comparaveis entre si. -->
@@ -1129,6 +1134,8 @@
   <!-- Com o modo Multi ligado, a bussola mostra os 4 ativos em vez do ativo do
        grafico principal. O conteudo e montado em JS a partir do MULTI_SYMS. -->
   <div id="bussola-body-multi" style="display:none;"></div>
+  <!-- Correlacao dos 4: quatro bussolas iguais podem ser uma aposta so. -->
+  <div id="corr-box" style="display:none;margin-top:8px;padding-top:6px;border-top:1px solid var(--bd);"></div>
 
   <div id="bussola-body-atual">
     <div class="sp-sec" style="background:none;border:none;padding:0;margin-bottom:4px;"><span>ESTADO</span><span class="sp-sec-val" id="direcao-state-badge" style="font-size:10px;">--</span></div>
@@ -1197,7 +1204,7 @@
       <div class="pot-divider"></div>
       <div class="pot-row">
         <label>Preço de Stop</label>
-        <input type="number" id="pot-stop-price" placeholder="clique num fib" oninput="updatePotential()">
+        <input type="number" id="pot-stop-price" placeholder="clique num fib" oninput="updatePotential()"><button class="btn" onclick="stopPorATR()" title="Poe o stop a 1,5 ATR do preco, no lado certo da operacao" style="padding:1px 5px;font-size:9px;margin-left:4px;">ATR</button>
       </div>
       <div class="pot-row">
         <label>Preço de Alvo</label>
