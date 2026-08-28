@@ -5388,6 +5388,7 @@ function mtfDesenhaCelula(n,data,linhas){
   const angles={};
   MTF_MEDIAS.forEach(m=>{ angles[m.key]=maAngleDeg(series[m.key],atrV,idx,DIRECAO_LOOKBACK); });
   const cls=classifyDirecao(angles);
+  cls.angles=angles; // o title do placar lista grau a grau
   mtfEstado[n-1]={tf:mtfTfs[n-1],angles,cls,preco:closes[idx],ultimoT:data[data.length-1].time};
 
   const px=document.getElementById("mtf-px-"+n);
@@ -5413,31 +5414,38 @@ function mtfDesenhaLegenda(n,angles,cls){
   el.innerHTML=linhas.join("");
 }
 
-// mtf-comp-val-N e o placar daquele timeframe: a media dos angulos das cinco
-// medias, que e o mesmo numero que move o ponteiro da bussola. mtf-comp-total
-// soma as quatro celulas, entao diz se os timeframes concordam entre si.
+// O placar e SOMA de graus, nao media. Cada celula soma os angulos das suas
+// cinco medias; o total soma as quatro celulas. Assim uma media parada nao
+// dilui as outras — ela so nao contribui — e o numero cresce com quantas
+// medias estao inclinadas E com o quanto elas inclinam.
 function mtfDesenhaComparacao(n,cls){
   const el=document.getElementById("mtf-comp-val-"+n);
-  if(!el) return;
-  const v=cls.avgAngle;
-  el.textContent=(v==null)?"--":(v>=0?"+":"")+v.toFixed(1)+"\u00b0";
-  el.style.color=(v==null)?"var(--t3)":(cls.isFlat?"#8b9bb4":(v>=0?"#00C853":"#FF3B30"));
   const lbl=document.getElementById("mtf-comp-lbl-"+n);
   if(lbl) lbl.textContent=mtfTfs[n-1].toUpperCase();
+  if(!el) return;
+  const v=cls.sumAngle;
+  el.textContent=(v==null)?"--":(v>=0?"+":"")+v.toFixed(1)+"\u00b0";
+  el.style.color=(v==null)?"var(--t3)":(cls.isFlat?"#8b9bb4":(v>=0?"#00C853":"#FF3B30"));
+  const graus=MTF_MEDIAS.map(m=>{const a=cls.angles?cls.angles[m.key]:null;
+    return m.key.toUpperCase()+" "+(a==null?"--":(a>=0?"+":"")+a.toFixed(1)+"\u00b0");}).join("  ");
+  el.title=mtfTfs[n-1].toUpperCase()+": "+graus+"   soma "+((v==null)?"--":v.toFixed(1)+"\u00b0");
 }
 
+// Soma das quatro somas. O n/4 ao lado diz quantos tempos apontam pro mesmo
+// lado do total — a soma sozinha nao mostra se ela veio de todos concordando
+// ou de um tempo muito inclinado contra os outros.
 function mtfAtualizaTotal(){
   const el=document.getElementById("mtf-comp-total");
   if(!el) return;
-  const vals=mtfEstado.filter(Boolean).map(e=>e.cls.avgAngle).filter(v=>v!=null);
-  if(!vals.length){ el.textContent="--"; return; }
-  const media=vals.reduce((a,b)=>a+b,0)/vals.length;
-  const mesmoLado=vals.filter(v=>Math.sign(v)===Math.sign(media)).length;
-  el.textContent=(media>=0?"+":"")+media.toFixed(1)+"\u00b0  "+mesmoLado+"/"+vals.length;
-  el.style.color=mesmoLado===vals.length?(media>=0?"#00C853":"#FF3B30"):"#F5A623";
-  el.title=mesmoLado===vals.length
-    ? "os "+vals.length+" timeframes apontam pro mesmo lado"
-    : mesmoLado+" de "+vals.length+" timeframes concordam";
+  const somas=mtfEstado.filter(Boolean).map(e=>e.cls.sumAngle).filter(v=>v!=null);
+  if(!somas.length){ el.textContent="--"; el.title=""; return; }
+  const total=somas.reduce((a,b)=>a+b,0);
+  const mesmoLado=somas.filter(v=>Math.sign(v)===Math.sign(total)).length;
+  el.textContent=(total>=0?"+":"")+total.toFixed(1)+"\u00b0  "+mesmoLado+"/"+somas.length;
+  el.style.color=mesmoLado===somas.length?(total>=0?"#00C853":"#FF3B30"):"#F5A623";
+  el.title=mtfEstado.filter(Boolean).map((e,i)=>
+    (e.tf||"").toUpperCase()+" "+(e.cls.sumAngle>=0?"+":"")+e.cls.sumAngle.toFixed(1)+"\u00b0").join("   ")
+    +"   =   "+(total>=0?"+":"")+total.toFixed(1)+"\u00b0";
 }
 
 // Contagem regressiva ate o fechamento da vela de cada celula.
@@ -5519,8 +5527,8 @@ function mtfAbrePopup(n){
     return m.key.toUpperCase()+": "+(a==null?"--":(a>=0?"+":"")+a.toFixed(1)+"\u00b0");
   });
   const est=st.cls.isFlat?"LATERAL":(st.cls.direcao==="alta"?"ALTA":"BAIXA");
-  const placar=st.cls.avgAngle==null?"--":(st.cls.avgAngle>=0?"+":"")+st.cls.avgAngle.toFixed(1)+"\u00b0";
-  const msg=linhas.join("  \u00b7  ")+"   |   placar "+placar+"   |   "+est;
+  const placar=st.cls.sumAngle==null?"--":(st.cls.sumAngle>=0?"+":"")+st.cls.sumAngle.toFixed(1)+"\u00b0";
+  const msg=linhas.join("  \u00b7  ")+"   |   soma "+placar+"   |   "+est;
   if(typeof showInfoToast==="function") showInfoToast(st.tf.toUpperCase()+" \u00b7 "+
     (typeof currentSym!=="undefined"?currentSym:""), msg);
 }
