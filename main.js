@@ -364,11 +364,18 @@ function runSignals(closes,highs,lows,opens){
   const n=closes.length; if(n<250)return;
   const e8=ema(closes,8),e16=ema(closes,16),e55=ema(closes,55),e98=ema(closes,98),e200=ema(closes,200);
   const m56=sma(closes,56),m89=sma(closes,89),r14=rsiCalc(closes,14);
+  // o alarme das medias precisa do ultimo valor de cada uma a cada tick
+  ultimasEmas={ema8:e8[n-1],ema16:e16[n-1],ema55:e55[n-1],ema98:e98[n-1],ema200:e200[n-1],
+               ma56:m56[n-1],ma89:m89[n-1]};
+  // e a liberacao e conferida no indice do sinal, que nem sempre e a ultima
+  // vela — por isso guardo as series inteiras, nao so a ponta
+  serieMedias={ema8:e8,ema16:e16,ma89:m89,ema200:e200};
+  if(typeof verificaCruzamentoMedias==="function") verificaCruzamentoMedias();
   const rL=rsiCalc(closes,P.rsiLen),sL=stochCalc(rL,P.stochLen),kL=sma(sL,P.kSmooth),dL=sma(kL,P.dSmooth);
   const atrV=atrCalc(highs,lows,closes,P.atrLen);
 
   // Reset state
-  signals=[]; bullFlowPrev=false; bearFlowPrev=false; currentMarkers=[];
+  signals=[]; liberados=[]; bullFlowPrev=false; bearFlowPrev=false; currentMarkers=[];
   fibState=mkFib(); lastSig={atlasB:-99,atlasS:-99,goldB:-99,goldS:-99,stressB:-99,stressS:-99,rbB:-99,rbS:-99,sqzBk:-99,sqzS:-99,h1B:-99,h1S:-99};
 
   for(let i=250;i<n;i++){
@@ -576,10 +583,45 @@ function calcH1Stoch(){
 // ══════════════════════════════════════════════════════
 // SIGNALS
 // ══════════════════════════════════════════════════════
+// ── LIBERACAO ────────────────────────────────────────────────────────
+// A regra: o sinal so esta liberado quando a EMA8 E a EMA16 estao das duas
+// acima da MA89 E da EMA200 (alta), ou das duas abaixo (baixa). E o
+// empilhamento das medias curtas em relacao as longas — enquanto ele nao
+// acontece, o sinal existe mas nao esta liberado.
+let serieMedias=null;
+let liberados=[];
+
+function estadoLiberacao(idx){
+  if(!serieMedias) return null;
+  const i=(idx==null||idx<0)?serieMedias.ema8.length-1:idx;
+  const e8=serieMedias.ema8[i], e16=serieMedias.ema16[i];
+  const m89=serieMedias.ma89[i], e200=serieMedias.ema200[i];
+  if([e8,e16,m89,e200].some(v=>v==null||!isFinite(v))) return null;
+  const teto=Math.max(m89,e200), piso=Math.min(m89,e200);
+  if(e8>teto&&e16>teto) return "alta";
+  if(e8<piso&&e16<piso) return "baixa";
+  return null;  // medias embaralhadas: nao libera
+}
+
+// Cruza o lado do sinal com o empilhamento: um sinal de compra so vale
+// liberado com as medias em alta, e um de venda com as medias em baixa.
+function sinalEstaLiberado(side,idx){
+  const est=estadoLiberacao(idx);
+  if(!est) return false;
+  const compra=side.includes("BUY")||side.includes("BULL")||side.includes("HIT");
+  return compra ? est==="alta" : est==="baixa";
+}
+
 function addSig(type,side,idx,price){
   const time=candles[idx]?.time||Date.now()/1000;
-  signals.push({type,side,price,time:time*1000});
+  const liberado=sinalEstaLiberado(side,idx);
+  signals.push({type,side,price,time:time*1000,liberado});
   if(signals.length>200)signals.shift();
+  if(liberado){
+    liberados.push({type,side,price,time:time*1000});
+    if(liberados.length>200)liberados.shift();
+    renderLiberados();
+  }
   renderSignalLog();
   if(alertsOn)showToast(type,side,price);
   // addMarker(type,side,time,price); // Marcadores no gráfico desativados (performance extrema)
@@ -608,6 +650,29 @@ function renderSignalLog(){
     const sc=s.side.includes('BUY')||s.side.includes('BULL')||s.side.includes('HIT')?'buy':'sell';
     return`<div class="sig-item"><span class="sig-time">${t}</span><span class="sig-type ${cls}">${s.type}</span><span class="sig-side ${sc}">${s.side}</span><span class="sig-px">${s.price.toFixed(2)}</span></div>`;
   }).join('');
+}
+
+// HISTORICO · LIBERADOS do Validador. Os elementos existiam no HTML desde
+// sempre sem nada que escrevesse neles — faltava a regra do que conta como
+// liberado.
+function renderLiberados(){
+  const cnt=document.getElementById("validator-history-count");
+  const list=document.getElementById("validator-history-list");
+  if(cnt) cnt.textContent=liberados.length;
+  if(!list) return;
+  if(!liberados.length){
+    list.innerHTML='<div style="padding:5px 9px;font-size:9px;color:var(--t3);">Aguardando o 1o sinal liberado...</div>';
+    return;
+  }
+  list.innerHTML=liberados.slice(-40).reverse().map(s=>{
+    const t=new Date(s.time).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
+    const cls="sig-"+s.type.toLowerCase();
+    const sc=(s.side.includes("BUY")||s.side.includes("BULL")||s.side.includes("HIT"))?"buy":"sell";
+    return '<div class="sig-item"><span class="sig-time">'+t+'</span>'
+      +'<span class="sig-type '+cls+'">'+s.type+'</span>'
+      +'<span class="sig-side '+sc+'">'+s.side+'</span>'
+      +'<span class="sig-px">'+s.price.toFixed(2)+'</span></div>';
+  }).join("");
 }
 
 // ══════════════════════════════════════════════════════
@@ -1276,7 +1341,11 @@ async function fetchCandles(sym,tf,limit=500){
   let fetchTf = tf;
   let aggFactor = 1;
 
-  if (tf === '5h') { fetchTf = '1h'; aggFactor = 5; }
+  // 6m e 15h nao existem na Binance, como ja nao existiam 5h, 3M, 6M, 9M e
+  // 12M: sao montados agregando o timeframe nativo mais proximo.
+  if (tf === '6m') { fetchTf = '1m'; aggFactor = 6; }
+  else if (tf === '15h') { fetchTf = '1h'; aggFactor = 15; }
+  else if (tf === '5h') { fetchTf = '1h'; aggFactor = 5; }
   else if (tf === '3M') { fetchTf = '1M'; aggFactor = 3; }
   else if (tf === '6M') { fetchTf = '1M'; aggFactor = 6; }
   else if (tf === '9M') { fetchTf = '1M'; aggFactor = 9; }
@@ -1404,7 +1473,206 @@ function forceChartTick(price, ts_ms){
   requestAnimationFrame(()=>{tickScheduled=false;const t=pendingTick;pendingTick=null;if(t)applyTick(t.price,t.ts);});
 }
 
+// ══════════════════════════════════════════════════════
+// ALARMES DE NIVEL
+// ══════════════════════════════════════════════════════
+// Toca quando o preco CRUZA o nivel, nao quando chega perto: guardo o preco
+// do tick anterior e so disparo se o nivel ficou entre os dois. Sem isso, um
+// preco oscilando em cima do nivel dispararia a cada tick.
+// Cobre as tres fontes pedidas: as ferramentas de fibo (todos os niveis
+// desenhados), as linhas horizontais de preco e as medias.
+// Usa o mesmo botao de sino que ja existia (alertsOn) e o mesmo toast + beep
+// dos sinais, pra nao criar um segundo sistema de aviso.
+let ultimasEmas=null;
+let alarmePrecoAnterior=null;
+const alarmeUltimoDisparo={};
+const ALARME_ESPERA_MS=60000;  // o mesmo nivel nao repete dentro de um minuto
+
+const ALARME_NOMES={ema8:"EMA8",ema16:"EMA16",ema55:"EMA55",ema98:"EMA98",
+                    ema200:"EMA200",ma56:"MA56",ma89:"MA89"};
+
+// NIVEIS DE FIBO ESCOLHIDOS. Vigiar os 29 niveis de um fibo desenhado e
+// barulho: o preco atravessa varios num movimento so. Aqui da pra marcar os
+// que interessam clicando na lista do FIB MANUAL. Sem nenhum marcado a
+// vigilancia continua em todos, que era o comportamento anterior — assim quem
+// nao souber do recurso nao perde alarme.
+let fibNiveisMarcados=[];
+function chaveFibNiveis(){ return "fibniveis:"+(typeof currentSym!=="undefined"?currentSym:"?"); }
+function carregaFibNiveis(){
+  try{ fibNiveisMarcados=JSON.parse(localStorage.getItem(chaveFibNiveis())||"[]")||[]; }
+  catch(e){ fibNiveisMarcados=[]; }
+}
+function toggleFibNivel(lv){
+  const v=parseFloat(lv);
+  fibNiveisMarcados = fibNiveisMarcados.includes(v)
+    ? fibNiveisMarcados.filter(x=>x!==v) : fibNiveisMarcados.concat(v);
+  try{ localStorage.setItem(chaveFibNiveis(),JSON.stringify(fibNiveisMarcados)); }catch(e){}
+  if(typeof renderFibLegend==="function"){
+    try{ renderFibLegend(drawings().find(d=>d.type==="fibbo")); }catch(e){}
+  }
+  if(typeof showInfoToast==="function"){
+    showInfoToast("FIB", fibNiveisMarcados.includes(v)
+      ? "alarme ligado no nivel "+v : "alarme desligado no nivel "+v);
+  }
+}
+window.toggleFibNivel=toggleFibNivel;
+
+// ALARMES MANUAIS — um preco qualquer que o usuario digita, sem depender de
+// ter desenhado nada. Ficam no localStorage por simbolo: um alarme de 60000
+// no BTC nao faz sentido no ouro.
+function chaveAlarmes(){ return "alarmes:"+(typeof currentSym!=="undefined"?currentSym:"?"); }
+let alarmesManuais=[];
+
+function carregaAlarmesManuais(){
+  try{ alarmesManuais=JSON.parse(localStorage.getItem(chaveAlarmes())||"[]")||[]; }
+  catch(e){ alarmesManuais=[]; }
+  renderAlarmes();
+}
+function salvaAlarmesManuais(){
+  try{ localStorage.setItem(chaveAlarmes(),JSON.stringify(alarmesManuais)); }catch(e){}
+  renderAlarmes();
+}
+function addAlarmeManual(){
+  const inp=document.getElementById("alarme-preco");
+  const v=parseFloat(inp&&inp.value);
+  if(!isFinite(v)){ if(typeof showInfoToast==="function") showInfoToast("ALARMES","digite um preco"); return; }
+  if(alarmesManuais.some(a=>a.preco===v)){ if(typeof showInfoToast==="function") showInfoToast("ALARMES","ja existe alarme em "+v); return; }
+  alarmesManuais.push({preco:v,criado:Date.now()});
+  alarmesManuais.sort((a,b)=>b.preco-a.preco);
+  if(inp) inp.value="";
+  salvaAlarmesManuais();
+}
+function removeAlarmeManual(preco){
+  alarmesManuais=alarmesManuais.filter(a=>a.preco!==preco);
+  salvaAlarmesManuais();
+}
+function renderAlarmes(){
+  const cnt=document.getElementById("alarme-count"), list=document.getElementById("alarme-list");
+  if(cnt) cnt.textContent=alarmesManuais.length;
+  if(!list) return;
+  if(!alarmesManuais.length){
+    list.innerHTML='<div style="padding:5px 9px;font-size:9px;color:var(--t3);">Nenhum alarme manual.</div>';
+    return;
+  }
+  const px=(typeof candles!=="undefined"&&candles.length)?candles[candles.length-1].close:null;
+  list.innerHTML=alarmesManuais.map(a=>{
+    const acima=px!=null&&a.preco>px;
+    const cor=px==null?"var(--t2)":(acima?"#00C853":"#FF3B30");
+    const dist=px==null?"":" ("+(acima?"+":"")+((a.preco-px)/px*100).toFixed(2)+"%)";
+    return '<div class="sig-item"><span class="sig-time">'+(acima?"\u25b2":"\u25bc")+'</span>'
+      +'<span class="sig-px" style="color:'+cor+'">'+a.preco+'</span>'
+      +'<span class="sig-side" style="color:var(--t3);font-weight:400;">'+dist+'</span>'
+      +'<button class="toast-x" onclick="removeAlarmeManual('+a.preco+')" '
+      +'style="margin-left:auto;">x</button></div>';
+  }).join("");
+}
+window.addAlarmeManual=addAlarmeManual;
+window.removeAlarmeManual=removeAlarmeManual;
+window.renderAlarmes=renderAlarmes;
+window.carregaAlarmesManuais=carregaAlarmesManuais;
+
+// Todos os niveis que valem alarme agora, ja com o preco de cada um.
+function niveisDeAlarme(){
+  const out=[];
+  let lista=[];
+  try{ lista=drawings()||[]; }catch(e){ lista=[]; }
+  lista.forEach((d,i)=>{
+    if(d.type==="horizontal"&&d.p0&&isFinite(d.p0.price)){
+      out.push({chave:"preco:"+i,rotulo:"PRECO",nome:d.p0.price.toFixed(2),preco:d.p0.price});
+    }
+    if((d.type==="fibbo"||d.type==="fibretr")&&d.p0&&d.p1){
+      const diff=d.p0.price-d.p1.price;
+      const lvs=d.type==="fibretr"?fibRetrLevels:[...fibLevels,...fibBreakLevels];
+      lvs.forEach(lv=>{
+        // com niveis marcados, so eles; sem nenhum, todos
+        if(fibNiveisMarcados.length&&!fibNiveisMarcados.includes(lv)) return;
+        const pr=d.p1.price+diff*lv;
+        if(isFinite(pr)) out.push({chave:"fib:"+i+":"+lv,rotulo:"FIB",nome:String(lv),preco:pr});
+      });
+    }
+  });
+  alarmesManuais.forEach(a=>{
+    if(isFinite(a.preco)) out.push({chave:"manual:"+a.preco,rotulo:"ALARME",nome:String(a.preco),preco:a.preco});
+  });
+  if(ultimasEmas) Object.keys(ultimasEmas).forEach(k=>{
+    const v=ultimasEmas[k];
+    if(v!=null&&isFinite(v)) out.push({chave:"media:"+k,rotulo:"MEDIA",nome:ALARME_NOMES[k]||k,preco:v});
+  });
+  return out;
+}
+
+// CRUZAMENTO ENTRE MEDIAS. Isto e outro evento: nao e o preco cruzando um
+// nivel, e uma media passando pela outra. Detecto pelo SINAL DA DIFERENCA:
+// enquanto (a - b) mantem o sinal nao houve cruzamento; quando ele vira,
+// cruzou. Comparo o penultimo com o ultimo valor da serie, entao o alarme
+// toca uma vez por cruzamento e nao a cada tick com as medias coladas.
+const PARES_MEDIAS=[
+  ["ema8","ema16"], ["ema8","ma89"], ["ema16","ma89"],
+  ["ema8","ema200"], ["ema16","ema200"], ["ma89","ema200"],
+];
+const cruzamentoAnterior={};
+
+function verificaCruzamentoMedias(){
+  if(!alertsOn||!serieMedias) return;
+  PARES_MEDIAS.forEach(([a,b])=>{
+    const sa=serieMedias[a], sb=serieMedias[b];
+    if(!sa||!sb||sa.length<2) return;
+    const n=sa.length-1;
+    const agoraDif=sa[n]-sb[n], antesDif=sa[n-1]-sb[n-1];
+    if([agoraDif,antesDif].some(v=>v==null||!isFinite(v))||agoraDif===0) return;
+    if(Math.sign(agoraDif)===Math.sign(antesDif)) return;  // nao cruzou
+    const chave=a+"x"+b;
+    // a mesma vela nao dispara duas vezes quando o motor reprocessa
+    const marca=(typeof candles!=="undefined"&&candles.length)?candles[candles.length-1].time:n;
+    if(cruzamentoAnterior[chave]===marca) return;
+    cruzamentoAnterior[chave]=marca;
+    const subiu=agoraDif>0;
+    const nome=(ALARME_NOMES[a]||a)+(subiu?" \u2191 ":" \u2193 ")+(ALARME_NOMES[b]||b);
+    const preco=(typeof candles!=="undefined"&&candles.length)?candles[candles.length-1].close:sa[n];
+    showToast("CRUZE",(subiu?"\u25b2 ":"\u25bc ")+nome,preco);
+  });
+}
+window.verificaCruzamentoMedias=verificaCruzamentoMedias;
+
+function verificaAlarmes(preco){
+  const ant=alarmePrecoAnterior;
+  alarmePrecoAnterior=preco;
+  // sino desligado: sigo guardando o preco, senao o primeiro tick depois de
+  // ligar compararia contra um valor velho e dispararia tudo de uma vez
+  if(!alertsOn||ant==null||ant===preco||!isFinite(preco)) return;
+  const baixo=Math.min(ant,preco), alto=Math.max(ant,preco), subindo=preco>ant;
+  const agora=Date.now();
+  // Num tick normal o preco cruza um nivel, no maximo. Mas um gap de abertura
+  // ou uma recarga do historico pode pular dezenas de uma vez — e sao dezenas
+  // de beeps. Toco os quatro primeiros e resumo o resto num aviso so.
+  const TETO_POR_TICK=4;
+  const cruzados=niveisDeAlarme().filter(nv=>{
+    if(!(nv.preco>baixo&&nv.preco<=alto)) return false;
+    const ultimo=alarmeUltimoDisparo[nv.chave];
+    return !(ultimo&&agora-ultimo<ALARME_ESPERA_MS);
+  });
+  // do mais proximo do preco novo pro mais distante: o ultimo cruzado importa mais
+  cruzados.sort((x,y)=>Math.abs(x.preco-preco)-Math.abs(y.preco-preco));
+  cruzados.forEach(nv=>{ alarmeUltimoDisparo[nv.chave]=agora; });
+  // Cruza o alarme com o empilhamento das medias: o mesmo criterio do sinal
+  // liberado (EMA8 e EMA16 das duas acima da MA89 e da EMA200, ou das duas
+  // abaixo). Nao escondo o cruzamento quando nao ha liberacao — marco, pra dar
+  // pra ver de relance se o nivel foi rompido com as medias a favor ou contra.
+  const est=(typeof estadoLiberacao==="function")?estadoLiberacao(null):null;
+  const aFavor = est && ((subindo&&est==="alta")||(!subindo&&est==="baixa"));
+  const selo = aFavor ? " \u2713" : (est?" !":"");
+  cruzados.slice(0,TETO_POR_TICK).forEach(nv=>{
+    showToast(nv.rotulo,(subindo?"\u25b2 ":"\u25bc ")+nv.nome+selo,preco);
+  });
+  const resto=cruzados.length-TETO_POR_TICK;
+  if(resto>0&&typeof showInfoToast==="function"){
+    showInfoToast("ALARMES","mais "+resto+" niveis cruzados neste movimento");
+  }
+}
+window.verificaAlarmes=verificaAlarmes;
+
 function applyTick(price, ts_ms){
+  verificaAlarmes(price);
   if(!candles.length||!candleSeries)return;
   let last=candles[candles.length-1];
   const tfSec=tfToSeconds(currentTF);
@@ -1650,7 +1918,8 @@ function openWS(){
 // ══════════════════════════════════════════════════════
 function showToast(type,side,price){
   const a=document.getElementById('toasts'),t=document.createElement('div');
-  const isBuy=side.includes('BUY')||side.includes('BULL')||side.includes('HIT');
+  // os alarmes de nivel usam a seta pra dizer o lado do cruzamento
+  const isBuy=side.includes('BUY')||side.includes('BULL')||side.includes('HIT')||side.includes('\u25b2');
   t.className=`toast ${type==='FIB'?'fib':isBuy?'buy':'sell'}`;
   t.innerHTML=`<div class="toast-hd"><span class="toast-title">${type} ${side}</span><button class="toast-x" onclick="this.closest('.toast').remove()">x</button></div><div class="toast-msg">${currentSym.replace('USDT','')} ${currentTF}</div><div class="toast-px">@ ${price.toFixed(2)}</div>`;
   a.appendChild(t);setTimeout(()=>{try{t.remove();}catch{}},8000);beep();
@@ -2029,20 +2298,75 @@ let multiCharts={}, multiWS=null, multiViewOpen=false;
 let multiPending={}, multiTickScheduled=false;
 let multiSession=0, multiTransitioning=false;
 
+// ── UM PAINEL DE CADA VEZ ─────────────────────────────────────────────
+// Todo painel desta lista ocupa a area do grafico principal. Antes cada
+// toggle carregava a sua propria lista de "fecha os outros", escrita a mao:
+// o Multi-TF nao fechava nada nem escondia o grafico, entao abria por cima
+// dele; o Terminal e o Gold escondiam so o .chart-wrap e deixavam o stoch e
+// o phi aparecendo por baixo; e a lista do Validador repetia tres entradas.
+// Uma lista so, num lugar so. Modais e toasts nao entram aqui de proposito —
+// esses sao os unicos que devem aparecer por cima.
+const PAINEIS_EXCLUSIVOS=[
+  {view:"multi-view",     toggle:"toggleMultiView"},
+  {view:"mtf-view",       toggle:"toggleMtfView"},
+  {view:"rsi-table-view", toggle:"toggleRsiTable"},
+  {view:"rainbow-view",   toggle:"toggleRainbowTab"},
+  {view:"study-view",     toggle:"toggleStudyArchive"},
+  {view:"backtest-view",  toggle:"toggleBacktestTab"},
+  {view:"macro-view",     toggle:"toggleMacroTab"},
+  {view:"terminal-view",  toggle:"toggleTerminalTab"},
+  {view:"gold-view",      toggle:"toggleGoldTab"},
+];
+
+// A classe .show no proprio elemento e a fonte da verdade, e nao as variaveis
+// de estado espalhadas — elas saem de sincronia com facilidade.
+function fechaOutrosPaineis(exceto){
+  PAINEIS_EXCLUSIVOS.forEach(pn=>{
+    if(pn.view===exceto) return;
+    const el=document.getElementById(pn.view);
+    if(!el||!el.classList.contains("show")) return;
+    if(typeof window[pn.toggle]==="function"){
+      try{ window[pn.toggle](); }catch(e){ console.warn("[paineis] falha ao fechar "+pn.view,e); }
+    }
+    // Garantia: varios toggles guardam o proprio booleano de aberto/fechado, e
+    // esses booleanos saem de sincronia com a classe (foi exatamente o que uma
+    // segunda definicao de toggleTerminalTab causava). Se depois de chamar o
+    // toggle o painel ainda esta marcado como aberto, tiro a classe na mao —
+    // senao ele fica na tela junto com o painel novo.
+    if(el.classList.contains("show")) el.classList.remove("show");
+  });
+}
+
+// A pilha do grafico principal e o trio grafico + estocastico + phi. Escondia
+// so o primeiro em varios lugares, o que deixava os outros dois orfaos na tela.
+function mostraGraficoPrincipal(mostrar){
+  [".chart-wrap",".stoch-wrap",".phi-wrap"].forEach(sel=>{
+    const el=document.querySelector(sel);
+    if(el) el.style.display = mostrar ? "" : "none";
+  });
+}
+
+// Todo toggle chama isto: a tela fica com exatamente um painel, ou so com o
+// grafico quando o ultimo painel fecha.
+function painelExclusivo(view,abrindo){
+  if(abrindo) fechaOutrosPaineis(view);
+  const algumAberto=PAINEIS_EXCLUSIVOS.some(pn=>{
+    const el=document.getElementById(pn.view);
+    return el&&(pn.view===view ? abrindo : el.classList.contains("show"));
+  });
+  mostraGraficoPrincipal(!algumAberto);
+}
+
 function toggleMultiView(){
   // Ignora cliques rapidos demais (abrir/fechar/abrir antes do anterior terminar)
   // — era isso que fazia sessoes antigas de carregamento ficarem rodando por
   // cima de uma sessao nova, dando a impressao de "reload" ficando repetindo.
   if(multiTransitioning)return;
   if(validatorOpen)toggleValidatorPanel(); // os dois escrevem no mesmo painel lateral — mutuamente exclusivos
-  if(rsiTableOpen)toggleRsiTable(); // idem: RSI Table ocupa a mesma area do chart-wrap
-  if(rainbowOpen)toggleRainbowTab(); // idem: Rainbow tambem ocupa a area do chart-wrap
-  if(macroOpen)toggleMacroTab(); // idem: Macro tambem ocupa a area do chart-wrap
-  if(studyOpen)toggleStudyArchive(); // idem: Arquivo de Estudo tambem ocupa a area do chart-wrap
-  if(backtestOpen)toggleBacktestTab(); // idem: Backtest tambem ocupa a area do chart-wrap
   multiTransitioning=true;
   multiViewOpen=!multiViewOpen;
   document.getElementById('multi-view').classList.toggle('show',multiViewOpen);
+  painelExclusivo('multi-view',multiViewOpen);
   document.querySelector('.chart-wrap').style.display=multiViewOpen?'none':'';
   document.querySelector('.stoch-wrap').style.display=multiViewOpen?'none':'';
   document.querySelector('.phi-wrap').style.display=multiViewOpen?'none':'';
@@ -2620,15 +2944,10 @@ let validatorOpen=false, validatorTimer=null;
 
 function toggleValidatorPanel(){
   validatorOpen=!validatorOpen;
-  if(validatorOpen && multiViewOpen)toggleMultiView(); // fecha o Multi 2x2 pra nao disputar o mesmo painel
-  if(validatorOpen && rsiTableOpen)toggleRsiTable(); // idem: RSI Table ocupa a area do chart-wrap
-  if(validatorOpen && rainbowOpen)toggleRainbowTab(); // idem: Rainbow tambem ocupa a area do chart-wrap
-  if(validatorOpen && macroOpen)toggleMacroTab(); // idem: Macro tambem ocupa a area do chart-wrap
-  if(validatorOpen && studyOpen)toggleStudyArchive(); // idem: Arquivo de Estudo tambem ocupa a area do chart-wrap
-  if(validatorOpen && backtestOpen)toggleBacktestTab(); // idem: Backtest tambem ocupa a area do chart-wrap
-  if(validatorOpen && macroOpen)toggleMacroTab(); // idem: Macro tambem ocupa a area do chart-wrap
-  if(validatorOpen && studyOpen)toggleStudyArchive(); // idem: Arquivo de Estudo tambem ocupa a area do chart-wrap
-  if(validatorOpen && backtestOpen)toggleBacktestTab(); // idem: Backtest tambem ocupa a area do chart-wrap
+  // O Validador nao ocupa a area do grafico, entao nao entra no painelExclusivo.
+  // Mas ele escreve no mesmo painel lateral que o Multi (#multi-analysis), e
+  // esses dois sim se atrapalham.
+  if(validatorOpen&&multiViewOpen)toggleMultiView();
   const sa=document.getElementById('single-analysis'),ma=document.getElementById('multi-analysis');
   if(validatorOpen){
     if(sa)sa.style.display='none';
@@ -2805,17 +3124,10 @@ const RSIT_TFS=['1','5','15','60','240','D'];
 function toggleRsiTable(){
   rsiTableOpen=!rsiTableOpen;
   if(rsiTableOpen){
-    if(multiViewOpen)toggleMultiView();
     if(validatorOpen)toggleValidatorPanel();
-    if(rainbowOpen)toggleRainbowTab();
-    if(macroOpen)toggleMacroTab();
-    if(studyOpen)toggleStudyArchive();
-    if(backtestOpen)toggleBacktestTab();
   }
   document.getElementById('rsi-table-view').classList.toggle('show',rsiTableOpen);
-  document.querySelector('.chart-wrap').style.display=rsiTableOpen?'none':'';
-  document.querySelector('.stoch-wrap').style.display=rsiTableOpen?'none':'';
-  document.querySelector('.phi-wrap').style.display=rsiTableOpen?'none':'';
+  painelExclusivo('rsi-table-view',rsiTableOpen);
   document.getElementById('btn-rsitable').classList.toggle('on',rsiTableOpen);
   if(rsiTableOpen){
     updateRsiTable();
@@ -2947,17 +3259,10 @@ function setupRainbowChart(){
 function toggleRainbowTab(){
   rainbowOpen=!rainbowOpen;
   if(rainbowOpen){
-    if(multiViewOpen)toggleMultiView();
     if(validatorOpen)toggleValidatorPanel();
-    if(rsiTableOpen)toggleRsiTable();
-    if(macroOpen)toggleMacroTab();
-    if(studyOpen)toggleStudyArchive();
-    if(backtestOpen)toggleBacktestTab();
   }
   document.getElementById('rainbow-view').classList.toggle('show',rainbowOpen);
-  document.querySelector('.chart-wrap').style.display=rainbowOpen?'none':'';
-  document.querySelector('.stoch-wrap').style.display=rainbowOpen?'none':'';
-  document.querySelector('.phi-wrap').style.display=rainbowOpen?'none':'';
+  painelExclusivo('rainbow-view',rainbowOpen);
   document.getElementById('btn-rainbow').classList.toggle('on',rainbowOpen);
   if(rainbowOpen){
     setupRainbowChart();
@@ -2988,17 +3293,10 @@ let macroOpen=false, macroTimer=null;
 function toggleMacroTab(){
   macroOpen=!macroOpen;
   if(macroOpen){
-    if(multiViewOpen)toggleMultiView();
     if(validatorOpen)toggleValidatorPanel();
-    if(rsiTableOpen)toggleRsiTable();
-    if(rainbowOpen)toggleRainbowTab();
-    if(studyOpen)toggleStudyArchive();
-    if(backtestOpen)toggleBacktestTab();
   }
   document.getElementById('macro-view').classList.toggle('show',macroOpen);
-  document.querySelector('.chart-wrap').style.display=macroOpen?'none':'';
-  document.querySelector('.stoch-wrap').style.display=macroOpen?'none':'';
-  document.querySelector('.phi-wrap').style.display=macroOpen?'none':'';
+  painelExclusivo('macro-view',macroOpen);
   document.getElementById('btn-macro').classList.toggle('on',macroOpen);
   if(macroOpen){
     updateMacroTab();
@@ -3249,17 +3547,10 @@ function computeEmaAngle(closes, period, lookback=5){
 function toggleStudyArchive(){
   studyOpen=!studyOpen;
   if(studyOpen){
-    if(multiViewOpen)toggleMultiView();
     if(validatorOpen)toggleValidatorPanel();
-    if(rsiTableOpen)toggleRsiTable();
-    if(rainbowOpen)toggleRainbowTab();
-    if(macroOpen)toggleMacroTab();
-    if(backtestOpen)toggleBacktestTab();
   }
   document.getElementById('study-view').classList.toggle('show',studyOpen);
-  document.querySelector('.chart-wrap').style.display=studyOpen?'none':'';
-  document.querySelector('.stoch-wrap').style.display=studyOpen?'none':'';
-  document.querySelector('.phi-wrap').style.display=studyOpen?'none':'';
+  painelExclusivo('study-view',studyOpen);
   document.getElementById('btn-estudo').classList.toggle('on',studyOpen);
   if(studyOpen){
     updateStudyArchive();
@@ -3284,17 +3575,10 @@ let backtestOpen=false;
 function toggleBacktestTab(){
   backtestOpen=!backtestOpen;
   if(backtestOpen){
-    if(multiViewOpen)toggleMultiView();
     if(validatorOpen)toggleValidatorPanel();
-    if(rsiTableOpen)toggleRsiTable();
-    if(rainbowOpen)toggleRainbowTab();
-    if(macroOpen)toggleMacroTab();
-    if(studyOpen)toggleStudyArchive();
   }
   document.getElementById('backtest-view').classList.toggle('show',backtestOpen);
-  document.querySelector('.chart-wrap').style.display=backtestOpen?'none':'';
-  document.querySelector('.stoch-wrap').style.display=backtestOpen?'none':'';
-  document.querySelector('.phi-wrap').style.display=backtestOpen?'none':'';
+  painelExclusivo('backtest-view',backtestOpen);
   document.getElementById('btn-backtest').classList.toggle('on',backtestOpen);
   if(backtestOpen)document.getElementById('backtest-sym').textContent=currentSym.replace('USDT','');
 }
@@ -3897,6 +4181,8 @@ function resetLive(){
 }
 async function changeSym(sym){
   currentSym=sym;candles=[];resetLive();
+  // alarmes e niveis de fibo sao guardados por simbolo
+  carregaAlarmesManuais(); carregaFibNiveis();
   const sel=document.getElementById('sym-select');
   if(sel&&sel.value!==sym)sel.value=sym;
   await loadAll();
@@ -4405,7 +4691,11 @@ function renderFibLegend(d){
     // destaca o nivel que o preco ja atingiu — pra quebra, so conta fechamento
     // abaixo, entao usa close (nao high/low) igual a regra combinada
     const hit = px!=null && (isBreak ? px<=price : (diff>0 ? px>=price : px<=price));
-    return `<div class="mfib-item" style="opacity:${hit?1:.62};">
+    // clicar no nivel liga/desliga o alarme dele
+    const alarmado=fibNiveisMarcados.includes(lv);
+    return `<div class="mfib-item" style="opacity:${hit?1:.62};cursor:pointer;"
+      onclick="toggleFibNivel(${lv})" title="clique para ligar/desligar o alarme deste nivel">
+      <span style="width:11px;display:inline-block;font-size:9px;">${alarmado?'\u{1F514}':''}</span>
       <span class="mfib-dot" style="background:${col};"></span>
       <span class="mfib-lvl" style="color:${col};">${lv}${isBreak?' <span style="color:var(--goldd);font-weight:700;">quebra</span>':''}</span>
       <span class="mfib-px">${price.toFixed(2)}</span></div>`;
@@ -4444,6 +4734,7 @@ let catF='all';
 
 function initApp(){
   initTheme();
+  carregaAlarmesManuais(); carregaFibNiveis();
   const cb=document.getElementById('cat-bar');
   if(cb && !cb.children.length){
     const catBtn=document.createElement('button');catBtn.className='cp active';catBtn.textContent='TODOS';catBtn.setAttribute('data-cat','all');catBtn.onclick=function(){setCat(this);};cb.appendChild(catBtn);
@@ -4557,8 +4848,7 @@ async function updateTerminalUI() {
 // Hook it to the toggle
 function toggleTerminalTab() {
   terminalOpen = !terminalOpen;
-  const cw = document.querySelector('.chart-wrap');
-  if(cw) cw.style.display = terminalOpen ? 'none' : '';
+  painelExclusivo('terminal-view',terminalOpen);
   const el = document.getElementById('terminal-view');
   if(el) el.classList.toggle('show', terminalOpen);
   if(terminalOpen) updateTerminalUI();
@@ -5216,8 +5506,7 @@ window.selectGoldAsset=selectGoldAsset;
 
 function toggleGoldTab() {
   goldOpen = !goldOpen;
-  const cw = document.querySelector('.chart-wrap');
-  if(cw) cw.style.display = goldOpen ? 'none' : '';
+  painelExclusivo('gold-view',goldOpen);
   const el = document.getElementById('gold-view');
   if(el) el.classList.toggle('show', goldOpen);
   if(goldOpen) goldInitOnce();
@@ -5290,6 +5579,7 @@ function toggleMtfView() {
   const el = document.getElementById('mtf-view');
   if(!el) return;
   
+  painelExclusivo('mtf-view',window.mtfViewOpen);
   if (window.mtfViewOpen) {
     el.classList.add('show');
     openMtfCharts();
@@ -5403,10 +5693,20 @@ function mtfDesenhaCelula(n,data,linhas){
 function mtfDesenhaLegenda(n,angles,cls){
   const el=document.getElementById("mtf-compass-legend-"+n);
   if(!el) return;
+  // A caixa da legenda e escura (rgba(19,25,34,.7)) e as cores das medias sao
+  // escuras tambem — EMA8 azul, EMA16 rosa e EMA55 verde sumiam no fundo.
+  // Clareio cada cor na direcao do branco so pra legenda; as linhas do grafico
+  // continuam com a cor original.
+  const clarear=(hex,f)=>{
+    const n=parseInt(hex.slice(1),16);
+    const r=(n>>16)&255, g=(n>>8)&255, b=n&255;
+    const m=v=>Math.round(v+(255-v)*f);
+    return "rgb("+m(r)+","+m(g)+","+m(b)+")";
+  };
   const linhas=MTF_MEDIAS.map(m=>{
     const a=angles[m.key];
     const txt=(a==null)?"--":(a>=0?"+":"")+a.toFixed(0)+"\u00b0";
-    return '<span style="color:'+m.cor+'">'+m.key.toUpperCase()+' '+txt+'</span>';
+    return '<span style="color:'+clarear(m.cor,.45)+'">'+m.key.toUpperCase()+' '+txt+'</span>';
   });
   const est=cls.isFlat?"LATERAL":(cls.direcao==="alta"?"ALTA":"BAIXA");
   const cor=cls.isFlat?"#8b9bb4":(cls.direcao==="alta"?"#00C853":"#FF3B30");
@@ -5423,12 +5723,27 @@ function mtfDesenhaComparacao(n,cls){
   const lbl=document.getElementById("mtf-comp-lbl-"+n);
   if(lbl) lbl.textContent=mtfTfs[n-1].toUpperCase();
   if(!el) return;
+  // Predominancia: quantas das cinco medias apontam pro lado da soma. A soma
+  // sozinha nao separa "quatro medias subindo" de "uma media muito inclinada
+  // carregando quatro contra" — e essa e a diferenca que interessa ler.
+  // Medias praticamente paradas (menos de 4 graus) nao contam pra nenhum lado.
   const v=cls.sumAngle;
-  el.textContent=(v==null)?"--":(v>=0?"+":"")+v.toFixed(1)+"\u00b0";
-  el.style.color=(v==null)?"var(--t3)":(cls.isFlat?"#8b9bb4":(v>=0?"#00C853":"#FF3B30"));
-  const graus=MTF_MEDIAS.map(m=>{const a=cls.angles?cls.angles[m.key]:null;
+  const graus=MTF_MEDIAS.map(m=>cls.angles?cls.angles[m.key]:null).filter(x=>x!=null);
+  const pos=graus.filter(x=>x>=4).length, neg=graus.filter(x=>x<=-4).length;
+  const aFavor=(v>=0?pos:neg);
+  // A predominancia entra menor e numa segunda linha: no quadrante do painel
+  // central as duas informacoes juntas numa linha so estouravam a largura e
+  // passavam por cima do quadrante vizinho.
+  el.innerHTML=(v==null)?"--":(v>=0?"+":"")+v.toFixed(1)+"\u00b0"
+    +'<span style="display:block;font-size:9px;font-weight:700;opacity:.75;">'
+    +aFavor+"/"+graus.length+"</span>";
+  // ambar quando a forca vem de poucas medias: o numero e alto mas nao ha
+  // predominancia por tras dele
+  el.style.color=(v==null)?"var(--t3)":(cls.isFlat?"#8b9bb4":
+    (aFavor<=graus.length/2?"#F5A623":(v>=0?"#00C853":"#FF3B30")));
+  const detalhe=MTF_MEDIAS.map(m=>{const a=cls.angles?cls.angles[m.key]:null;
     return m.key.toUpperCase()+" "+(a==null?"--":(a>=0?"+":"")+a.toFixed(1)+"\u00b0");}).join("  ");
-  el.title=mtfTfs[n-1].toUpperCase()+": "+graus+"   soma "+((v==null)?"--":v.toFixed(1)+"\u00b0");
+  el.title=mtfTfs[n-1].toUpperCase()+": "+detalhe+"   soma "+((v==null)?"--":v.toFixed(1)+"\u00b0")+"   predominancia "+aFavor+"/"+graus.length;
 }
 
 // Soma das quatro somas. O n/4 ao lado diz quantos tempos apontam pro mesmo
@@ -5441,7 +5756,9 @@ function mtfAtualizaTotal(){
   if(!somas.length){ el.textContent="--"; el.title=""; return; }
   const total=somas.reduce((a,b)=>a+b,0);
   const mesmoLado=somas.filter(v=>Math.sign(v)===Math.sign(total)).length;
-  el.textContent=(total>=0?"+":"")+total.toFixed(1)+"\u00b0  "+mesmoLado+"/"+somas.length;
+  // duas linhas: o numero nao cabia junto do n/4 dentro do circulo
+  el.innerHTML=(total>=0?"+":"")+total.toFixed(0)+"\u00b0"
+    +'<span style="display:block;font-size:9px;opacity:.8;">'+mesmoLado+"/"+somas.length+"</span>";
   el.style.color=mesmoLado===somas.length?(total>=0?"#00C853":"#FF3B30"):"#F5A623";
   el.title=mtfEstado.filter(Boolean).map((e,i)=>
     (e.tf||"").toUpperCase()+" "+(e.cls.sumAngle>=0?"+":"")+e.cls.sumAngle.toFixed(1)+"\u00b0").join("   ")
@@ -5571,18 +5888,10 @@ window.togglePotential = function() {
   el.style.display = isHidden ? 'flex' : 'none';
 };
 
-window.toggleTerminalTab = function() {
-  const el = document.getElementById('terminal-view');
-  if(!el) return;
-  if(el.classList.contains('show')){
-    el.classList.remove('show');
-    document.querySelector('.chart-wrap').style.display = '';
-  } else {
-    el.classList.add('show');
-    document.querySelector('.chart-wrap').style.display = 'none';
-    if(typeof updateTerminalUI !== 'undefined') updateTerminalUI();
-  }
-};
+// Havia uma SEGUNDA definicao de toggleTerminalTab aqui, sobrescrevendo a de
+// cima: ela nao mexia no terminalOpen, escondia so o .chart-wrap e nao fechava
+// nenhum outro painel — era por isso que abrir o Terminal deixava o painel
+// anterior na tela. Fica so a de cima, que passa pelo painelExclusivo.
 
 
 function updateBussolaUI() {
