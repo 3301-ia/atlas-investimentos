@@ -367,11 +367,14 @@ function runSignals(closes,highs,lows,opens){
   // o alarme das medias precisa do ultimo valor de cada uma a cada tick
   ultimasEmas={ema8:e8[n-1],ema16:e16[n-1],ema55:e55[n-1],ema98:e98[n-1],ema200:e200[n-1],
                ma56:m56[n-1],ma89:m89[n-1]};
+  // e a liberacao e conferida no indice do sinal, que nem sempre e a ultima
+  // vela — por isso guardo as series inteiras, nao so a ponta
+  serieMedias={ema8:e8,ema16:e16,ma89:m89,ema200:e200};
   const rL=rsiCalc(closes,P.rsiLen),sL=stochCalc(rL,P.stochLen),kL=sma(sL,P.kSmooth),dL=sma(kL,P.dSmooth);
   const atrV=atrCalc(highs,lows,closes,P.atrLen);
 
   // Reset state
-  signals=[]; bullFlowPrev=false; bearFlowPrev=false; currentMarkers=[];
+  signals=[]; liberados=[]; bullFlowPrev=false; bearFlowPrev=false; currentMarkers=[];
   fibState=mkFib(); lastSig={atlasB:-99,atlasS:-99,goldB:-99,goldS:-99,stressB:-99,stressS:-99,rbB:-99,rbS:-99,sqzBk:-99,sqzS:-99,h1B:-99,h1S:-99};
 
   for(let i=250;i<n;i++){
@@ -579,10 +582,45 @@ function calcH1Stoch(){
 // ══════════════════════════════════════════════════════
 // SIGNALS
 // ══════════════════════════════════════════════════════
+// ── LIBERACAO ────────────────────────────────────────────────────────
+// A regra: o sinal so esta liberado quando a EMA8 E a EMA16 estao das duas
+// acima da MA89 E da EMA200 (alta), ou das duas abaixo (baixa). E o
+// empilhamento das medias curtas em relacao as longas — enquanto ele nao
+// acontece, o sinal existe mas nao esta liberado.
+let serieMedias=null;
+let liberados=[];
+
+function estadoLiberacao(idx){
+  if(!serieMedias) return null;
+  const i=(idx==null||idx<0)?serieMedias.ema8.length-1:idx;
+  const e8=serieMedias.ema8[i], e16=serieMedias.ema16[i];
+  const m89=serieMedias.ma89[i], e200=serieMedias.ema200[i];
+  if([e8,e16,m89,e200].some(v=>v==null||!isFinite(v))) return null;
+  const teto=Math.max(m89,e200), piso=Math.min(m89,e200);
+  if(e8>teto&&e16>teto) return "alta";
+  if(e8<piso&&e16<piso) return "baixa";
+  return null;  // medias embaralhadas: nao libera
+}
+
+// Cruza o lado do sinal com o empilhamento: um sinal de compra so vale
+// liberado com as medias em alta, e um de venda com as medias em baixa.
+function sinalEstaLiberado(side,idx){
+  const est=estadoLiberacao(idx);
+  if(!est) return false;
+  const compra=side.includes("BUY")||side.includes("BULL")||side.includes("HIT");
+  return compra ? est==="alta" : est==="baixa";
+}
+
 function addSig(type,side,idx,price){
   const time=candles[idx]?.time||Date.now()/1000;
-  signals.push({type,side,price,time:time*1000});
+  const liberado=sinalEstaLiberado(side,idx);
+  signals.push({type,side,price,time:time*1000,liberado});
   if(signals.length>200)signals.shift();
+  if(liberado){
+    liberados.push({type,side,price,time:time*1000});
+    if(liberados.length>200)liberados.shift();
+    renderLiberados();
+  }
   renderSignalLog();
   if(alertsOn)showToast(type,side,price);
   // addMarker(type,side,time,price); // Marcadores no gráfico desativados (performance extrema)
@@ -611,6 +649,29 @@ function renderSignalLog(){
     const sc=s.side.includes('BUY')||s.side.includes('BULL')||s.side.includes('HIT')?'buy':'sell';
     return`<div class="sig-item"><span class="sig-time">${t}</span><span class="sig-type ${cls}">${s.type}</span><span class="sig-side ${sc}">${s.side}</span><span class="sig-px">${s.price.toFixed(2)}</span></div>`;
   }).join('');
+}
+
+// HISTORICO · LIBERADOS do Validador. Os elementos existiam no HTML desde
+// sempre sem nada que escrevesse neles — faltava a regra do que conta como
+// liberado.
+function renderLiberados(){
+  const cnt=document.getElementById("validator-history-count");
+  const list=document.getElementById("validator-history-list");
+  if(cnt) cnt.textContent=liberados.length;
+  if(!list) return;
+  if(!liberados.length){
+    list.innerHTML='<div style="padding:5px 9px;font-size:9px;color:var(--t3);">Aguardando o 1o sinal liberado...</div>';
+    return;
+  }
+  list.innerHTML=liberados.slice(-40).reverse().map(s=>{
+    const t=new Date(s.time).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
+    const cls="sig-"+s.type.toLowerCase();
+    const sc=(s.side.includes("BUY")||s.side.includes("BULL")||s.side.includes("HIT"))?"buy":"sell";
+    return '<div class="sig-item"><span class="sig-time">'+t+'</span>'
+      +'<span class="sig-type '+cls+'">'+s.type+'</span>'
+      +'<span class="sig-side '+sc+'">'+s.side+'</span>'
+      +'<span class="sig-px">'+s.price.toFixed(2)+'</span></div>';
+  }).join("");
 }
 
 // ══════════════════════════════════════════════════════
@@ -1474,8 +1535,15 @@ function verificaAlarmes(preco){
   // do mais proximo do preco novo pro mais distante: o ultimo cruzado importa mais
   cruzados.sort((x,y)=>Math.abs(x.preco-preco)-Math.abs(y.preco-preco));
   cruzados.forEach(nv=>{ alarmeUltimoDisparo[nv.chave]=agora; });
+  // Cruza o alarme com o empilhamento das medias: o mesmo criterio do sinal
+  // liberado (EMA8 e EMA16 das duas acima da MA89 e da EMA200, ou das duas
+  // abaixo). Nao escondo o cruzamento quando nao ha liberacao — marco, pra dar
+  // pra ver de relance se o nivel foi rompido com as medias a favor ou contra.
+  const est=(typeof estadoLiberacao==="function")?estadoLiberacao(null):null;
+  const aFavor = est && ((subindo&&est==="alta")||(!subindo&&est==="baixa"));
+  const selo = aFavor ? " \u2713" : (est?" !":"");
   cruzados.slice(0,TETO_POR_TICK).forEach(nv=>{
-    showToast(nv.rotulo,(subindo?"\u25b2 ":"\u25bc ")+nv.nome,preco);
+    showToast(nv.rotulo,(subindo?"\u25b2 ":"\u25bc ")+nv.nome+selo,preco);
   });
   const resto=cruzados.length-TETO_POR_TICK;
   if(resto>0&&typeof showInfoToast==="function"){
