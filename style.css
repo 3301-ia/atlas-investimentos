@@ -1,5 +1,7 @@
 
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+/* As fontes sao carregadas por <link> no <head> do index.html. Um @import
+   aqui so e descoberto depois que o navegador baixa e analisa este arquivo,
+   o que poe googleapis e os .woff2 em fila atras dele. */
 :root{
   /* Tema claro, inspirado no dtrader.deriv.com */
   --bg:#ffffff;--bg2:#fbfbfc;--bg3:#ffffff;--bg4:#f2f3f5;--bg5:#e9ebee;
@@ -774,7 +776,7 @@ tr.gold-selected td{background:rgba(245,166,35,.06);}
   position:relative;
   /* Grande de proposito, mas preso a viewport pra nao vazar em telas
      baixas: 72vmin acompanha a menor dimensao da janela. */
-  width:min(72vmin,560px); height:min(72vmin,560px);
+  width:min(80vmin,660px); height:min(80vmin,660px);
   min-width:0; min-height:0;
   flex-shrink:0;
   z-index:2;
@@ -793,12 +795,12 @@ tr.gold-selected td{background:rgba(245,166,35,.06);}
 /* ABERTURA — aneis, ponto e raios, todos atras do video (z-index 1 contra
    o z-index 2 do .vectra-splash-inner). Fica no #vectra-splash e nao dentro
    do .totem-wrapper: o transform do wrapper quebra o posicionamento e
-   prenderia tudo aos 560px do totem em vez de cobrir a tela. */
+   prenderia tudo aos 660px do totem em vez de cobrir a tela. */
 .ribbon-burst{position:absolute;inset:0;z-index:1;pointer-events:none;
   display:grid;place-items:center;overflow:hidden;}
 
 /* 1. ANEIS — expandem e recolhem, convergindo pro centro */
-.rb-aneis{position:absolute;width:min(72vmin,560px);height:min(72vmin,560px);}
+.rb-aneis{position:absolute;width:min(80vmin,660px);height:min(80vmin,660px);}
 .rb-aneis i{position:absolute;inset:0;border-radius:50%;
   border:2px solid var(--c);opacity:0;
   box-shadow:0 0 22px -4px var(--c);
