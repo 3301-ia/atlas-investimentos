@@ -2029,20 +2029,75 @@ let multiCharts={}, multiWS=null, multiViewOpen=false;
 let multiPending={}, multiTickScheduled=false;
 let multiSession=0, multiTransitioning=false;
 
+// ── UM PAINEL DE CADA VEZ ─────────────────────────────────────────────
+// Todo painel desta lista ocupa a area do grafico principal. Antes cada
+// toggle carregava a sua propria lista de "fecha os outros", escrita a mao:
+// o Multi-TF nao fechava nada nem escondia o grafico, entao abria por cima
+// dele; o Terminal e o Gold escondiam so o .chart-wrap e deixavam o stoch e
+// o phi aparecendo por baixo; e a lista do Validador repetia tres entradas.
+// Uma lista so, num lugar so. Modais e toasts nao entram aqui de proposito —
+// esses sao os unicos que devem aparecer por cima.
+const PAINEIS_EXCLUSIVOS=[
+  {view:"multi-view",     toggle:"toggleMultiView"},
+  {view:"mtf-view",       toggle:"toggleMtfView"},
+  {view:"rsi-table-view", toggle:"toggleRsiTable"},
+  {view:"rainbow-view",   toggle:"toggleRainbowTab"},
+  {view:"study-view",     toggle:"toggleStudyArchive"},
+  {view:"backtest-view",  toggle:"toggleBacktestTab"},
+  {view:"macro-view",     toggle:"toggleMacroTab"},
+  {view:"terminal-view",  toggle:"toggleTerminalTab"},
+  {view:"gold-view",      toggle:"toggleGoldTab"},
+];
+
+// A classe .show no proprio elemento e a fonte da verdade, e nao as variaveis
+// de estado espalhadas — elas saem de sincronia com facilidade.
+function fechaOutrosPaineis(exceto){
+  PAINEIS_EXCLUSIVOS.forEach(pn=>{
+    if(pn.view===exceto) return;
+    const el=document.getElementById(pn.view);
+    if(!el||!el.classList.contains("show")) return;
+    if(typeof window[pn.toggle]==="function"){
+      try{ window[pn.toggle](); }catch(e){ console.warn("[paineis] falha ao fechar "+pn.view,e); }
+    }
+    // Garantia: varios toggles guardam o proprio booleano de aberto/fechado, e
+    // esses booleanos saem de sincronia com a classe (foi exatamente o que uma
+    // segunda definicao de toggleTerminalTab causava). Se depois de chamar o
+    // toggle o painel ainda esta marcado como aberto, tiro a classe na mao —
+    // senao ele fica na tela junto com o painel novo.
+    if(el.classList.contains("show")) el.classList.remove("show");
+  });
+}
+
+// A pilha do grafico principal e o trio grafico + estocastico + phi. Escondia
+// so o primeiro em varios lugares, o que deixava os outros dois orfaos na tela.
+function mostraGraficoPrincipal(mostrar){
+  [".chart-wrap",".stoch-wrap",".phi-wrap"].forEach(sel=>{
+    const el=document.querySelector(sel);
+    if(el) el.style.display = mostrar ? "" : "none";
+  });
+}
+
+// Todo toggle chama isto: a tela fica com exatamente um painel, ou so com o
+// grafico quando o ultimo painel fecha.
+function painelExclusivo(view,abrindo){
+  if(abrindo) fechaOutrosPaineis(view);
+  const algumAberto=PAINEIS_EXCLUSIVOS.some(pn=>{
+    const el=document.getElementById(pn.view);
+    return el&&(pn.view===view ? abrindo : el.classList.contains("show"));
+  });
+  mostraGraficoPrincipal(!algumAberto);
+}
+
 function toggleMultiView(){
   // Ignora cliques rapidos demais (abrir/fechar/abrir antes do anterior terminar)
   // — era isso que fazia sessoes antigas de carregamento ficarem rodando por
   // cima de uma sessao nova, dando a impressao de "reload" ficando repetindo.
   if(multiTransitioning)return;
   if(validatorOpen)toggleValidatorPanel(); // os dois escrevem no mesmo painel lateral — mutuamente exclusivos
-  if(rsiTableOpen)toggleRsiTable(); // idem: RSI Table ocupa a mesma area do chart-wrap
-  if(rainbowOpen)toggleRainbowTab(); // idem: Rainbow tambem ocupa a area do chart-wrap
-  if(macroOpen)toggleMacroTab(); // idem: Macro tambem ocupa a area do chart-wrap
-  if(studyOpen)toggleStudyArchive(); // idem: Arquivo de Estudo tambem ocupa a area do chart-wrap
-  if(backtestOpen)toggleBacktestTab(); // idem: Backtest tambem ocupa a area do chart-wrap
   multiTransitioning=true;
   multiViewOpen=!multiViewOpen;
   document.getElementById('multi-view').classList.toggle('show',multiViewOpen);
+  painelExclusivo('multi-view',multiViewOpen);
   document.querySelector('.chart-wrap').style.display=multiViewOpen?'none':'';
   document.querySelector('.stoch-wrap').style.display=multiViewOpen?'none':'';
   document.querySelector('.phi-wrap').style.display=multiViewOpen?'none':'';
@@ -2620,15 +2675,10 @@ let validatorOpen=false, validatorTimer=null;
 
 function toggleValidatorPanel(){
   validatorOpen=!validatorOpen;
-  if(validatorOpen && multiViewOpen)toggleMultiView(); // fecha o Multi 2x2 pra nao disputar o mesmo painel
-  if(validatorOpen && rsiTableOpen)toggleRsiTable(); // idem: RSI Table ocupa a area do chart-wrap
-  if(validatorOpen && rainbowOpen)toggleRainbowTab(); // idem: Rainbow tambem ocupa a area do chart-wrap
-  if(validatorOpen && macroOpen)toggleMacroTab(); // idem: Macro tambem ocupa a area do chart-wrap
-  if(validatorOpen && studyOpen)toggleStudyArchive(); // idem: Arquivo de Estudo tambem ocupa a area do chart-wrap
-  if(validatorOpen && backtestOpen)toggleBacktestTab(); // idem: Backtest tambem ocupa a area do chart-wrap
-  if(validatorOpen && macroOpen)toggleMacroTab(); // idem: Macro tambem ocupa a area do chart-wrap
-  if(validatorOpen && studyOpen)toggleStudyArchive(); // idem: Arquivo de Estudo tambem ocupa a area do chart-wrap
-  if(validatorOpen && backtestOpen)toggleBacktestTab(); // idem: Backtest tambem ocupa a area do chart-wrap
+  // O Validador nao ocupa a area do grafico, entao nao entra no painelExclusivo.
+  // Mas ele escreve no mesmo painel lateral que o Multi (#multi-analysis), e
+  // esses dois sim se atrapalham.
+  if(validatorOpen&&multiViewOpen)toggleMultiView();
   const sa=document.getElementById('single-analysis'),ma=document.getElementById('multi-analysis');
   if(validatorOpen){
     if(sa)sa.style.display='none';
@@ -2805,17 +2855,10 @@ const RSIT_TFS=['1','5','15','60','240','D'];
 function toggleRsiTable(){
   rsiTableOpen=!rsiTableOpen;
   if(rsiTableOpen){
-    if(multiViewOpen)toggleMultiView();
     if(validatorOpen)toggleValidatorPanel();
-    if(rainbowOpen)toggleRainbowTab();
-    if(macroOpen)toggleMacroTab();
-    if(studyOpen)toggleStudyArchive();
-    if(backtestOpen)toggleBacktestTab();
   }
   document.getElementById('rsi-table-view').classList.toggle('show',rsiTableOpen);
-  document.querySelector('.chart-wrap').style.display=rsiTableOpen?'none':'';
-  document.querySelector('.stoch-wrap').style.display=rsiTableOpen?'none':'';
-  document.querySelector('.phi-wrap').style.display=rsiTableOpen?'none':'';
+  painelExclusivo('rsi-table-view',rsiTableOpen);
   document.getElementById('btn-rsitable').classList.toggle('on',rsiTableOpen);
   if(rsiTableOpen){
     updateRsiTable();
@@ -2947,17 +2990,10 @@ function setupRainbowChart(){
 function toggleRainbowTab(){
   rainbowOpen=!rainbowOpen;
   if(rainbowOpen){
-    if(multiViewOpen)toggleMultiView();
     if(validatorOpen)toggleValidatorPanel();
-    if(rsiTableOpen)toggleRsiTable();
-    if(macroOpen)toggleMacroTab();
-    if(studyOpen)toggleStudyArchive();
-    if(backtestOpen)toggleBacktestTab();
   }
   document.getElementById('rainbow-view').classList.toggle('show',rainbowOpen);
-  document.querySelector('.chart-wrap').style.display=rainbowOpen?'none':'';
-  document.querySelector('.stoch-wrap').style.display=rainbowOpen?'none':'';
-  document.querySelector('.phi-wrap').style.display=rainbowOpen?'none':'';
+  painelExclusivo('rainbow-view',rainbowOpen);
   document.getElementById('btn-rainbow').classList.toggle('on',rainbowOpen);
   if(rainbowOpen){
     setupRainbowChart();
@@ -2988,17 +3024,10 @@ let macroOpen=false, macroTimer=null;
 function toggleMacroTab(){
   macroOpen=!macroOpen;
   if(macroOpen){
-    if(multiViewOpen)toggleMultiView();
     if(validatorOpen)toggleValidatorPanel();
-    if(rsiTableOpen)toggleRsiTable();
-    if(rainbowOpen)toggleRainbowTab();
-    if(studyOpen)toggleStudyArchive();
-    if(backtestOpen)toggleBacktestTab();
   }
   document.getElementById('macro-view').classList.toggle('show',macroOpen);
-  document.querySelector('.chart-wrap').style.display=macroOpen?'none':'';
-  document.querySelector('.stoch-wrap').style.display=macroOpen?'none':'';
-  document.querySelector('.phi-wrap').style.display=macroOpen?'none':'';
+  painelExclusivo('macro-view',macroOpen);
   document.getElementById('btn-macro').classList.toggle('on',macroOpen);
   if(macroOpen){
     updateMacroTab();
@@ -3249,17 +3278,10 @@ function computeEmaAngle(closes, period, lookback=5){
 function toggleStudyArchive(){
   studyOpen=!studyOpen;
   if(studyOpen){
-    if(multiViewOpen)toggleMultiView();
     if(validatorOpen)toggleValidatorPanel();
-    if(rsiTableOpen)toggleRsiTable();
-    if(rainbowOpen)toggleRainbowTab();
-    if(macroOpen)toggleMacroTab();
-    if(backtestOpen)toggleBacktestTab();
   }
   document.getElementById('study-view').classList.toggle('show',studyOpen);
-  document.querySelector('.chart-wrap').style.display=studyOpen?'none':'';
-  document.querySelector('.stoch-wrap').style.display=studyOpen?'none':'';
-  document.querySelector('.phi-wrap').style.display=studyOpen?'none':'';
+  painelExclusivo('study-view',studyOpen);
   document.getElementById('btn-estudo').classList.toggle('on',studyOpen);
   if(studyOpen){
     updateStudyArchive();
@@ -3284,17 +3306,10 @@ let backtestOpen=false;
 function toggleBacktestTab(){
   backtestOpen=!backtestOpen;
   if(backtestOpen){
-    if(multiViewOpen)toggleMultiView();
     if(validatorOpen)toggleValidatorPanel();
-    if(rsiTableOpen)toggleRsiTable();
-    if(rainbowOpen)toggleRainbowTab();
-    if(macroOpen)toggleMacroTab();
-    if(studyOpen)toggleStudyArchive();
   }
   document.getElementById('backtest-view').classList.toggle('show',backtestOpen);
-  document.querySelector('.chart-wrap').style.display=backtestOpen?'none':'';
-  document.querySelector('.stoch-wrap').style.display=backtestOpen?'none':'';
-  document.querySelector('.phi-wrap').style.display=backtestOpen?'none':'';
+  painelExclusivo('backtest-view',backtestOpen);
   document.getElementById('btn-backtest').classList.toggle('on',backtestOpen);
   if(backtestOpen)document.getElementById('backtest-sym').textContent=currentSym.replace('USDT','');
 }
@@ -4557,8 +4572,7 @@ async function updateTerminalUI() {
 // Hook it to the toggle
 function toggleTerminalTab() {
   terminalOpen = !terminalOpen;
-  const cw = document.querySelector('.chart-wrap');
-  if(cw) cw.style.display = terminalOpen ? 'none' : '';
+  painelExclusivo('terminal-view',terminalOpen);
   const el = document.getElementById('terminal-view');
   if(el) el.classList.toggle('show', terminalOpen);
   if(terminalOpen) updateTerminalUI();
@@ -5216,8 +5230,7 @@ window.selectGoldAsset=selectGoldAsset;
 
 function toggleGoldTab() {
   goldOpen = !goldOpen;
-  const cw = document.querySelector('.chart-wrap');
-  if(cw) cw.style.display = goldOpen ? 'none' : '';
+  painelExclusivo('gold-view',goldOpen);
   const el = document.getElementById('gold-view');
   if(el) el.classList.toggle('show', goldOpen);
   if(goldOpen) goldInitOnce();
@@ -5290,6 +5303,7 @@ function toggleMtfView() {
   const el = document.getElementById('mtf-view');
   if(!el) return;
   
+  painelExclusivo('mtf-view',window.mtfViewOpen);
   if (window.mtfViewOpen) {
     el.classList.add('show');
     openMtfCharts();
@@ -5581,18 +5595,10 @@ window.togglePotential = function() {
   el.style.display = isHidden ? 'flex' : 'none';
 };
 
-window.toggleTerminalTab = function() {
-  const el = document.getElementById('terminal-view');
-  if(!el) return;
-  if(el.classList.contains('show')){
-    el.classList.remove('show');
-    document.querySelector('.chart-wrap').style.display = '';
-  } else {
-    el.classList.add('show');
-    document.querySelector('.chart-wrap').style.display = 'none';
-    if(typeof updateTerminalUI !== 'undefined') updateTerminalUI();
-  }
-};
+// Havia uma SEGUNDA definicao de toggleTerminalTab aqui, sobrescrevendo a de
+// cima: ela nao mexia no terminalOpen, escondia so o .chart-wrap e nao fechava
+// nenhum outro painel — era por isso que abrir o Terminal deixava o painel
+// anterior na tela. Fica so a de cima, que passa pelo painelExclusivo.
 
 
 function updateBussolaUI() {
