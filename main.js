@@ -1837,6 +1837,8 @@ window.verificaAlarmes=verificaAlarmes;
 
 function applyTick(price, ts_ms){
   verificaAlarmes(price);
+  // o Multi-TF mostra o mesmo ativo em outros tempos: anda com o mesmo tick
+  if(typeof mtfAplicaTick==="function") mtfAplicaTick(price,ts_ms);
   if(!candles.length||!candleSeries)return;
   let last=candles[candles.length-1];
   const tfSec=tfToSeconds(currentTF);
@@ -5776,6 +5778,7 @@ const MTF_MEDIAS=[
 ];
 let mtfLinhas=[];      // series de media por celula, pra remover junto
 let mtfEstado=[];      // ultimo calculo de cada celula, usado pelo popup
+let mtfDados=[];       // as velas de cada celula, atualizadas no tick ao vivo
 let mtfTimerInt=null;
 
 // segundos de cada timeframe, pra contagem regressiva da vela
@@ -5824,6 +5827,7 @@ async function openMtfCharts() {
       const data=await fetchCandles(sym,mtfTfs[i],300);
       if(data&&data.length){
         series.setData(data);
+        mtfDados[i]=data;
         mtfDesenhaCelula(n,data,linhas);
       }
     }catch(e){ console.warn("[mtf] celula "+n+" falhou:",e); }
@@ -6022,10 +6026,65 @@ function mtfAbrePopup(n){
     (typeof currentSym!=="undefined"?currentSym:""), msg);
 }
 
+// SINCRONIA AO VIVO. O painel carregava as velas uma vez e congelava — nao
+// havia WebSocket nem timer (o multiWS e do painel Multi, nao deste). Como o
+// Multi-TF mostra o MESMO ativo em quatro tempos, o tick do grafico principal
+// ja traz o preco de que ele precisa: nao vale abrir uma segunda conexao pro
+// mesmo dado.
+//
+// O preco de cada celula anda a cada tick, que e barato. O recalculo das cinco
+// medias, do ATR e dos angulos e caro pra fazer 4x por tick, entao roda no
+// maximo a cada MTF_RECALCULO_MS — ou na hora, quando uma vela fecha, que e
+// quando o numero realmente muda de patamar.
+const MTF_RECALCULO_MS=1500;
+let mtfUltimoCalculo=0;
+
+function mtfAplicaTick(preco,ts_ms){
+  if(!window.mtfViewOpen||!mtfDados.length||!isFinite(preco)) return;
+  const nowSec=Math.floor(ts_ms/1000);
+  let fechou=false;
+
+  for(let i=0;i<4;i++){
+    const velas=mtfDados[i], serie=mtfSeries[i];
+    if(!velas||!velas.length||!serie) continue;
+    const tfSec=mtfTfSegundos(mtfTfs[i]);
+    const esperado=nowSec-(nowSec%tfSec);
+    const ultima=velas[velas.length-1];
+
+    if(esperado>ultima.time){
+      // vela nova: abre no fechamento da anterior, como a corretora faz
+      const nova={time:esperado,open:ultima.close,high:Math.max(ultima.close,preco),
+                  low:Math.min(ultima.close,preco),close:preco};
+      velas.push(nova);
+      if(velas.length>400) velas.shift();
+      fechou=true;
+    }else if(esperado===ultima.time){
+      ultima.close=preco;
+      if(preco>ultima.high) ultima.high=preco;
+      if(preco<ultima.low)  ultima.low=preco;
+    }else{
+      continue; // tick atrasado, de uma vela que ja passou
+    }
+    try{ serie.update(velas[velas.length-1]); }catch(e){}
+
+    const px=document.getElementById("mtf-px-"+(i+1));
+    if(px) px.textContent="$"+preco.toFixed(String(currentSym||"").startsWith("XAG")?3:2);
+  }
+
+  const agora=Date.now();
+  if(!fechou&&agora-mtfUltimoCalculo<MTF_RECALCULO_MS) return;
+  mtfUltimoCalculo=agora;
+  for(let i=0;i<4;i++){
+    if(mtfDados[i]&&mtfDados[i].length) mtfDesenhaCelula(i+1,mtfDados[i],mtfLinhas[i]);
+  }
+  mtfAtualizaTotal();
+}
+window.mtfAplicaTick=mtfAplicaTick;
+
 function closeMtfCharts() {
   if(mtfTimerInt){ clearInterval(mtfTimerInt); mtfTimerInt=null; }
   mtfCharts.forEach(c=>{ try{c.remove();}catch(e){} });
-  mtfCharts=[]; mtfSeries=[]; mtfLinhas=[]; mtfEstado=[];
+  mtfCharts=[]; mtfSeries=[]; mtfLinhas=[]; mtfEstado=[]; mtfDados=[];
 }
 
 window.toggleMtfView = toggleMtfView;
