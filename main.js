@@ -1276,7 +1276,11 @@ async function fetchCandles(sym,tf,limit=500){
   let fetchTf = tf;
   let aggFactor = 1;
 
-  if (tf === '5h') { fetchTf = '1h'; aggFactor = 5; }
+  // 6m e 15h nao existem na Binance, como ja nao existiam 5h, 3M, 6M, 9M e
+  // 12M: sao montados agregando o timeframe nativo mais proximo.
+  if (tf === '6m') { fetchTf = '1m'; aggFactor = 6; }
+  else if (tf === '15h') { fetchTf = '1h'; aggFactor = 15; }
+  else if (tf === '5h') { fetchTf = '1h'; aggFactor = 5; }
   else if (tf === '3M') { fetchTf = '1M'; aggFactor = 3; }
   else if (tf === '6M') { fetchTf = '1M'; aggFactor = 6; }
   else if (tf === '9M') { fetchTf = '1M'; aggFactor = 9; }
@@ -5417,10 +5421,20 @@ function mtfDesenhaCelula(n,data,linhas){
 function mtfDesenhaLegenda(n,angles,cls){
   const el=document.getElementById("mtf-compass-legend-"+n);
   if(!el) return;
+  // A caixa da legenda e escura (rgba(19,25,34,.7)) e as cores das medias sao
+  // escuras tambem — EMA8 azul, EMA16 rosa e EMA55 verde sumiam no fundo.
+  // Clareio cada cor na direcao do branco so pra legenda; as linhas do grafico
+  // continuam com a cor original.
+  const clarear=(hex,f)=>{
+    const n=parseInt(hex.slice(1),16);
+    const r=(n>>16)&255, g=(n>>8)&255, b=n&255;
+    const m=v=>Math.round(v+(255-v)*f);
+    return "rgb("+m(r)+","+m(g)+","+m(b)+")";
+  };
   const linhas=MTF_MEDIAS.map(m=>{
     const a=angles[m.key];
     const txt=(a==null)?"--":(a>=0?"+":"")+a.toFixed(0)+"\u00b0";
-    return '<span style="color:'+m.cor+'">'+m.key.toUpperCase()+' '+txt+'</span>';
+    return '<span style="color:'+clarear(m.cor,.45)+'">'+m.key.toUpperCase()+' '+txt+'</span>';
   });
   const est=cls.isFlat?"LATERAL":(cls.direcao==="alta"?"ALTA":"BAIXA");
   const cor=cls.isFlat?"#8b9bb4":(cls.direcao==="alta"?"#00C853":"#FF3B30");
@@ -5445,7 +5459,12 @@ function mtfDesenhaComparacao(n,cls){
   const graus=MTF_MEDIAS.map(m=>cls.angles?cls.angles[m.key]:null).filter(x=>x!=null);
   const pos=graus.filter(x=>x>=4).length, neg=graus.filter(x=>x<=-4).length;
   const aFavor=(v>=0?pos:neg);
-  el.textContent=(v==null)?"--":(v>=0?"+":"")+v.toFixed(1)+"\u00b0  "+aFavor+"/"+graus.length;
+  // A predominancia entra menor e numa segunda linha: no quadrante do painel
+  // central as duas informacoes juntas numa linha so estouravam a largura e
+  // passavam por cima do quadrante vizinho.
+  el.innerHTML=(v==null)?"--":(v>=0?"+":"")+v.toFixed(1)+"\u00b0"
+    +'<span style="display:block;font-size:9px;font-weight:700;opacity:.75;">'
+    +aFavor+"/"+graus.length+"</span>";
   // ambar quando a forca vem de poucas medias: o numero e alto mas nao ha
   // predominancia por tras dele
   el.style.color=(v==null)?"var(--t3)":(cls.isFlat?"#8b9bb4":
@@ -5465,7 +5484,9 @@ function mtfAtualizaTotal(){
   if(!somas.length){ el.textContent="--"; el.title=""; return; }
   const total=somas.reduce((a,b)=>a+b,0);
   const mesmoLado=somas.filter(v=>Math.sign(v)===Math.sign(total)).length;
-  el.textContent=(total>=0?"+":"")+total.toFixed(1)+"\u00b0  "+mesmoLado+"/"+somas.length;
+  // duas linhas: o numero nao cabia junto do n/4 dentro do circulo
+  el.innerHTML=(total>=0?"+":"")+total.toFixed(0)+"\u00b0"
+    +'<span style="display:block;font-size:9px;opacity:.8;">'+mesmoLado+"/"+somas.length+"</span>";
   el.style.color=mesmoLado===somas.length?(total>=0?"#00C853":"#FF3B30"):"#F5A623";
   el.title=mtfEstado.filter(Boolean).map((e,i)=>
     (e.tf||"").toUpperCase()+" "+(e.cls.sumAngle>=0?"+":"")+e.cls.sumAngle.toFixed(1)+"\u00b0").join("   ")
