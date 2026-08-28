@@ -1526,10 +1526,9 @@ const ALARME_NOMES={ema8:"EMA8",ema16:"EMA16",ema55:"EMA55",ema98:"EMA98",
                     ema200:"EMA200",ma56:"MA56",ma89:"MA89"};
 
 // NIVEIS DE FIBO ESCOLHIDOS. Vigiar os 29 niveis de um fibo desenhado e
-// barulho: o preco atravessa varios num movimento so. Aqui da pra marcar os
-// que interessam clicando na lista do FIB MANUAL. Sem nenhum marcado a
-// vigilancia continua em todos, que era o comportamento anterior — assim quem
-// nao souber do recurso nao perde alarme.
+// barulho: o preco atravessa varios num movimento so. Marque os que interessam
+// clicando na lista do FIB MANUAL — um sino aparece no nivel ligado. Sem
+// nenhum marcado, o fibo nao dispara nada.
 let fibNiveisMarcados=[];
 function chaveFibNiveis(){ return "fibniveis:"+(typeof currentSym!=="undefined"?currentSym:"?"); }
 function carregaFibNiveis(){
@@ -1551,21 +1550,92 @@ function toggleFibNivel(lv){
 }
 window.toggleFibNivel=toggleFibNivel;
 
-// QUE FONTES PODEM TOCAR. O sino era tudo ou nada, e so as medias ja sao 7
-// niveis sempre ativos — mais os 29 de cada fibo desenhado. Aqui da pra
-// desligar a fonte que estiver incomodando sem perder as outras.
-let fontesAlarme={fibo:true,preco:true,media:true,cruze:true};
+// O QUE PODE TOCAR. Nada de media dispara sozinho: o usuario monta o alarme
+// que quer, escolhendo entre "o preco cruzou a media X" e "a media X cruzou a
+// media Y". Antes as 7 medias e os 6 pares vigiavam o tempo todo, o que dava
+// aviso demais sem ninguem ter pedido.
+// Fibo e preco ficam com liga/desliga simples — o fibo so vigia os niveis que
+// voce marcou na lista, entao ja e uma escolha sua.
+let fontesAlarme={fibo:true,preco:true};
+let alarmesMedias=[];   // [{tipo:"preco",a:"ema8"} , {tipo:"cruze",a:"ema8",b:"ema16"}]
+
+const ALARME_MEDIAS_OPCOES=["ema8","ema16","ema55","ema98","ema200","ma56","ma89"];
+
 function carregaFontesAlarme(){
   try{ Object.assign(fontesAlarme,JSON.parse(localStorage.getItem("alarme-fontes")||"{}")); }catch(e){}
-  ["fibo","preco","media","cruze"].forEach(k=>{
+  ["fibo","preco"].forEach(k=>{
     const el=document.getElementById("alf-"+k);
     if(el) el.checked=!!fontesAlarme[k];
   });
+  // a configuracao de media e regra, nao preco: vale pra qualquer ativo
+  try{ alarmesMedias=JSON.parse(localStorage.getItem("alarme-medias")||"[]")||[]; }catch(e){ alarmesMedias=[]; }
+  montaSelectsMedia();
+  renderAlarmesMedia();
 }
 function setFonteAlarme(k,v){
   fontesAlarme[k]=!!v;
   try{ localStorage.setItem("alarme-fontes",JSON.stringify(fontesAlarme)); }catch(e){}
 }
+
+function montaSelectsMedia(){
+  const op=ALARME_MEDIAS_OPCOES.map(k=>'<option value="'+k+'">'+(ALARME_NOMES[k]||k)+"</option>").join("");
+  const a=document.getElementById("alm-a"), b=document.getElementById("alm-b");
+  if(a&&!a.children.length) a.innerHTML=op;
+  if(b&&!b.children.length){ b.innerHTML=op; b.value="ema16"; }
+  atualizaFormMedia();
+}
+// "media cruza" precisa da segunda media; "preco cruza" nao.
+function atualizaFormMedia(){
+  const t=document.getElementById("alm-tipo");
+  const x=document.getElementById("alm-x"), b=document.getElementById("alm-b");
+  const cruze=t&&t.value==="cruze";
+  if(x) x.style.display=cruze?"":"none";
+  if(b) b.style.display=cruze?"":"none";
+}
+window.atualizaFormMedia=atualizaFormMedia;
+
+function addAlarmeMedia(){
+  const tipo=(document.getElementById("alm-tipo")||{}).value||"preco";
+  const a=(document.getElementById("alm-a")||{}).value;
+  const b=(document.getElementById("alm-b")||{}).value;
+  if(!a) return;
+  if(tipo==="cruze"&&(!b||a===b)){
+    if(typeof showInfoToast==="function") showInfoToast("ALARMES","escolha duas medias diferentes");
+    return;
+  }
+  const novo = tipo==="cruze" ? {tipo:"cruze",a,b} : {tipo:"preco",a};
+  const igual = alarmesMedias.some(x=>x.tipo===novo.tipo&&x.a===novo.a&&(x.b||"")===(novo.b||""));
+  // o cruzamento e simetrico: 8x16 e o mesmo alarme que 16x8
+  const espelho = tipo==="cruze"&&alarmesMedias.some(x=>x.tipo==="cruze"&&x.a===b&&x.b===a);
+  if(igual||espelho){
+    if(typeof showInfoToast==="function") showInfoToast("ALARMES","esse alarme ja existe");
+    return;
+  }
+  alarmesMedias.push(novo);
+  salvaAlarmesMedias();
+}
+function removeAlarmeMedia(i){ alarmesMedias.splice(i,1); salvaAlarmesMedias(); }
+function salvaAlarmesMedias(){
+  try{ localStorage.setItem("alarme-medias",JSON.stringify(alarmesMedias)); }catch(e){}
+  renderAlarmesMedia();
+}
+function renderAlarmesMedia(){
+  const list=document.getElementById("alm-list");
+  if(!list) return;
+  if(!alarmesMedias.length){
+    list.innerHTML='<div style="padding:4px 9px;font-size:9px;color:var(--t3);">Nenhum alarme de media.</div>';
+    return;
+  }
+  list.innerHTML=alarmesMedias.map((m,i)=>{
+    const txt = m.tipo==="cruze"
+      ? (ALARME_NOMES[m.a]||m.a)+" x "+(ALARME_NOMES[m.b]||m.b)
+      : "preco x "+(ALARME_NOMES[m.a]||m.a);
+    return '<div class="sig-item"><span class="sig-side" style="color:var(--t2);font-weight:400;">'
+      +txt+'</span><button class="toast-x" onclick="removeAlarmeMedia('+i+')" style="margin-left:auto;">x</button></div>';
+  }).join("");
+}
+window.addAlarmeMedia=addAlarmeMedia;
+window.removeAlarmeMedia=removeAlarmeMedia;
 window.setFonteAlarme=setFonteAlarme;
 window.carregaFontesAlarme=carregaFontesAlarme;
 
@@ -1636,8 +1706,9 @@ function niveisDeAlarme(){
       const diff=d.p0.price-d.p1.price;
       const lvs=d.type==="fibretr"?fibRetrLevels:[...fibLevels,...fibBreakLevels];
       lvs.forEach(lv=>{
-        // com niveis marcados, so eles; sem nenhum, todos
-        if(fibNiveisMarcados.length&&!fibNiveisMarcados.includes(lv)) return;
+        // so os niveis que voce marcou na lista do FIB MANUAL. Antes, sem
+        // marcacao, os 29 eram vigiados — o que enchia de aviso sem pedido.
+        if(!fibNiveisMarcados.includes(lv)) return;
         const pr=d.p1.price+diff*lv;
         if(isFinite(pr)) out.push({chave:"fib:"+i+":"+lv,rotulo:"FIB",nome:String(lv),preco:pr});
       });
@@ -1646,9 +1717,10 @@ function niveisDeAlarme(){
   if(fontesAlarme.preco) alarmesManuais.forEach(a=>{
     if(isFinite(a.preco)) out.push({chave:"manual:"+a.preco,rotulo:"ALARME",nome:String(a.preco),preco:a.preco});
   });
-  if(fontesAlarme.media&&ultimasEmas) Object.keys(ultimasEmas).forEach(k=>{
-    const v=ultimasEmas[k];
-    if(v!=null&&isFinite(v)) out.push({chave:"media:"+k,rotulo:"MEDIA",nome:ALARME_NOMES[k]||k,preco:v});
+  // so as medias que voce montou como "preco cruza"
+  if(ultimasEmas) alarmesMedias.filter(m=>m.tipo==="preco").forEach(m=>{
+    const v=ultimasEmas[m.a];
+    if(v!=null&&isFinite(v)) out.push({chave:"media:"+m.a,rotulo:"MEDIA",nome:ALARME_NOMES[m.a]||m.a,preco:v});
   });
   return out;
 }
@@ -1658,15 +1730,14 @@ function niveisDeAlarme(){
 // enquanto (a - b) mantem o sinal nao houve cruzamento; quando ele vira,
 // cruzou. Comparo o penultimo com o ultimo valor da serie, entao o alarme
 // toca uma vez por cruzamento e nao a cada tick com as medias coladas.
-const PARES_MEDIAS=[
-  ["ema8","ema16"], ["ema8","ma89"], ["ema16","ma89"],
-  ["ema8","ema200"], ["ema16","ema200"], ["ma89","ema200"],
-];
+// Os pares vigiados saem do que o usuario montou (alarmesMedias), nao de uma
+// lista fixa: antes seis pares tocavam sem ninguem ter pedido.
 const cruzamentoAnterior={};
 
 function verificaCruzamentoMedias(){
-  if(!alertsOn||!fontesAlarme.cruze||!serieMedias) return;
-  PARES_MEDIAS.forEach(([a,b])=>{
+  if(!alertsOn||!serieMedias) return;
+  // so os pares que voce montou como "media cruza"
+  alarmesMedias.filter(m=>m.tipo==="cruze").forEach(({a,b})=>{
     const sa=serieMedias[a], sb=serieMedias[b];
     if(!sa||!sb||sa.length<2) return;
     const n=sa.length-1;
@@ -4835,7 +4906,7 @@ let catF='all';
 
 function initApp(){
   initTheme();
-  carregaAlarmesManuais(); carregaFibNiveis();
+  carregaAlarmesManuais(); carregaFibNiveis(); carregaFontesAlarme();
   const cb=document.getElementById('cat-bar');
   if(cb && !cb.children.length){
     const catBtn=document.createElement('button');catBtn.className='cp active';catBtn.textContent='TODOS';catBtn.setAttribute('data-cat','all');catBtn.onclick=function(){setCat(this);};cb.appendChild(catBtn);
