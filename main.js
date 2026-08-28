@@ -1021,6 +1021,24 @@ function renderChart(){
   runSignals(closes,highs,lows,opens);
 }
 
+// Um laco de animacao so precisa rodar enquanto o desenho aparece. Os dois
+// globos sao decorativos e desenhavam 60x por segundo pra sempre, mesmo com o
+// painel numa aba escondida — gasto puro de bateria no celular. O
+// IntersectionObserver cobre os dois casos de uma vez: sair da tela por
+// rolagem e o display:none da troca de aba, ja que um elemento com
+// display:none nunca intersecta. Nao trato aba em segundo plano aqui porque
+// o proprio requestAnimationFrame ja pausa sozinho nesse caso.
+function lacoVisivel(el,quadro){
+  let rodando=false,id=null;
+  const passo=()=>{if(!rodando)return;quadro();id=requestAnimationFrame(passo);};
+  const liga=()=>{if(rodando)return;rodando=true;id=requestAnimationFrame(passo);};
+  const desliga=()=>{rodando=false;if(id)cancelAnimationFrame(id);id=null;};
+  if(typeof IntersectionObserver==="function"){
+    new IntersectionObserver(es=>{es[0].isIntersecting?liga():desliga();}).observe(el);
+  }else liga(); // navegador sem suporte: segue como era antes
+  return{liga,desliga};
+}
+
 // ══════════════════════════════════════════════════════
 // GLOBE 3D
 // ══════════════════════════════════════════════════════
@@ -1051,9 +1069,9 @@ function renderChart(){
       const gr=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,8);gr.addColorStop(0,col+'60');gr.addColorStop(1,'transparent');
       ctx.fillStyle=gr;ctx.beginPath();ctx.arc(p.x,p.y,8,0,Math.PI*2);ctx.fill();
     });
-    ang+=.3;requestAnimationFrame(draw);
+    ang+=.3;
   }
-  draw();
+  lacoVisivel(cv,draw);
 })();
 
 // ══════════════════════════════════════════════════════
@@ -5109,7 +5127,6 @@ function goldToggleAlerts(){
 }
 
 // GLOBO 3D (canvas) — decorativo, so mostra contagem de cotacoes recebidas
-let goldGlobeRAF=null;
 function initGoldGlobe(){
   if(goldGlobeStarted)return;
   goldGlobeStarted=true;
@@ -5175,9 +5192,8 @@ function initGoldGlobe(){
         ctx.fillText(city.name,px+5,py+3);
       }
     });
-    goldGlobeRAF=requestAnimationFrame(render);
   }
-  render();
+  lacoVisivel(canvas,render);
 }
 
 function goldInitOnce(){
@@ -5241,15 +5257,22 @@ window.toggleValidatorPanel = typeof toggleValidatorPanel !== 'undefined' ? togg
 window.updateTTCalc = typeof updateTTCalc !== 'undefined' ? updateTTCalc : null;
 
 let mtfTfs = ['15m','1h','4h','1d']; // base state
+// Trocar o TF de uma celula recarregava o painel MULTI (outro painel), o que
+// nao fazia nada visivel aqui. Agora recarrega so a celula que mudou.
 async function changeMtfTf(index, newTf){
-  mtfTfs[index-1] = newTf;
-  if(typeof mtfViewOpen !== 'undefined' && mtfViewOpen || document.getElementById('multi-view').classList.contains('show')){
-      // The user changed a dropdown while multi view is open
-      // We need to reload just that chart, but openMultiCharts does it all.
-      // Easiest is to call closeMultiCharts and openMultiCharts
-      if (typeof closeMultiCharts !== 'undefined') closeMultiCharts();
-      if (typeof openMultiCharts !== 'undefined') openMultiCharts();
-  }
+  mtfTfs[index-1]=newTf;
+  if(!window.mtfViewOpen) return;
+  const i=index-1, el=document.getElementById("mtf-chart-"+index);
+  if(!el||!mtfCharts[i]) return;
+  try{
+    const sym=typeof currentSym!=="undefined"?currentSym:"BTCUSDT";
+    const data=await fetchCandles(sym,newTf,300);
+    if(data&&data.length){
+      mtfSeries[i].setData(data);
+      mtfDesenhaCelula(index,data,mtfLinhas[i]);
+      mtfAtualizaTotal();
+    }
+  }catch(e){ console.warn("[mtf] troca de TF falhou:",e); }
 }
 window.changeMtfTf = changeMtfTf;
 
@@ -5276,60 +5299,251 @@ function toggleMtfView() {
   }
 }
 
-async function openMtfCharts() {
-  const containerIds = ['mtf-chart-1', 'mtf-chart-2', 'mtf-chart-3', 'mtf-chart-4'];
-  // Provide elements if missing in html
-  const mtfView = document.getElementById('mtf-view');
-  if (!document.getElementById('mtf-chart-1')) {
-     mtfView.innerHTML = `
-        <div class="multi-cell"><div class="multi-hd"><span class="multi-sym">15m</span></div><div class="multi-chart" id="mtf-chart-1"></div></div>
-        <div class="multi-cell"><div class="multi-hd"><span class="multi-sym">1h</span></div><div class="multi-chart" id="mtf-chart-2"></div></div>
-        <div class="multi-cell"><div class="multi-hd"><span class="multi-sym">4h</span></div><div class="multi-chart" id="mtf-chart-3"></div></div>
-        <div class="multi-cell"><div class="multi-hd"><span class="multi-sym">1d</span></div><div class="multi-chart" id="mtf-chart-4"></div></div>
-     `;
-  }
-  
-  closeMtfCharts();
-  
-  const sym = typeof currentSym !== 'undefined' ? currentSym : 'BTCUSDT';
-  const tfs = ['15m', '1h', '4h', '1d'];
-  
-  for(let i = 0; i < 4; i++) {
-     const cId = containerIds[i];
-     const el = document.getElementById(cId);
-     if(!el) continue;
-     
-     const chart = LightweightCharts.createChart(el, {
-        layout: { background: { color: 'transparent' }, textColor: '#8b9bb4' },
-        grid: { vertLines: { color: 'rgba(255,255,255,0.02)' }, horzLines: { color: 'rgba(255,255,255,0.02)' } },
-        timeScale: { timeVisible: true }
-     });
-     
-     const series = chart.addCandlestickSeries({
-        upColor: '#00ffaa', downColor: '#ff4444', borderUpColor: '#00ffaa', borderDownColor: '#ff4444', wickUpColor: '#00ffaa', wickDownColor: '#ff4444'
-     });
-     
-     mtfCharts.push(chart);
-     mtfSeries.push(series);
-     
-     try {
-       const data = await fetchCandles(sym, tfs[i], 300);
-       if(data && data.length) series.setData(data);
-     } catch(e) {}
+// O painel Multi-TF tinha o markup completo no index.html — preco, timer,
+// seletor de TF, bussola e legenda por celula — mas o codigo so criava os
+// quatro graficos e ignorava o resto. Auditado: das 9 familias de elementos
+// mtf-*, so mtf-chart-1..4 tinha quem escrevesse nela. O que segue liga as
+// outras oito no mesmo markup que ja estava la.
+
+const MTF_MEDIAS=[
+  {key:"ema8",  p:8,   larg:2, cor:C.ema8},
+  {key:"ema16", p:16,  larg:2, cor:C.ema16},
+  {key:"ema55", p:55,  larg:2, cor:C.ema55},
+  {key:"ema98", p:98,  larg:1, cor:C.ema98},
+  {key:"ema200",p:200, larg:2, cor:C.ema200},
+];
+let mtfLinhas=[];      // series de media por celula, pra remover junto
+let mtfEstado=[];      // ultimo calculo de cada celula, usado pelo popup
+let mtfTimerInt=null;
+
+// segundos de cada timeframe, pra contagem regressiva da vela
+function mtfTfSegundos(tf){
+  const n=parseFloat(tf), u=tf.replace(/[\d.]/g,"");
+  const mapa={m:60,h:3600,d:86400,w:604800,M:2592000};
+  return (mapa[u]||60)*(isNaN(n)?1:n);
+}
+
+function mtfLeTfs(){
+  for(let i=0;i<4;i++){
+    const sel=document.getElementById("mtf-sel-"+(i+1));
+    if(sel&&sel.value) mtfTfs[i]=sel.value;
   }
 }
 
+async function openMtfCharts() {
+  const mtfView=document.getElementById("mtf-view");
+  if(!mtfView) return;
+  closeMtfCharts();
+  mtfLeTfs();
+  const sym = typeof currentSym!=="undefined" ? currentSym : "BTCUSDT";
+  document.querySelectorAll("#mtf-view .mtf-sym-lbl").forEach(el=>{el.textContent=sym;});
+
+  for(let i=0;i<4;i++){
+    const n=i+1;
+    const el=document.getElementById("mtf-chart-"+n);
+    if(!el) continue;
+    const chart=LightweightCharts.createChart(el,{
+      layout:{background:{color:"transparent"},textColor:"#8b9bb4"},
+      grid:{vertLines:{color:"rgba(255,255,255,0.02)"},horzLines:{color:"rgba(255,255,255,0.02)"}},
+      timeScale:{timeVisible:true}
+    });
+    const series=chart.addCandlestickSeries({
+      upColor:"#00ffaa",downColor:"#ff4444",borderUpColor:"#00ffaa",
+      borderDownColor:"#ff4444",wickUpColor:"#00ffaa",wickDownColor:"#ff4444"
+    });
+    // as medias que faltavam no modo multi, as mesmas do grafico principal
+    const linhas={};
+    MTF_MEDIAS.forEach(m=>{ linhas[m.key]=chart.addLineSeries({
+      color:m.cor,lineWidth:m.larg,priceLineVisible:false,
+      lastValueVisible:false,crosshairMarkerVisible:false}); });
+    mtfCharts.push(chart); mtfSeries.push(series); mtfLinhas.push(linhas);
+
+    try{
+      const data=await fetchCandles(sym,mtfTfs[i],300);
+      if(data&&data.length){
+        series.setData(data);
+        mtfDesenhaCelula(n,data,linhas);
+      }
+    }catch(e){ console.warn("[mtf] celula "+n+" falhou:",e); }
+  }
+  mtfAtualizaTotal();
+  mtfIniciaTimers();
+  for(let n=1;n<=4;n++) mtfArrastavel(n);
+}
+
+// Calcula as medias da celula, desenha as linhas, o preco, a bussola e a
+// legenda. O angulo de cada media reusa o mesmo maAngleDeg do painel
+// principal, entao a leitura e a mesma coisa em toda parte.
+function mtfDesenhaCelula(n,data,linhas){
+  const closes=data.map(d=>d.close), highs=data.map(d=>d.high), lows=data.map(d=>d.low);
+  const series={};
+  MTF_MEDIAS.forEach(m=>{
+    const arr=ema(closes,m.p);
+    series[m.key]=arr;
+    if(linhas&&linhas[m.key]) linhas[m.key].setData(
+      data.map((d,i)=>({time:d.time,value:arr[i]})).filter(x=>x.value!=null));
+  });
+  const atrV=atrCalc(highs,lows,closes,14);
+  const idx=closes.length-1;
+  const angles={};
+  MTF_MEDIAS.forEach(m=>{ angles[m.key]=maAngleDeg(series[m.key],atrV,idx,DIRECAO_LOOKBACK); });
+  const cls=classifyDirecao(angles);
+  cls.angles=angles; // o title do placar lista grau a grau
+  mtfEstado[n-1]={tf:mtfTfs[n-1],angles,cls,preco:closes[idx],ultimoT:data[data.length-1].time};
+
+  const px=document.getElementById("mtf-px-"+n);
+  // mesmo formato do painel Multi: prata tem 3 casas, o resto 2
+  if(px) px.textContent="$"+closes[idx].toFixed(String(currentSym||"").startsWith("XAG")?3:2);
+
+  renderDirecaoCompass(angles,"mtf-compass-svg-"+n);
+  mtfDesenhaLegenda(n,angles,cls);
+  mtfDesenhaComparacao(n,cls);
+}
+
+function mtfDesenhaLegenda(n,angles,cls){
+  const el=document.getElementById("mtf-compass-legend-"+n);
+  if(!el) return;
+  const linhas=MTF_MEDIAS.map(m=>{
+    const a=angles[m.key];
+    const txt=(a==null)?"--":(a>=0?"+":"")+a.toFixed(0)+"\u00b0";
+    return '<span style="color:'+m.cor+'">'+m.key.toUpperCase()+' '+txt+'</span>';
+  });
+  const est=cls.isFlat?"LATERAL":(cls.direcao==="alta"?"ALTA":"BAIXA");
+  const cor=cls.isFlat?"#8b9bb4":(cls.direcao==="alta"?"#00C853":"#FF3B30");
+  linhas.push('<span style="color:'+cor+';font-weight:700">'+est+'</span>');
+  el.innerHTML=linhas.join("");
+}
+
+// O placar e SOMA de graus, nao media. Cada celula soma os angulos das suas
+// cinco medias; o total soma as quatro celulas. Assim uma media parada nao
+// dilui as outras — ela so nao contribui — e o numero cresce com quantas
+// medias estao inclinadas E com o quanto elas inclinam.
+function mtfDesenhaComparacao(n,cls){
+  const el=document.getElementById("mtf-comp-val-"+n);
+  const lbl=document.getElementById("mtf-comp-lbl-"+n);
+  if(lbl) lbl.textContent=mtfTfs[n-1].toUpperCase();
+  if(!el) return;
+  const v=cls.sumAngle;
+  el.textContent=(v==null)?"--":(v>=0?"+":"")+v.toFixed(1)+"\u00b0";
+  el.style.color=(v==null)?"var(--t3)":(cls.isFlat?"#8b9bb4":(v>=0?"#00C853":"#FF3B30"));
+  const graus=MTF_MEDIAS.map(m=>{const a=cls.angles?cls.angles[m.key]:null;
+    return m.key.toUpperCase()+" "+(a==null?"--":(a>=0?"+":"")+a.toFixed(1)+"\u00b0");}).join("  ");
+  el.title=mtfTfs[n-1].toUpperCase()+": "+graus+"   soma "+((v==null)?"--":v.toFixed(1)+"\u00b0");
+}
+
+// Soma das quatro somas. O n/4 ao lado diz quantos tempos apontam pro mesmo
+// lado do total — a soma sozinha nao mostra se ela veio de todos concordando
+// ou de um tempo muito inclinado contra os outros.
+function mtfAtualizaTotal(){
+  const el=document.getElementById("mtf-comp-total");
+  if(!el) return;
+  const somas=mtfEstado.filter(Boolean).map(e=>e.cls.sumAngle).filter(v=>v!=null);
+  if(!somas.length){ el.textContent="--"; el.title=""; return; }
+  const total=somas.reduce((a,b)=>a+b,0);
+  const mesmoLado=somas.filter(v=>Math.sign(v)===Math.sign(total)).length;
+  el.textContent=(total>=0?"+":"")+total.toFixed(1)+"\u00b0  "+mesmoLado+"/"+somas.length;
+  el.style.color=mesmoLado===somas.length?(total>=0?"#00C853":"#FF3B30"):"#F5A623";
+  el.title=mtfEstado.filter(Boolean).map((e,i)=>
+    (e.tf||"").toUpperCase()+" "+(e.cls.sumAngle>=0?"+":"")+e.cls.sumAngle.toFixed(1)+"\u00b0").join("   ")
+    +"   =   "+(total>=0?"+":"")+total.toFixed(1)+"\u00b0";
+}
+
+// Contagem regressiva ate o fechamento da vela de cada celula.
+function mtfIniciaTimers(){
+  if(mtfTimerInt) clearInterval(mtfTimerInt);
+  mtfTimerInt=setInterval(()=>{
+    const agora=Math.floor((Date.now()+(typeof serverTimeOffset!=="undefined"?serverTimeOffset:0))/1000);
+    for(let i=0;i<4;i++){
+      const el=document.getElementById("mtf-timer-"+(i+1)), st=mtfEstado[i];
+      if(!el||!st) continue;
+      const falta=(st.ultimoT+mtfTfSegundos(st.tf))-agora;
+      if(falta<=0){ el.textContent="00:00"; continue; }
+      const h=Math.floor(falta/3600), m=Math.floor((falta%3600)/60), sg=falta%60;
+      el.textContent=h>0 ? h+":"+String(m).padStart(2,"0")+":"+String(sg).padStart(2,"0")
+                         : String(m).padStart(2,"0")+":"+String(sg).padStart(2,"0");
+    }
+  },1000);
+}
+
+// BUSSOLA ARRASTAVEL. O container nasce com pointer-events:none no style
+// inline do HTML — sem mexer nisso ele nao recebe nem o clique nem o arrasto.
+// Uso Pointer Events pra valer no dedo e no mouse com o mesmo codigo, e
+// setPointerCapture pra nao perder o arrasto quando o dedo sai do elemento.
+// A posicao de cada bussola fica no localStorage, senao ela voltaria pro
+// canto toda vez que o painel reabrisse.
+function mtfArrastavel(n){
+  const box=document.getElementById("mtf-compass-container-"+n);
+  if(!box||box.dataset.arrastavel) return;
+  box.dataset.arrastavel="1";
+  box.style.pointerEvents="auto";
+  box.style.cursor="grab";
+  box.style.touchAction="none"; // senao o navegador rola a pagina em vez de arrastar
+
+  const chave="mtf-bussola-pos-"+n;
+  try{
+    const salvo=JSON.parse(localStorage.getItem(chave)||"null");
+    if(salvo){ box.style.left=salvo.x+"px"; box.style.top=salvo.y+"px"; box.style.right="auto"; }
+  }catch(e){}
+
+  let arrastando=false,x0=0,y0=0,l0=0,t0=0,mexeu=false;
+  box.addEventListener("pointerdown",e=>{
+    arrastando=true; mexeu=false;
+    const r=box.getBoundingClientRect(), pr=box.offsetParent.getBoundingClientRect();
+    l0=r.left-pr.left; t0=r.top-pr.top; x0=e.clientX; y0=e.clientY;
+    box.style.right="auto"; box.style.left=l0+"px"; box.style.top=t0+"px";
+    box.style.cursor="grabbing"; box.setPointerCapture(e.pointerId);
+  });
+  box.addEventListener("pointermove",e=>{
+    if(!arrastando) return;
+    const dx=e.clientX-x0, dy=e.clientY-y0;
+    if(Math.abs(dx)>3||Math.abs(dy)>3) mexeu=true;
+    const pai=box.offsetParent.getBoundingClientRect();
+    // presa dentro da celula, senao some atras do painel
+    const nx=Math.max(0,Math.min(l0+dx,pai.width-box.offsetWidth));
+    const ny=Math.max(0,Math.min(t0+dy,pai.height-box.offsetHeight));
+    box.style.left=nx+"px"; box.style.top=ny+"px";
+  });
+  const solta=e=>{
+    if(!arrastando) return;
+    arrastando=false; box.style.cursor="grab";
+    try{ box.releasePointerCapture(e.pointerId); }catch(err){}
+    try{ localStorage.setItem(chave,JSON.stringify(
+      {x:parseFloat(box.style.left)||0,y:parseFloat(box.style.top)||0})); }catch(err){}
+    // clique sem arrasto abre o detalhe; com arrasto, nao
+    if(!mexeu) mtfAbrePopup(n);
+  };
+  box.addEventListener("pointerup",solta);
+  box.addEventListener("pointercancel",solta);
+  box.title="Arraste para mover \u00b7 clique para o detalhe";
+}
+
+// Popup com a leitura daquele timeframe: angulo de cada media, o placar e o
+// estado. Reusa o toast do app em vez de inventar outro modal.
+function mtfAbrePopup(n){
+  const st=mtfEstado[n-1];
+  if(!st){ return; }
+  const linhas=MTF_MEDIAS.map(m=>{
+    const a=st.angles[m.key];
+    return m.key.toUpperCase()+": "+(a==null?"--":(a>=0?"+":"")+a.toFixed(1)+"\u00b0");
+  });
+  const est=st.cls.isFlat?"LATERAL":(st.cls.direcao==="alta"?"ALTA":"BAIXA");
+  const placar=st.cls.sumAngle==null?"--":(st.cls.sumAngle>=0?"+":"")+st.cls.sumAngle.toFixed(1)+"\u00b0";
+  const msg=linhas.join("  \u00b7  ")+"   |   soma "+placar+"   |   "+est;
+  if(typeof showInfoToast==="function") showInfoToast(st.tf.toUpperCase()+" \u00b7 "+
+    (typeof currentSym!=="undefined"?currentSym:""), msg);
+}
+
 function closeMtfCharts() {
-  mtfCharts.forEach(c => c.remove());
-  mtfCharts = [];
-  mtfSeries = [];
+  if(mtfTimerInt){ clearInterval(mtfTimerInt); mtfTimerInt=null; }
+  mtfCharts.forEach(c=>{ try{c.remove();}catch(e){} });
+  mtfCharts=[]; mtfSeries=[]; mtfLinhas=[]; mtfEstado=[];
 }
 
 window.toggleMtfView = toggleMtfView;
 
 // Re-assign modals explicitly to ensure they work on click
 
-window.toggleBussolaModal = function() { console.log('BUSSOLA TOGGLE CALLED. angles:', direcaoAngles);
+window.toggleBussolaModal = function() {
   const m = document.getElementById('bussola-modal');
   if(!m) return;
   if(m.style.display === 'block' || m.style.display === 'flex'){
@@ -5535,8 +5749,10 @@ function updateDirecaoTracking(angles){
   return cls;
 }
 
-function renderDirecaoCompass(angles){
-  const svg=document.getElementById('direcao-compass');
+// O segundo argumento existe pro Multi-TF: cada celula tem a sua bussola
+// (mtf-compass-svg-1..4). Sem ele o comportamento e o de sempre.
+function renderDirecaoCompass(angles,svgId){
+  const svg=document.getElementById(svgId||'direcao-compass');
   if(!svg)return;
   const cx=55,cy=55,r=48,needleLen=42;
   let inner=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--bd3)" stroke-width="1"/>`;
@@ -5631,13 +5847,11 @@ function renderDirecaoStateBadge(cls){
 }
 
 function updateDirecaoPanel(closes,e8,e16,e55,e98,e200,m56,m89,atrV){
-  console.log('updateDirecaoPanel CALLED');
-  console.log('closes length', closes.length);
   const idx=closes.length-1;
   const seriesByKey={ema8:e8,ema16:e16,ema55:e55,ema98:e98,ema200:e200,ma56:m56,ma89:m89};
   const angles={};
   DIRECAO_MAS.forEach(({key})=>{angles[key]=maAngleDeg(seriesByKey[key],atrV,idx,DIRECAO_LOOKBACK);});
-  direcaoAngles=angles; console.log('updateDirecaoPanel angles:', angles);
+  direcaoAngles=angles;
   const cls=updateDirecaoTracking(angles);
   renderDirecaoCompass(angles);
   renderDirecaoReadout(angles,cls);
