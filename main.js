@@ -1699,6 +1699,38 @@ function resetaAlarmes(){
 }
 window.resetaAlarmes=resetaAlarmes;
 
+function mostraAlarmes(lista,subindo,preco,selo){
+  if(!lista.length) return;
+  const seta=subindo?"\u25b2":"\u25bc";
+  if(lista.length===1){
+    showToast(lista[0].rotulo,seta+" "+lista[0].nome+selo,preco);
+    return;
+  }
+  const cx=document.getElementById("toasts");
+  if(!cx){ showToast("ALARMES",seta+" "+lista.length+" niveis"+selo,preco); return; }
+  const t=document.createElement("div");
+  t.className="toast "+(subindo?"buy":"sell");
+  // um gap pode cruzar dezenas de niveis; listo os mais proximos do preco novo
+  // e resumo o resto, senao o aviso vira uma parede de texto
+  const TETO_LINHAS=6;
+  const mostra=lista.slice(0,TETO_LINHAS), resto=lista.length-TETO_LINHAS;
+  const linhas=mostra.map(nv=>
+    '<div style="display:flex;justify-content:space-between;gap:8px;">'
+    +'<span style="color:var(--t2);">'+nv.rotulo+" "+nv.nome+"</span>"
+    +'<span style="font-family:var(--mono);">'+nv.preco.toFixed(2)+"</span></div>").join("")
+    +(resto>0?'<div style="color:var(--t3);">+ '+resto+" outros</div>":"");
+  t.innerHTML='<div class="toast-hd"><span class="toast-title">'+seta+" "+lista.length
+    +" niveis"+selo+'</span>'
+    +'<button class="toast-x" onclick="this.closest(\'.toast\').remove()">x</button></div>'
+    +'<div class="toast-msg">'+(typeof currentSym!=="undefined"?currentSym.replace("USDT",""):"")
+    +" "+(typeof currentTF!=="undefined"?currentTF:"")+'</div>'
+    +'<div class="toast-msg" style="margin-top:4px;line-height:1.5;">'+linhas+"</div>"
+    +'<div class="toast-px">@ '+preco.toFixed(2)+"</div>";
+  cx.appendChild(t);
+  setTimeout(()=>{try{t.remove();}catch(e){}},9000);
+  if(typeof beep==="function") beep();   // um beep so, nao um por nivel
+}
+
 function verificaAlarmes(preco){
   const ant=alarmePrecoAnterior;
   alarmePrecoAnterior=preco;
@@ -1707,10 +1739,9 @@ function verificaAlarmes(preco){
   if(!alertsOn||ant==null||ant===preco||!isFinite(preco)) return;
   const baixo=Math.min(ant,preco), alto=Math.max(ant,preco), subindo=preco>ant;
   const agora=Date.now();
-  // Num tick normal o preco cruza um nivel, no maximo. Mas um gap de abertura
-  // ou uma recarga do historico pode pular dezenas de uma vez — e sao dezenas
-  // de beeps. Toco os quatro primeiros e resumo o resto num aviso so.
-  const TETO_POR_TICK=4;
+  // Num tick normal o preco cruza um nivel, no maximo. Um gap de abertura ou
+  // uma recarga do historico pode pular dezenas — todos entram num aviso so,
+  // que e quem limita quantos aparecem.
   const cruzados=niveisDeAlarme().filter(nv=>{
     if(!(nv.preco>baixo&&nv.preco<=alto)) return false;
     const ultimo=alarmeUltimoDisparo[nv.chave];
@@ -1726,13 +1757,10 @@ function verificaAlarmes(preco){
   const est=(typeof estadoLiberacao==="function")?estadoLiberacao(null):null;
   const aFavor = est && ((subindo&&est==="alta")||(!subindo&&est==="baixa"));
   const selo = aFavor ? " \u2713" : (est?" !":"");
-  cruzados.slice(0,TETO_POR_TICK).forEach(nv=>{
-    showToast(nv.rotulo,(subindo?"\u25b2 ":"\u25bc ")+nv.nome+selo,preco);
-  });
-  const resto=cruzados.length-TETO_POR_TICK;
-  if(resto>0&&typeof showInfoToast==="function"){
-    showInfoToast("ALARMES","mais "+resto+" niveis cruzados neste movimento");
-  }
+  // Um aviso por nivel enchia a tela de caixas empilhadas. Quando varios
+  // cruzam no mesmo movimento, sai UM aviso listando todos — um beep so, uma
+  // caixa so. Com um nivel unico, que e o caso comum, nada muda.
+  mostraAlarmes(cruzados,subindo,preco,selo);
 }
 window.verificaAlarmes=verificaAlarmes;
 
