@@ -639,7 +639,13 @@ function addSig(type,side,idx,price){
     renderLiberados();
   }
   renderSignalLog();
-  if(alertsOn)showToast(type,side,price);
+  // O motor varre o historico inteiro (da vela 250 ate a ultima) a cada
+  // recalculo, e chamava showToast pra CADA sinal encontrado. Com o sino
+  // ligado, toda recarga repetia como aviso ao vivo dezenas de sinais de horas
+  // atras — era esse o disparo em massa "sem nocao". Sinal antigo entra no log
+  // e no historico, mas so o das ultimas velas vira aviso.
+  const naPonta = idx >= candles.length-2;
+  if(alertsOn&&naPonta)showToast(type,side,price);
   // addMarker(type,side,time,price); // Marcadores no gráfico desativados (performance extrema)
 }
 
@@ -2754,7 +2760,7 @@ async function loadFullHistoryMulti(mySession=multiSession){
 
 function closeMultiCharts(){
   multiSession++; // invalida qualquer loop assincrono desta sessao (loadFullHistoryMulti, fetchMultiOlderBatch, openMultiCharts em voo)
-  if(multiWS){multiWS.onclose=null;try{multiWS.close();}catch(e){}multiWS=null;}
+  fechaMultiWS();
   multiPending={};multiTickScheduled=false;
   stopMultiTimers();
   stopMultiAnalysis();
@@ -2800,9 +2806,13 @@ async function recarregaMulti(){
       }
     }catch(e){ /* a proxima tentativa cobre */ }
   }
-  // o WS pode ter morrido sem disparar onclose
-  if(multiWS&&multiWS.readyState>1){ try{multiWS.close();}catch(e){} multiWS=null; }
-  if(!multiWS&&multiViewOpen) openMultiWS();
+  // uma conexao pode ter morrido sem disparar onclose; o openMultiWS so
+  // reabre as que faltam, entao chamar sempre e seguro
+  MULTI_SYMS.forEach(sym=>{
+    const ws=multiWSs[sym];
+    if(ws&&ws.readyState>1){ try{ws.close();}catch(e){} multiWSs[sym]=null; }
+  });
+  if(multiViewOpen) openMultiWS();
 }
 
 function startMultiTimers(){
@@ -2811,7 +2821,11 @@ function startMultiTimers(){
   multiTimerInterval=setInterval(()=>{
     const tfSec=tfToSeconds(currentTF);
     const nowSec=Math.floor((Date.now()+serverTimeOffset)/1000);
-    const semDado=(Date.now()-multiUltimoTick)>MULTI_SEM_DADO_MS;
+    // por ativo: com uma conexao pra cada, um simbolo pode estar mudo enquanto
+    // os outros correm — dizer "sem dado" nos quatro esconderia isso
+    const agoraMs=Date.now();
+    const mudo=sym=>(agoraMs-(multiTickPorSym[sym]||multiUltimoTick))>MULTI_SEM_DADO_MS;
+    const semDado=MULTI_SYMS.every(mudo);
     if(semDado) recarregaMulti();
     // as 4 bussolas acompanham enquanto o modal estiver aberto. A cada 2s, nao
     // a cada segundo: sao 5 EMAs e um ATR sobre 300 velas vezes 4 ativos.
@@ -2828,8 +2842,8 @@ function startMultiTimers(){
       // vela vencida com o dado parado e sinal de conexao morta, nao de mercado
       // parado: diz isso em vez de fingir uma contagem em 00:00
       if(diff<=0){
-        el.textContent=semDado?"sem dado":"00:00";
-        el.style.color=semDado?"var(--red)":"";
+        el.textContent=mudo(sym)?"sem dado":"00:00";
+        el.style.color=mudo(sym)?"var(--red)":"";
         return;
       }
       el.style.color="";
@@ -4255,26 +4269,54 @@ function applyMultiTick(sym,price,ts_ms){
 
 // aggTrade = preco de cada execucao (delay zero), igual o grafico principal.
 // Antes era so kline (~1x/seg) — por isso os precos do Multi pareciam "atrasados".
+// UMA CONEXAO POR ATIVO. Antes os quatro iam num stream combinado
+// (btcusdt@aggTrade/ethusdt@aggTrade/...), e XAUUSDT e XAGUSDT nao existem no
+// futures da Binance: um nome invalido derruba a assinatura inteira, entao
+// BTC e ETH morriam junto com o ouro e a prata. Por isso "os candles nao
+// atualizam" — nenhum dos quatro recebia.
+//
+// Com uma conexao por ativo, um simbolo que a corretora nao serve fica so ele
+// sem dado, e os outros seguem em tempo real. Quem nao recebe cai no vigia
+// que recarrega as velas por HTTP.
+let multiWSs={};
+let multiTickPorSym={};
+
+function fechaMultiWS(){
+  Object.values(multiWSs).forEach(ws=>{ if(!ws)return; ws.onclose=null; try{ws.close();}catch(e){} });
+  multiWSs={};
+  multiWS=null;
+}
+
 function openMultiWS(){
   if(!multiViewOpen)return;
   const mySession=multiSession;
-  const streams=MULTI_SYMS.map(s=>`${s.toLowerCase()}@aggTrade`).join('/');
-  multiWS=new WebSocket(`wss://fstream.binance.com/stream?streams=${streams}`);
-  multiWS.onmessage=ev=>{
-    try{
-      const payload=JSON.parse(ev.data);
-      if(!payload||!payload.stream)return;
-      const d=payload.data;
-      const sym=d.s;if(!sym||!multiCharts[sym])return;
-      const price=parseFloat(d.p),ts=d.T||Date.now();
-      scheduleMultiTick(sym,price,ts);
-    }catch(e){}
-  };
-  multiWS.onclose=()=>{
-    // So tenta reconectar se ainda for a mesma sessao — evita WS duplicado
-    // se o Multi foi fechado e reaberto dentro da janela de retry.
-    if(multiViewOpen&&mySession===multiSession)setTimeout(()=>{if(mySession===multiSession)openMultiWS();},3000);
-  };
+  MULTI_SYMS.forEach(sym=>{
+    const atual=multiWSs[sym];
+    if(atual&&atual.readyState<=1) return;   // ja conectando ou conectado
+    let ws;
+    try{ ws=new WebSocket(`wss://fstream.binance.com/ws/${sym.toLowerCase()}@aggTrade`); }
+    catch(e){ return; }
+    multiWSs[sym]=ws;
+    multiWS=ws;   // compatibilidade: o resto do codigo olha esta referencia
+    ws.onmessage=ev=>{
+      try{
+        const d=JSON.parse(ev.data);
+        if(!d||!d.p) return;
+        const price=parseFloat(d.p), ts=d.T||Date.now();
+        if(!isFinite(price)||!multiCharts[sym]) return;
+        multiTickPorSym[sym]=Date.now();
+        scheduleMultiTick(sym,price,ts);
+      }catch(e){}
+    };
+    ws.onclose=()=>{
+      if(multiWSs[sym]===ws) multiWSs[sym]=null;
+      // so reconecta se ainda for a mesma sessao, senao o Multi fechado e
+      // reaberto acumularia conexoes
+      if(multiViewOpen&&mySession===multiSession){
+        setTimeout(()=>{ if(multiViewOpen&&mySession===multiSession) openMultiWS(); },3000);
+      }
+    };
+  });
 }
 
 // ══════════════════════════════════════════════════════
