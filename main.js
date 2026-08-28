@@ -5423,12 +5423,22 @@ function mtfDesenhaComparacao(n,cls){
   const lbl=document.getElementById("mtf-comp-lbl-"+n);
   if(lbl) lbl.textContent=mtfTfs[n-1].toUpperCase();
   if(!el) return;
+  // Predominancia: quantas das cinco medias apontam pro lado da soma. A soma
+  // sozinha nao separa "quatro medias subindo" de "uma media muito inclinada
+  // carregando quatro contra" — e essa e a diferenca que interessa ler.
+  // Medias praticamente paradas (menos de 4 graus) nao contam pra nenhum lado.
   const v=cls.sumAngle;
-  el.textContent=(v==null)?"--":(v>=0?"+":"")+v.toFixed(1)+"\u00b0";
-  el.style.color=(v==null)?"var(--t3)":(cls.isFlat?"#8b9bb4":(v>=0?"#00C853":"#FF3B30"));
-  const graus=MTF_MEDIAS.map(m=>{const a=cls.angles?cls.angles[m.key]:null;
+  const graus=MTF_MEDIAS.map(m=>cls.angles?cls.angles[m.key]:null).filter(x=>x!=null);
+  const pos=graus.filter(x=>x>=4).length, neg=graus.filter(x=>x<=-4).length;
+  const aFavor=(v>=0?pos:neg);
+  el.textContent=(v==null)?"--":(v>=0?"+":"")+v.toFixed(1)+"\u00b0  "+aFavor+"/"+graus.length;
+  // ambar quando a forca vem de poucas medias: o numero e alto mas nao ha
+  // predominancia por tras dele
+  el.style.color=(v==null)?"var(--t3)":(cls.isFlat?"#8b9bb4":
+    (aFavor<=graus.length/2?"#F5A623":(v>=0?"#00C853":"#FF3B30")));
+  const detalhe=MTF_MEDIAS.map(m=>{const a=cls.angles?cls.angles[m.key]:null;
     return m.key.toUpperCase()+" "+(a==null?"--":(a>=0?"+":"")+a.toFixed(1)+"\u00b0");}).join("  ");
-  el.title=mtfTfs[n-1].toUpperCase()+": "+graus+"   soma "+((v==null)?"--":v.toFixed(1)+"\u00b0");
+  el.title=mtfTfs[n-1].toUpperCase()+": "+detalhe+"   soma "+((v==null)?"--":v.toFixed(1)+"\u00b0")+"   predominancia "+aFavor+"/"+graus.length;
 }
 
 // Soma das quatro somas. O n/4 ao lado diz quantos tempos apontam pro mesmo
