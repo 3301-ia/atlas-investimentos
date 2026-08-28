@@ -1525,30 +1525,89 @@ const ALARME_ESPERA_MS=60000;  // o mesmo nivel nao repete dentro de um minuto
 const ALARME_NOMES={ema8:"EMA8",ema16:"EMA16",ema55:"EMA55",ema98:"EMA98",
                     ema200:"EMA200",ma56:"MA56",ma89:"MA89"};
 
-// NIVEIS DE FIBO ESCOLHIDOS. Vigiar os 29 niveis de um fibo desenhado e
-// barulho: o preco atravessa varios num movimento so. Marque os que interessam
-// clicando na lista do FIB MANUAL — um sino aparece no nivel ligado. Sem
-// nenhum marcado, o fibo nao dispara nada.
-let fibNiveisMarcados=[];
+// NIVEIS DE FIBO ESCOLHIDOS. Marque os que interessam clicando na lista do
+// FIB MANUAL — um sino aparece no nivel ligado. Sem nenhum marcado, o fibo
+// nao dispara nada.
+//
+// Cada marca guarda o PRECO que o nivel valia na hora, junto da ancora do
+// fibo em que foi feita. Quando o fibo muda de lugar, essas marcas viram
+// alarme de preco fixo naquele valor e saem da lista do fibo: quem marcou o
+// 0.618 em 63941 quer 63941 vigiado, e nao um numero que anda junto toda vez
+// que o fibo e redesenhado.
+let fibNiveisMarcados=[];   // [{lv, preco}]
+let fibAncora=null;         // "p0_p1" do fibo em que as marcas foram feitas
+
 function chaveFibNiveis(){ return "fibniveis:"+(typeof currentSym!=="undefined"?currentSym:"?"); }
-function carregaFibNiveis(){
-  try{ fibNiveisMarcados=JSON.parse(localStorage.getItem(chaveFibNiveis())||"[]")||[]; }
-  catch(e){ fibNiveisMarcados=[]; }
+function ancoraDoFibo(d){
+  return (d&&d.p0&&d.p1) ? d.p0.price.toFixed(6)+"_"+d.p1.price.toFixed(6) : null;
 }
+function fiboAtual(){
+  try{ return [...drawings()].reverse().find(d=>d.type==="fibbo"); }catch(e){ return null; }
+}
+function carregaFibNiveis(){
+  fibAncora=null;
+  try{
+    const cru=JSON.parse(localStorage.getItem(chaveFibNiveis())||"[]")||[];
+    // formato antigo era uma lista de numeros; converte sem perder as marcas
+    fibNiveisMarcados=cru.map(x=>typeof x==="number"?{lv:x,preco:null}:x).filter(x=>x&&x.lv!=null);
+  }catch(e){ fibNiveisMarcados=[]; }
+}
+function salvaFibNiveis(){
+  try{ localStorage.setItem(chaveFibNiveis(),JSON.stringify(fibNiveisMarcados)); }catch(e){}
+}
+function fibMarcado(lv){ return fibNiveisMarcados.some(x=>x.lv===lv); }
+
 function toggleFibNivel(lv){
   const v=parseFloat(lv);
-  fibNiveisMarcados = fibNiveisMarcados.includes(v)
-    ? fibNiveisMarcados.filter(x=>x!==v) : fibNiveisMarcados.concat(v);
-  try{ localStorage.setItem(chaveFibNiveis(),JSON.stringify(fibNiveisMarcados)); }catch(e){}
-  if(typeof renderFibLegend==="function"){
-    try{ renderFibLegend(drawings().find(d=>d.type==="fibbo")); }catch(e){}
+  const d=fiboAtual();
+  if(fibMarcado(v)){
+    fibNiveisMarcados=fibNiveisMarcados.filter(x=>x.lv!==v);
+  }else{
+    let preco=null;
+    if(d&&d.p0&&d.p1) preco=d.p1.price+(d.p0.price-d.p1.price)*v;
+    fibNiveisMarcados.push({lv:v,preco:isFinite(preco)?preco:null});
+    fibAncora=ancoraDoFibo(d);
   }
+  salvaFibNiveis();
+  if(typeof renderFibLegend==="function"){ try{ renderFibLegend(d); }catch(e){} }
   if(typeof showInfoToast==="function"){
-    showInfoToast("FIB", fibNiveisMarcados.includes(v)
-      ? "alarme ligado no nivel "+v : "alarme desligado no nivel "+v);
+    showInfoToast("FIB", fibMarcado(v) ? "alarme ligado no nivel "+v : "alarme desligado no nivel "+v);
   }
 }
 window.toggleFibNivel=toggleFibNivel;
+
+// Chamado a cada redesenho do fibo. Se ele mudou de lugar, o que estava
+// marcado passa a ser alarme de preco — o valor congela onde estava.
+function fibConfereAncora(d){
+  const ancora=ancoraDoFibo(d);
+  if(!ancora) return;
+  if(fibAncora===null){ fibAncora=ancora; return; }   // primeira vez que vemos este fibo
+  if(ancora===fibAncora) return;                       // nao mexeu
+  fibAncora=ancora;
+  if(!fibNiveisMarcados.length) return;
+
+  const congelados=fibNiveisMarcados.filter(x=>x.preco!=null&&isFinite(x.preco));
+  let novos=0;
+  congelados.forEach(x=>{
+    const preco=+x.preco.toFixed(8);
+    if(alarmesManuais.some(a=>a.preco===preco)) return;
+    alarmesManuais.push({preco,criado:Date.now(),origem:"fib "+x.lv});
+    novos++;
+  });
+  fibNiveisMarcados=[];
+  salvaFibNiveis();
+  if(novos){
+    alarmesManuais.sort((a,b)=>b.preco-a.preco);
+    salvaAlarmesManuais();
+    if(typeof showInfoToast==="function"){
+      showInfoToast("FIB",novos===1
+        ? "o fibo mudou: 1 nivel marcado virou alarme de preco"
+        : "o fibo mudou: "+novos+" niveis marcados viraram alarme de preco");
+    }
+  }else{
+    renderAlarmes();
+  }
+}
 
 // O QUE PODE TOCAR. Nada de media dispara sozinho: o usuario monta o alarme
 // que quer, escolhendo entre "o preco cruzou a media X" e "a media X cruzou a
@@ -1681,8 +1740,9 @@ function renderAlarmes(){
     const acima=px!=null&&a.preco>px;
     const cor=px==null?"var(--t2)":(acima?"#00C853":"#FF3B30");
     const dist=px==null?"":" ("+(acima?"+":"")+((a.preco-px)/px*100).toFixed(2)+"%)";
+    const orig=a.origem?' <span style="color:var(--t3);font-size:8px;">'+a.origem+"</span>":"";
     return '<div class="sig-item"><span class="sig-time">'+(acima?"\u25b2":"\u25bc")+'</span>'
-      +'<span class="sig-px" style="color:'+cor+'">'+a.preco+'</span>'
+      +'<span class="sig-px" style="color:'+cor+'">'+a.preco+'</span>'+orig
       +'<span class="sig-side" style="color:var(--t3);font-weight:400;">'+dist+'</span>'
       +'<button class="toast-x" onclick="removeAlarmeManual('+a.preco+')" '
       +'style="margin-left:auto;">x</button></div>';
@@ -1708,7 +1768,7 @@ function niveisDeAlarme(){
       lvs.forEach(lv=>{
         // so os niveis que voce marcou na lista do FIB MANUAL. Antes, sem
         // marcacao, os 29 eram vigiados — o que enchia de aviso sem pedido.
-        if(!fibNiveisMarcados.includes(lv)) return;
+        if(!fibMarcado(lv)) return;
         const pr=d.p1.price+diff*lv;
         if(isFinite(pr)) out.push({chave:"fib:"+i+":"+lv,rotulo:"FIB",nome:String(lv),preco:pr});
       });
@@ -4848,6 +4908,8 @@ function label(txt,x,y,color,align){
 
 // Lista completa dos 24 niveis + zona de quebra negativa, com preco exato
 function renderFibLegend(d){
+  // se o fibo mudou de lugar, o que estava marcado vira alarme de preco
+  try{ fibConfereAncora(d); }catch(e){}
   const list=document.getElementById('mfib-list'), cnt=document.getElementById('mfib-count');
   if(!list) return;
   if(!d){
@@ -4866,7 +4928,7 @@ function renderFibLegend(d){
     // abaixo, entao usa close (nao high/low) igual a regra combinada
     const hit = px!=null && (isBreak ? px<=price : (diff>0 ? px>=price : px<=price));
     // clicar no nivel liga/desliga o alarme dele
-    const alarmado=fibNiveisMarcados.includes(lv);
+    const alarmado=fibMarcado(lv);
     return `<div class="mfib-item" style="opacity:${hit?1:.62};cursor:pointer;"
       onclick="toggleFibNivel(${lv})" title="clique para ligar/desligar o alarme deste nivel">
       <span style="width:11px;display:inline-block;font-size:9px;">${alarmado?'\u{1F514}':''}</span>
