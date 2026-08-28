@@ -1021,6 +1021,24 @@ function renderChart(){
   runSignals(closes,highs,lows,opens);
 }
 
+// Um laco de animacao so precisa rodar enquanto o desenho aparece. Os dois
+// globos sao decorativos e desenhavam 60x por segundo pra sempre, mesmo com o
+// painel numa aba escondida — gasto puro de bateria no celular. O
+// IntersectionObserver cobre os dois casos de uma vez: sair da tela por
+// rolagem e o display:none da troca de aba, ja que um elemento com
+// display:none nunca intersecta. Nao trato aba em segundo plano aqui porque
+// o proprio requestAnimationFrame ja pausa sozinho nesse caso.
+function lacoVisivel(el,quadro){
+  let rodando=false,id=null;
+  const passo=()=>{if(!rodando)return;quadro();id=requestAnimationFrame(passo);};
+  const liga=()=>{if(rodando)return;rodando=true;id=requestAnimationFrame(passo);};
+  const desliga=()=>{rodando=false;if(id)cancelAnimationFrame(id);id=null;};
+  if(typeof IntersectionObserver==="function"){
+    new IntersectionObserver(es=>{es[0].isIntersecting?liga():desliga();}).observe(el);
+  }else liga(); // navegador sem suporte: segue como era antes
+  return{liga,desliga};
+}
+
 // ══════════════════════════════════════════════════════
 // GLOBE 3D
 // ══════════════════════════════════════════════════════
@@ -1051,9 +1069,9 @@ function renderChart(){
       const gr=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,8);gr.addColorStop(0,col+'60');gr.addColorStop(1,'transparent');
       ctx.fillStyle=gr;ctx.beginPath();ctx.arc(p.x,p.y,8,0,Math.PI*2);ctx.fill();
     });
-    ang+=.3;requestAnimationFrame(draw);
+    ang+=.3;
   }
-  draw();
+  lacoVisivel(cv,draw);
 })();
 
 // ══════════════════════════════════════════════════════
@@ -5109,7 +5127,6 @@ function goldToggleAlerts(){
 }
 
 // GLOBO 3D (canvas) — decorativo, so mostra contagem de cotacoes recebidas
-let goldGlobeRAF=null;
 function initGoldGlobe(){
   if(goldGlobeStarted)return;
   goldGlobeStarted=true;
@@ -5175,9 +5192,8 @@ function initGoldGlobe(){
         ctx.fillText(city.name,px+5,py+3);
       }
     });
-    goldGlobeRAF=requestAnimationFrame(render);
   }
-  render();
+  lacoVisivel(canvas,render);
 }
 
 function goldInitOnce(){

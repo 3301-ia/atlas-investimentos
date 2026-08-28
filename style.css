@@ -722,6 +722,12 @@ tr.gold-selected td{background:rgba(245,166,35,.06);}
   transition:opacity .85s cubic-bezier(.35,0,.15,1),visibility .85s linear;
 }
 #vectra-splash.hide{opacity:0;visibility:hidden;pointer-events:none;}
+/* Medido: visibility:hidden NAO para uma animacao — o navegador segue
+   calculando e pintando os 34 loops infinitos da abertura por baixo do app,
+   pra sempre. Num celular isso custava um quarto do processador. display:none
+   e o que de fato para. Entra depois do fade (.apagado, posto pelo JS) e o
+   elemento continua no DOM porque a tela de descanso o reaproveita. */
+#vectra-splash.apagado{display:none;}
 
 /* FECHAMENTO — o circulo recolhe pro centro e so entao o preto some.
    Duas etapas em vez de um fade seco: a classe .fechando encolhe o totem,

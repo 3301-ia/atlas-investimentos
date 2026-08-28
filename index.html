@@ -142,15 +142,32 @@
 
   // Saida em duas etapas: o circulo recolhe pro centro (.fechando) e so
   // depois o fundo preto some (.hide). Um fade seco perdia o efeito.
+  // Medido num celular: com o splash so em opacity:0/visibility:hidden, as 34
+  // animacoes infinitas da abertura (17 rbCorre + 17 rbRespira nos paths do
+  // ribbon, mais o sweep, o brilho e as particulas) seguiam rodando pra sempre
+  // por baixo do app — visibility:hidden nao para animacao em CSS. Custava um
+  // quarto do processador: (program) 29,3% -> 5,5% e ocioso 65,4% -> 91,1%.
+  // Por isso o .apagado (display:none) entra depois do fade. O elemento fica
+  // no DOM porque a tela de descanso o reaproveita.
+  var APAGA_MS=900;  // o fade do .hide dura .85s
+  function apagar(){
+    if(splash.classList.contains("hide"))splash.classList.add("apagado");
+    if(video&&!video.paused)video.pause();
+  }
+  function esconder(){
+    splash.classList.add("hide");
+    setTimeout(apagar,APAGA_MS);
+  }
+
   function dismiss(){
     if(dismissed)return;
     dismissed=true;
     splash.classList.add("fechando");
-    setTimeout(function(){splash.classList.add("hide");},FECHA_MS);
+    setTimeout(esconder,FECHA_MS);
   }
   splash.addEventListener("click",function(){
     if(!dismissed)dismiss();
-    else splash.classList.add("hide"); // modo tela de descanso
+    else esconder(); // modo tela de descanso
   });
 
   // O video toca INTEIRO antes de entrar — "ended" e quem manda. As demais
@@ -201,11 +218,14 @@
 
   }
 
-  // Nao deixa o video rodando por baixo do app depois que o splash sai.
-  splash.addEventListener("transitionend",function(){
-    if(dismissed&&video&&!video.paused)video.pause();
+  // Atalho: se o fade terminar antes dos APAGA_MS, apaga na hora. O setTimeout
+  // do esconder() fica como garantia, porque transitionend nao dispara em toda
+  // situacao (aba em segundo plano, por exemplo).
+  splash.addEventListener("transitionend",function(e){
+    if(e.target===splash&&e.propertyName==="opacity")apagar();
   });
   window.toggleScreensaver = function() {
+    splash.classList.remove("apagado"); // reacende antes de tirar o .hide
     splash.classList.remove("hide");
     splash.classList.remove("fechando"); // senao volta com o totem encolhido
     dismissed = true; // prevent the timeout from firing again if it hasn't
