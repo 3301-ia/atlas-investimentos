@@ -807,6 +807,15 @@ tr.gold-selected td{background:rgba(245,166,35,.06);}
 
 /* 1. ANEIS — expandem e recolhem, convergindo pro centro */
 .rb-aneis{position:absolute;width:min(80vmin,660px);height:min(80vmin,660px);}
+
+/* No celular o totem maior virou problema: 80vmin num aparelho de 390px da
+   312px de circulo em 390px de tela, e como ele fica NA FRENTE dos raios,
+   engole justamente o centro onde eles convergem — o efeito aparecia menos
+   do que antes. O 80vmin foi pedido olhando o desktop, entao ele fica onde
+   ha espaco e o celular volta aos 72vmin de antes. */
+@media (max-width:600px){
+  .totem-wrapper,.rb-aneis{width:min(72vmin,560px);height:min(72vmin,560px);}
+}
 .rb-aneis i{position:absolute;inset:0;border-radius:50%;
   border:2px solid var(--c);opacity:0;
   box-shadow:0 0 22px -4px var(--c);
