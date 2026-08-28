@@ -334,6 +334,22 @@ function rsiStep(st,px,p){
 // e RSI puro (nao StochRSI), com o teto/piso classico 30/70 — diferente do
 // StochRSI que o resto do dashboard usa (P.ob/P.os). Deixado separado de
 // proposito pra nao misturar os dois conceitos.
+// A mesma conta do calcInverseRSITargets, mas pra UM alvo qualquer — o de
+// cima resolve so dois (30 e 70) porque era so isso que o painel mostrava.
+function precoParaRSI(ag,al,lastClose,alvo){
+  if(ag==null||al==null||!lastClose||alvo<=0||alvo>=100) return null;
+  const n=14;
+  const baseRSI = al===0 ? 100 : (ag===0 ? 0 : 100-(100/(1+ag/al)));
+  const rsT=alvo/(100-alvo);
+  let preco;
+  if(baseRSI<alvo){
+    preco = lastClose + (rsT*al*(n-1) - ag*(n-1));
+  }else{
+    preco = lastClose - ((ag*(n-1))/rsT - al*(n-1));
+  }
+  return (isFinite(preco)&&preco>0) ? preco : null;
+}
+
 function calcInverseRSITargets(ag,al,lastClose,osTarget=30,obTarget=70){
   if(ag==null||al==null||!lastClose)return{osPrice:null,obPrice:null};
   const n=14;
@@ -719,15 +735,33 @@ function updateAntecipadorPanel(antecip){
   detail.textContent=`StochRSI virando de zona esticada${antecip.convergindo?' + EMA8x16 convergindo':' (EMAs ainda nao convergiram)'} — sinal antecipado, cruzamento ainda nao confirmou.`;
 }
 
+// Escada de niveis do RSI com o preco que leva a cada um. O 50 vem marcado
+// porque e a linha de agua: acima dele a forca e compradora.
+const RSI_ESCADA=[20,30,40,50,60,70,80];
+
 function updateRsiInversoPanel(closes){
-  const curEl=document.getElementById('rsiinv-current'),osEl=document.getElementById('rsiinv-os'),obEl=document.getElementById('rsiinv-ob');
-  if(!curEl||!osEl||!obEl)return;
+  const curEl=document.getElementById('rsiinv-current');
+  const box=document.getElementById('rsiinv-escada');
+  if(!curEl||!box)return;
   const st=rsiState(closes,14);
-  if(!st){curEl.textContent='--';osEl.textContent='--';obEl.textContent='--';return;}
-  const {osPrice,obPrice,baseRSI}=calcInverseRSITargets(st.ag,st.al,st.last);
+  if(!st){curEl.textContent='--';box.innerHTML='<div class="stoch-row"><span class="stoch-lbl">sem dados</span></div>';return;}
+  const baseRSI = st.al===0 ? 100 : (st.ag===0 ? 0 : 100-(100/(1+st.ag/st.al)));
   curEl.textContent=`RSI ${baseRSI.toFixed(1)}`;
-  osEl.textContent=osPrice!=null?osPrice.toFixed(2):'ja abaixo';
-  obEl.textContent=obPrice!=null?obPrice.toFixed(2):'ja acima';
+  const px=st.last;
+  box.innerHTML=RSI_ESCADA.map(nv=>{
+    const preco=precoParaRSI(st.ag,st.al,px,nv);
+    const acima=nv>baseRSI;
+    // vermelho embaixo (sobrevendido), verde em cima (sobrecomprado), o 50 neutro
+    const cor = nv<50 ? "var(--red)" : (nv>50 ? "var(--green)" : "var(--t2)");
+    const dist = (preco!=null&&px) ? ((preco-px)/px*100) : null;
+    const distTxt = dist==null ? "" : "  <span style=\"color:var(--t3);font-size:9px;\">("
+      +(dist>=0?"+":"")+dist.toFixed(2)+"%)</span>";
+    const valor = preco==null ? (acima?"ja acima":"ja abaixo") : preco.toFixed(2)+distTxt;
+    const marca = nv===50 ? ' style="border-top:1px solid var(--bd2);border-bottom:1px solid var(--bd2);"' : "";
+    return '<div class="stoch-row"'+marca+'><span class="stoch-lbl">RSI '+nv
+      +(nv===30?" (OS)":nv===70?" (OB)":nv===50?" (agua)":"")+'</span>'
+      +'<span class="stoch-val" style="color:'+cor+'">'+valor+'</span></div>';
+  }).join("");
 }
 
 let sentimentLoadSeq=0;
@@ -1492,10 +1526,9 @@ const ALARME_NOMES={ema8:"EMA8",ema16:"EMA16",ema55:"EMA55",ema98:"EMA98",
                     ema200:"EMA200",ma56:"MA56",ma89:"MA89"};
 
 // NIVEIS DE FIBO ESCOLHIDOS. Vigiar os 29 niveis de um fibo desenhado e
-// barulho: o preco atravessa varios num movimento so. Aqui da pra marcar os
-// que interessam clicando na lista do FIB MANUAL. Sem nenhum marcado a
-// vigilancia continua em todos, que era o comportamento anterior — assim quem
-// nao souber do recurso nao perde alarme.
+// barulho: o preco atravessa varios num movimento so. Marque os que interessam
+// clicando na lista do FIB MANUAL — um sino aparece no nivel ligado. Sem
+// nenhum marcado, o fibo nao dispara nada.
 let fibNiveisMarcados=[];
 function chaveFibNiveis(){ return "fibniveis:"+(typeof currentSym!=="undefined"?currentSym:"?"); }
 function carregaFibNiveis(){
@@ -1516,6 +1549,95 @@ function toggleFibNivel(lv){
   }
 }
 window.toggleFibNivel=toggleFibNivel;
+
+// O QUE PODE TOCAR. Nada de media dispara sozinho: o usuario monta o alarme
+// que quer, escolhendo entre "o preco cruzou a media X" e "a media X cruzou a
+// media Y". Antes as 7 medias e os 6 pares vigiavam o tempo todo, o que dava
+// aviso demais sem ninguem ter pedido.
+// Fibo e preco ficam com liga/desliga simples — o fibo so vigia os niveis que
+// voce marcou na lista, entao ja e uma escolha sua.
+let fontesAlarme={fibo:true,preco:true};
+let alarmesMedias=[];   // [{tipo:"preco",a:"ema8"} , {tipo:"cruze",a:"ema8",b:"ema16"}]
+
+const ALARME_MEDIAS_OPCOES=["ema8","ema16","ema55","ema98","ema200","ma56","ma89"];
+
+function carregaFontesAlarme(){
+  try{ Object.assign(fontesAlarme,JSON.parse(localStorage.getItem("alarme-fontes")||"{}")); }catch(e){}
+  ["fibo","preco"].forEach(k=>{
+    const el=document.getElementById("alf-"+k);
+    if(el) el.checked=!!fontesAlarme[k];
+  });
+  // a configuracao de media e regra, nao preco: vale pra qualquer ativo
+  try{ alarmesMedias=JSON.parse(localStorage.getItem("alarme-medias")||"[]")||[]; }catch(e){ alarmesMedias=[]; }
+  montaSelectsMedia();
+  renderAlarmesMedia();
+}
+function setFonteAlarme(k,v){
+  fontesAlarme[k]=!!v;
+  try{ localStorage.setItem("alarme-fontes",JSON.stringify(fontesAlarme)); }catch(e){}
+}
+
+function montaSelectsMedia(){
+  const op=ALARME_MEDIAS_OPCOES.map(k=>'<option value="'+k+'">'+(ALARME_NOMES[k]||k)+"</option>").join("");
+  const a=document.getElementById("alm-a"), b=document.getElementById("alm-b");
+  if(a&&!a.children.length) a.innerHTML=op;
+  if(b&&!b.children.length){ b.innerHTML=op; b.value="ema16"; }
+  atualizaFormMedia();
+}
+// "media cruza" precisa da segunda media; "preco cruza" nao.
+function atualizaFormMedia(){
+  const t=document.getElementById("alm-tipo");
+  const x=document.getElementById("alm-x"), b=document.getElementById("alm-b");
+  const cruze=t&&t.value==="cruze";
+  if(x) x.style.display=cruze?"":"none";
+  if(b) b.style.display=cruze?"":"none";
+}
+window.atualizaFormMedia=atualizaFormMedia;
+
+function addAlarmeMedia(){
+  const tipo=(document.getElementById("alm-tipo")||{}).value||"preco";
+  const a=(document.getElementById("alm-a")||{}).value;
+  const b=(document.getElementById("alm-b")||{}).value;
+  if(!a) return;
+  if(tipo==="cruze"&&(!b||a===b)){
+    if(typeof showInfoToast==="function") showInfoToast("ALARMES","escolha duas medias diferentes");
+    return;
+  }
+  const novo = tipo==="cruze" ? {tipo:"cruze",a,b} : {tipo:"preco",a};
+  const igual = alarmesMedias.some(x=>x.tipo===novo.tipo&&x.a===novo.a&&(x.b||"")===(novo.b||""));
+  // o cruzamento e simetrico: 8x16 e o mesmo alarme que 16x8
+  const espelho = tipo==="cruze"&&alarmesMedias.some(x=>x.tipo==="cruze"&&x.a===b&&x.b===a);
+  if(igual||espelho){
+    if(typeof showInfoToast==="function") showInfoToast("ALARMES","esse alarme ja existe");
+    return;
+  }
+  alarmesMedias.push(novo);
+  salvaAlarmesMedias();
+}
+function removeAlarmeMedia(i){ alarmesMedias.splice(i,1); salvaAlarmesMedias(); }
+function salvaAlarmesMedias(){
+  try{ localStorage.setItem("alarme-medias",JSON.stringify(alarmesMedias)); }catch(e){}
+  renderAlarmesMedia();
+}
+function renderAlarmesMedia(){
+  const list=document.getElementById("alm-list");
+  if(!list) return;
+  if(!alarmesMedias.length){
+    list.innerHTML='<div style="padding:4px 9px;font-size:9px;color:var(--t3);">Nenhum alarme de media.</div>';
+    return;
+  }
+  list.innerHTML=alarmesMedias.map((m,i)=>{
+    const txt = m.tipo==="cruze"
+      ? (ALARME_NOMES[m.a]||m.a)+" x "+(ALARME_NOMES[m.b]||m.b)
+      : "preco x "+(ALARME_NOMES[m.a]||m.a);
+    return '<div class="sig-item"><span class="sig-side" style="color:var(--t2);font-weight:400;">'
+      +txt+'</span><button class="toast-x" onclick="removeAlarmeMedia('+i+')" style="margin-left:auto;">x</button></div>';
+  }).join("");
+}
+window.addAlarmeMedia=addAlarmeMedia;
+window.removeAlarmeMedia=removeAlarmeMedia;
+window.setFonteAlarme=setFonteAlarme;
+window.carregaFontesAlarme=carregaFontesAlarme;
 
 // ALARMES MANUAIS — um preco qualquer que o usuario digita, sem depender de
 // ter desenhado nada. Ficam no localStorage por simbolo: um alarme de 60000
@@ -1577,26 +1699,28 @@ function niveisDeAlarme(){
   let lista=[];
   try{ lista=drawings()||[]; }catch(e){ lista=[]; }
   lista.forEach((d,i)=>{
-    if(d.type==="horizontal"&&d.p0&&isFinite(d.p0.price)){
+    if(fontesAlarme.preco&&d.type==="horizontal"&&d.p0&&isFinite(d.p0.price)){
       out.push({chave:"preco:"+i,rotulo:"PRECO",nome:d.p0.price.toFixed(2),preco:d.p0.price});
     }
-    if((d.type==="fibbo"||d.type==="fibretr")&&d.p0&&d.p1){
+    if(fontesAlarme.fibo&&(d.type==="fibbo"||d.type==="fibretr")&&d.p0&&d.p1){
       const diff=d.p0.price-d.p1.price;
       const lvs=d.type==="fibretr"?fibRetrLevels:[...fibLevels,...fibBreakLevels];
       lvs.forEach(lv=>{
-        // com niveis marcados, so eles; sem nenhum, todos
-        if(fibNiveisMarcados.length&&!fibNiveisMarcados.includes(lv)) return;
+        // so os niveis que voce marcou na lista do FIB MANUAL. Antes, sem
+        // marcacao, os 29 eram vigiados — o que enchia de aviso sem pedido.
+        if(!fibNiveisMarcados.includes(lv)) return;
         const pr=d.p1.price+diff*lv;
         if(isFinite(pr)) out.push({chave:"fib:"+i+":"+lv,rotulo:"FIB",nome:String(lv),preco:pr});
       });
     }
   });
-  alarmesManuais.forEach(a=>{
+  if(fontesAlarme.preco) alarmesManuais.forEach(a=>{
     if(isFinite(a.preco)) out.push({chave:"manual:"+a.preco,rotulo:"ALARME",nome:String(a.preco),preco:a.preco});
   });
-  if(ultimasEmas) Object.keys(ultimasEmas).forEach(k=>{
-    const v=ultimasEmas[k];
-    if(v!=null&&isFinite(v)) out.push({chave:"media:"+k,rotulo:"MEDIA",nome:ALARME_NOMES[k]||k,preco:v});
+  // so as medias que voce montou como "preco cruza"
+  if(ultimasEmas) alarmesMedias.filter(m=>m.tipo==="preco").forEach(m=>{
+    const v=ultimasEmas[m.a];
+    if(v!=null&&isFinite(v)) out.push({chave:"media:"+m.a,rotulo:"MEDIA",nome:ALARME_NOMES[m.a]||m.a,preco:v});
   });
   return out;
 }
@@ -1606,15 +1730,14 @@ function niveisDeAlarme(){
 // enquanto (a - b) mantem o sinal nao houve cruzamento; quando ele vira,
 // cruzou. Comparo o penultimo com o ultimo valor da serie, entao o alarme
 // toca uma vez por cruzamento e nao a cada tick com as medias coladas.
-const PARES_MEDIAS=[
-  ["ema8","ema16"], ["ema8","ma89"], ["ema16","ma89"],
-  ["ema8","ema200"], ["ema16","ema200"], ["ma89","ema200"],
-];
+// Os pares vigiados saem do que o usuario montou (alarmesMedias), nao de uma
+// lista fixa: antes seis pares tocavam sem ninguem ter pedido.
 const cruzamentoAnterior={};
 
 function verificaCruzamentoMedias(){
   if(!alertsOn||!serieMedias) return;
-  PARES_MEDIAS.forEach(([a,b])=>{
+  // so os pares que voce montou como "media cruza"
+  alarmesMedias.filter(m=>m.tipo==="cruze").forEach(({a,b})=>{
     const sa=serieMedias[a], sb=serieMedias[b];
     if(!sa||!sb||sa.length<2) return;
     const n=sa.length-1;
@@ -1634,6 +1757,51 @@ function verificaCruzamentoMedias(){
 }
 window.verificaCruzamentoMedias=verificaCruzamentoMedias;
 
+// Zera a referencia de preco. OBRIGATORIO ao trocar de ativo ou de
+// timeframe: sem isto o proximo tick compara o preco do BTC (109000) com o
+// do ETH (3400) e dispara TODOS os niveis entre os dois de uma vez. As series
+// de media tambem saem, senao o alarme compara o preco novo com as medias do
+// ativo anterior ate o motor recalcular.
+function resetaAlarmes(){
+  alarmePrecoAnterior=null;
+  ultimasEmas=null;
+  serieMedias=null;
+  for(const k in cruzamentoAnterior) delete cruzamentoAnterior[k];
+}
+window.resetaAlarmes=resetaAlarmes;
+
+function mostraAlarmes(lista,subindo,preco,selo){
+  if(!lista.length) return;
+  const seta=subindo?"\u25b2":"\u25bc";
+  if(lista.length===1){
+    showToast(lista[0].rotulo,seta+" "+lista[0].nome+selo,preco);
+    return;
+  }
+  const cx=document.getElementById("toasts");
+  if(!cx){ showToast("ALARMES",seta+" "+lista.length+" niveis"+selo,preco); return; }
+  const t=document.createElement("div");
+  t.className="toast "+(subindo?"buy":"sell");
+  // um gap pode cruzar dezenas de niveis; listo os mais proximos do preco novo
+  // e resumo o resto, senao o aviso vira uma parede de texto
+  const TETO_LINHAS=6;
+  const mostra=lista.slice(0,TETO_LINHAS), resto=lista.length-TETO_LINHAS;
+  const linhas=mostra.map(nv=>
+    '<div style="display:flex;justify-content:space-between;gap:8px;">'
+    +'<span style="color:var(--t2);">'+nv.rotulo+" "+nv.nome+"</span>"
+    +'<span style="font-family:var(--mono);">'+nv.preco.toFixed(2)+"</span></div>").join("")
+    +(resto>0?'<div style="color:var(--t3);">+ '+resto+" outros</div>":"");
+  t.innerHTML='<div class="toast-hd"><span class="toast-title">'+seta+" "+lista.length
+    +" niveis"+selo+'</span>'
+    +'<button class="toast-x" onclick="this.closest(\'.toast\').remove()">x</button></div>'
+    +'<div class="toast-msg">'+(typeof currentSym!=="undefined"?currentSym.replace("USDT",""):"")
+    +" "+(typeof currentTF!=="undefined"?currentTF:"")+'</div>'
+    +'<div class="toast-msg" style="margin-top:4px;line-height:1.5;">'+linhas+"</div>"
+    +'<div class="toast-px">@ '+preco.toFixed(2)+"</div>";
+  cx.appendChild(t);
+  setTimeout(()=>{try{t.remove();}catch(e){}},9000);
+  if(typeof beep==="function") beep();   // um beep so, nao um por nivel
+}
+
 function verificaAlarmes(preco){
   const ant=alarmePrecoAnterior;
   alarmePrecoAnterior=preco;
@@ -1642,10 +1810,9 @@ function verificaAlarmes(preco){
   if(!alertsOn||ant==null||ant===preco||!isFinite(preco)) return;
   const baixo=Math.min(ant,preco), alto=Math.max(ant,preco), subindo=preco>ant;
   const agora=Date.now();
-  // Num tick normal o preco cruza um nivel, no maximo. Mas um gap de abertura
-  // ou uma recarga do historico pode pular dezenas de uma vez — e sao dezenas
-  // de beeps. Toco os quatro primeiros e resumo o resto num aviso so.
-  const TETO_POR_TICK=4;
+  // Num tick normal o preco cruza um nivel, no maximo. Um gap de abertura ou
+  // uma recarga do historico pode pular dezenas — todos entram num aviso so,
+  // que e quem limita quantos aparecem.
   const cruzados=niveisDeAlarme().filter(nv=>{
     if(!(nv.preco>baixo&&nv.preco<=alto)) return false;
     const ultimo=alarmeUltimoDisparo[nv.chave];
@@ -1661,18 +1828,17 @@ function verificaAlarmes(preco){
   const est=(typeof estadoLiberacao==="function")?estadoLiberacao(null):null;
   const aFavor = est && ((subindo&&est==="alta")||(!subindo&&est==="baixa"));
   const selo = aFavor ? " \u2713" : (est?" !":"");
-  cruzados.slice(0,TETO_POR_TICK).forEach(nv=>{
-    showToast(nv.rotulo,(subindo?"\u25b2 ":"\u25bc ")+nv.nome+selo,preco);
-  });
-  const resto=cruzados.length-TETO_POR_TICK;
-  if(resto>0&&typeof showInfoToast==="function"){
-    showInfoToast("ALARMES","mais "+resto+" niveis cruzados neste movimento");
-  }
+  // Um aviso por nivel enchia a tela de caixas empilhadas. Quando varios
+  // cruzam no mesmo movimento, sai UM aviso listando todos — um beep so, uma
+  // caixa so. Com um nivel unico, que e o caso comum, nada muda.
+  mostraAlarmes(cruzados,subindo,preco,selo);
 }
 window.verificaAlarmes=verificaAlarmes;
 
 function applyTick(price, ts_ms){
   verificaAlarmes(price);
+  // o Multi-TF mostra o mesmo ativo em outros tempos: anda com o mesmo tick
+  if(typeof mtfAplicaTick==="function") mtfAplicaTick(price,ts_ms);
   if(!candles.length||!candleSeries)return;
   let last=candles[candles.length-1];
   const tfSec=tfToSeconds(currentTF);
@@ -4181,8 +4347,9 @@ function resetLive(){
 }
 async function changeSym(sym){
   currentSym=sym;candles=[];resetLive();
+  resetaAlarmes();
   // alarmes e niveis de fibo sao guardados por simbolo
-  carregaAlarmesManuais(); carregaFibNiveis();
+  carregaAlarmesManuais(); carregaFibNiveis(); carregaFontesAlarme();
   const sel=document.getElementById('sym-select');
   if(sel&&sel.value!==sym)sel.value=sym;
   await loadAll();
@@ -4191,10 +4358,17 @@ async function changeSym(sym){
 }
 async function changeTF(tf){
   currentTF=tf;candles=[];resetLive();
+  // os desenhos sao guardados por simbolo+TF, entao o fibo do 15m nao vale no
+  // 1h — a referencia de preco tem que zerar junto
+  resetaAlarmes();
   if(multiViewOpen){closeMultiCharts();openMultiCharts();}
   await loadAll();
 }
 async function loadAll(){
+  // o loadAll tambem roda quando a aba volta do segundo plano depois de um
+  // salto de varias velas; sem zerar, o primeiro tick depois disso dispararia
+  // todo o caminho que o preco andou enquanto ninguem olhava
+  resetaAlarmes();
   const mySeq=++loadSeq, mySym=currentSym, myTf=currentTF;
   document.getElementById('ws-st').textContent='Carregando...';
   const d=await fetchCandles(mySym,myTf,1000);
@@ -4734,7 +4908,7 @@ let catF='all';
 
 function initApp(){
   initTheme();
-  carregaAlarmesManuais(); carregaFibNiveis();
+  carregaAlarmesManuais(); carregaFibNiveis(); carregaFontesAlarme();
   const cb=document.getElementById('cat-bar');
   if(cb && !cb.children.length){
     const catBtn=document.createElement('button');catBtn.className='cp active';catBtn.textContent='TODOS';catBtn.setAttribute('data-cat','all');catBtn.onclick=function(){setCat(this);};cb.appendChild(catBtn);
@@ -5604,6 +5778,7 @@ const MTF_MEDIAS=[
 ];
 let mtfLinhas=[];      // series de media por celula, pra remover junto
 let mtfEstado=[];      // ultimo calculo de cada celula, usado pelo popup
+let mtfDados=[];       // as velas de cada celula, atualizadas no tick ao vivo
 let mtfTimerInt=null;
 
 // segundos de cada timeframe, pra contagem regressiva da vela
@@ -5652,6 +5827,7 @@ async function openMtfCharts() {
       const data=await fetchCandles(sym,mtfTfs[i],300);
       if(data&&data.length){
         series.setData(data);
+        mtfDados[i]=data;
         mtfDesenhaCelula(n,data,linhas);
       }
     }catch(e){ console.warn("[mtf] celula "+n+" falhou:",e); }
@@ -5850,10 +6026,65 @@ function mtfAbrePopup(n){
     (typeof currentSym!=="undefined"?currentSym:""), msg);
 }
 
+// SINCRONIA AO VIVO. O painel carregava as velas uma vez e congelava — nao
+// havia WebSocket nem timer (o multiWS e do painel Multi, nao deste). Como o
+// Multi-TF mostra o MESMO ativo em quatro tempos, o tick do grafico principal
+// ja traz o preco de que ele precisa: nao vale abrir uma segunda conexao pro
+// mesmo dado.
+//
+// O preco de cada celula anda a cada tick, que e barato. O recalculo das cinco
+// medias, do ATR e dos angulos e caro pra fazer 4x por tick, entao roda no
+// maximo a cada MTF_RECALCULO_MS — ou na hora, quando uma vela fecha, que e
+// quando o numero realmente muda de patamar.
+const MTF_RECALCULO_MS=1500;
+let mtfUltimoCalculo=0;
+
+function mtfAplicaTick(preco,ts_ms){
+  if(!window.mtfViewOpen||!mtfDados.length||!isFinite(preco)) return;
+  const nowSec=Math.floor(ts_ms/1000);
+  let fechou=false;
+
+  for(let i=0;i<4;i++){
+    const velas=mtfDados[i], serie=mtfSeries[i];
+    if(!velas||!velas.length||!serie) continue;
+    const tfSec=mtfTfSegundos(mtfTfs[i]);
+    const esperado=nowSec-(nowSec%tfSec);
+    const ultima=velas[velas.length-1];
+
+    if(esperado>ultima.time){
+      // vela nova: abre no fechamento da anterior, como a corretora faz
+      const nova={time:esperado,open:ultima.close,high:Math.max(ultima.close,preco),
+                  low:Math.min(ultima.close,preco),close:preco};
+      velas.push(nova);
+      if(velas.length>400) velas.shift();
+      fechou=true;
+    }else if(esperado===ultima.time){
+      ultima.close=preco;
+      if(preco>ultima.high) ultima.high=preco;
+      if(preco<ultima.low)  ultima.low=preco;
+    }else{
+      continue; // tick atrasado, de uma vela que ja passou
+    }
+    try{ serie.update(velas[velas.length-1]); }catch(e){}
+
+    const px=document.getElementById("mtf-px-"+(i+1));
+    if(px) px.textContent="$"+preco.toFixed(String(currentSym||"").startsWith("XAG")?3:2);
+  }
+
+  const agora=Date.now();
+  if(!fechou&&agora-mtfUltimoCalculo<MTF_RECALCULO_MS) return;
+  mtfUltimoCalculo=agora;
+  for(let i=0;i<4;i++){
+    if(mtfDados[i]&&mtfDados[i].length) mtfDesenhaCelula(i+1,mtfDados[i],mtfLinhas[i]);
+  }
+  mtfAtualizaTotal();
+}
+window.mtfAplicaTick=mtfAplicaTick;
+
 function closeMtfCharts() {
   if(mtfTimerInt){ clearInterval(mtfTimerInt); mtfTimerInt=null; }
   mtfCharts.forEach(c=>{ try{c.remove();}catch(e){} });
-  mtfCharts=[]; mtfSeries=[]; mtfLinhas=[]; mtfEstado=[];
+  mtfCharts=[]; mtfSeries=[]; mtfLinhas=[]; mtfEstado=[]; mtfDados=[];
 }
 
 window.toggleMtfView = toggleMtfView;

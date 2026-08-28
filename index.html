@@ -512,7 +512,7 @@
               <span class="multi-px" id="mtf-px-2">--</span>
             </div>
             <div class="multi-chart" id="mtf-chart-2"></div>
-<div id="mtf-compass-container-2" style="position:absolute; left:10px; bottom:34px; z-index:50; pointer-events:none; display:flex; align-items:center; gap:12px; background:rgba(19,25,34,0.7); backdrop-filter:blur(4px); padding:8px 12px; border-radius:8px; border:1px solid var(--bd2); box-shadow:0 4px 12px rgba(0,0,0,0.4); opacity:0.9;">
+<div id="mtf-compass-container-2" style="position:absolute; right:10px; bottom:34px; z-index:50; pointer-events:none; display:flex; flex-direction:row-reverse; align-items:center; gap:12px; background:rgba(19,25,34,0.7); backdrop-filter:blur(4px); padding:8px 12px; border-radius:8px; border:1px solid var(--bd2); box-shadow:0 4px 12px rgba(0,0,0,0.4); opacity:0.9;">
         <svg id="mtf-compass-svg-2" width="65" height="65" viewBox="0 0 110 110" style="overflow:visible;"></svg>
         <div id="mtf-compass-legend-2" style="display:flex; flex-direction:column; gap:3px; font-size:10px; font-family:monospace; color:var(--text); white-space:nowrap;"></div>
     </div>
@@ -542,7 +542,7 @@
               <span class="multi-px" id="mtf-px-4">--</span>
             </div>
             <div class="multi-chart" id="mtf-chart-4"></div>
-<div id="mtf-compass-container-4" style="position:absolute; left:10px; bottom:34px; z-index:50; pointer-events:none; display:flex; align-items:center; gap:12px; background:rgba(19,25,34,0.7); backdrop-filter:blur(4px); padding:8px 12px; border-radius:8px; border:1px solid var(--bd2); box-shadow:0 4px 12px rgba(0,0,0,0.4); opacity:0.9;">
+<div id="mtf-compass-container-4" style="position:absolute; right:10px; bottom:34px; z-index:50; pointer-events:none; display:flex; flex-direction:row-reverse; align-items:center; gap:12px; background:rgba(19,25,34,0.7); backdrop-filter:blur(4px); padding:8px 12px; border-radius:8px; border:1px solid var(--bd2); box-shadow:0 4px 12px rgba(0,0,0,0.4); opacity:0.9;">
         <svg id="mtf-compass-svg-4" width="65" height="65" viewBox="0 0 110 110" style="overflow:visible;"></svg>
         <div id="mtf-compass-legend-4" style="display:flex; flex-direction:column; gap:3px; font-size:10px; font-family:monospace; color:var(--text); white-space:nowrap;"></div>
     </div>
@@ -980,7 +980,9 @@
 
             <!-- RSI INVERSO — preco alvo pro RSI(14) puro bater 30/70 -->
             <div class="sp-sec"><span>RSI INVERSO (14)</span><span class="sp-sec-val" id="rsiinv-current">--</span></div>
-            <div class="stoch-info">
+            <!-- Escada: o preco que leva o RSI(14) a cada nivel. Antes so 30 e 70;
+                 a conta e a mesma, so faltava resolve-la pros outros niveis. -->
+            <div class="stoch-info" id="rsiinv-escada">
               <div class="stoch-row"><span class="stoch-lbl">Alvo p/ OS 30</span><span class="stoch-val" id="rsiinv-os" style="color:var(--red);">--</span></div>
               <div class="stoch-row"><span class="stoch-lbl">Alvo p/ OB 70</span><span class="stoch-val" id="rsiinv-ob" style="color:var(--green);">--</span></div>
             </div>
@@ -994,6 +996,25 @@
                      onkeydown="if(event.key==='Enter')addAlarmeManual();"
                      style="flex:1;min-width:0;padding:3px 6px;font-size:10px;font-family:var(--mono);">
               <button class="btn" onclick="addAlarmeManual()" style="padding:3px 8px;font-size:10px;">+ alarme</button>
+            </div>
+            <!-- O alarme das medias deixou de ser automatico: aqui voce monta o
+                 que quer vigiar. Sem nada montado, media nenhuma toca. -->
+            <div style="display:flex;gap:4px;padding:2px 9px 4px;align-items:center;">
+              <select id="alm-tipo" onchange="atualizaFormMedia()" style="flex:1;min-width:0;padding:2px 4px;font-size:9px;">
+                <option value="preco">preco cruza</option>
+                <option value="cruze">media cruza</option>
+              </select>
+              <select id="alm-a" style="padding:2px 4px;font-size:9px;"></select>
+              <span id="alm-x" style="font-size:9px;color:var(--t3);display:none;">x</span>
+              <select id="alm-b" style="padding:2px 4px;font-size:9px;display:none;"></select>
+              <button class="btn" onclick="addAlarmeMedia()" style="padding:2px 6px;font-size:9px;">+</button>
+            </div>
+            <div class="sig-list" id="alm-list" style="max-height:100px;flex:none;"><div style="padding:4px 9px;font-size:9px;color:var(--t3);">Nenhum alarme de media.</div></div>
+
+            <!-- fibo e preco continuam com o liga/desliga simples -->
+            <div style="display:flex;flex-wrap:wrap;gap:8px;padding:4px 9px 6px;font-size:9px;color:var(--t2);">
+              <label style="display:flex;gap:3px;align-items:center;cursor:pointer;"><input type="checkbox" id="alf-fibo" checked onchange="setFonteAlarme('fibo',this.checked)">fibo marcado</label>
+              <label style="display:flex;gap:3px;align-items:center;cursor:pointer;"><input type="checkbox" id="alf-preco" checked onchange="setFonteAlarme('preco',this.checked)">preco</label>
             </div>
             <div class="sig-list" id="alarme-list" style="max-height:130px;flex:none;"><div style="padding:5px 9px;font-size:9px;color:var(--t3);">Nenhum alarme manual.</div></div>
 
