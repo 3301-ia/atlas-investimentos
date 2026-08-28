@@ -980,7 +980,9 @@
 
             <!-- RSI INVERSO — preco alvo pro RSI(14) puro bater 30/70 -->
             <div class="sp-sec"><span>RSI INVERSO (14)</span><span class="sp-sec-val" id="rsiinv-current">--</span></div>
-            <div class="stoch-info">
+            <!-- Escada: o preco que leva o RSI(14) a cada nivel. Antes so 30 e 70;
+                 a conta e a mesma, so faltava resolve-la pros outros niveis. -->
+            <div class="stoch-info" id="rsiinv-escada">
               <div class="stoch-row"><span class="stoch-lbl">Alvo p/ OS 30</span><span class="stoch-val" id="rsiinv-os" style="color:var(--red);">--</span></div>
               <div class="stoch-row"><span class="stoch-lbl">Alvo p/ OB 70</span><span class="stoch-val" id="rsiinv-ob" style="color:var(--green);">--</span></div>
             </div>
@@ -994,6 +996,14 @@
                      onkeydown="if(event.key==='Enter')addAlarmeManual();"
                      style="flex:1;min-width:0;padding:3px 6px;font-size:10px;font-family:var(--mono);">
               <button class="btn" onclick="addAlarmeManual()" style="padding:3px 8px;font-size:10px;">+ alarme</button>
+            </div>
+            <!-- que fontes podem tocar. Sem isto o unico controle era o sino,
+                 tudo ou nada, e as medias sozinhas ja sao 7 niveis sempre ativos. -->
+            <div style="display:flex;flex-wrap:wrap;gap:8px;padding:2px 9px 6px;font-size:9px;color:var(--t2);">
+              <label style="display:flex;gap:3px;align-items:center;cursor:pointer;"><input type="checkbox" id="alf-fibo" checked onchange="setFonteAlarme('fibo',this.checked)">fibo</label>
+              <label style="display:flex;gap:3px;align-items:center;cursor:pointer;"><input type="checkbox" id="alf-preco" checked onchange="setFonteAlarme('preco',this.checked)">preco</label>
+              <label style="display:flex;gap:3px;align-items:center;cursor:pointer;"><input type="checkbox" id="alf-media" checked onchange="setFonteAlarme('media',this.checked)">medias</label>
+              <label style="display:flex;gap:3px;align-items:center;cursor:pointer;"><input type="checkbox" id="alf-cruze" checked onchange="setFonteAlarme('cruze',this.checked)">cruzamentos</label>
             </div>
             <div class="sig-list" id="alarme-list" style="max-height:130px;flex:none;"><div style="padding:5px 9px;font-size:9px;color:var(--t3);">Nenhum alarme manual.</div></div>
 

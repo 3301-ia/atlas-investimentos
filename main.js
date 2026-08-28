@@ -334,6 +334,22 @@ function rsiStep(st,px,p){
 // e RSI puro (nao StochRSI), com o teto/piso classico 30/70 — diferente do
 // StochRSI que o resto do dashboard usa (P.ob/P.os). Deixado separado de
 // proposito pra nao misturar os dois conceitos.
+// A mesma conta do calcInverseRSITargets, mas pra UM alvo qualquer — o de
+// cima resolve so dois (30 e 70) porque era so isso que o painel mostrava.
+function precoParaRSI(ag,al,lastClose,alvo){
+  if(ag==null||al==null||!lastClose||alvo<=0||alvo>=100) return null;
+  const n=14;
+  const baseRSI = al===0 ? 100 : (ag===0 ? 0 : 100-(100/(1+ag/al)));
+  const rsT=alvo/(100-alvo);
+  let preco;
+  if(baseRSI<alvo){
+    preco = lastClose + (rsT*al*(n-1) - ag*(n-1));
+  }else{
+    preco = lastClose - ((ag*(n-1))/rsT - al*(n-1));
+  }
+  return (isFinite(preco)&&preco>0) ? preco : null;
+}
+
 function calcInverseRSITargets(ag,al,lastClose,osTarget=30,obTarget=70){
   if(ag==null||al==null||!lastClose)return{osPrice:null,obPrice:null};
   const n=14;
@@ -719,15 +735,33 @@ function updateAntecipadorPanel(antecip){
   detail.textContent=`StochRSI virando de zona esticada${antecip.convergindo?' + EMA8x16 convergindo':' (EMAs ainda nao convergiram)'} — sinal antecipado, cruzamento ainda nao confirmou.`;
 }
 
+// Escada de niveis do RSI com o preco que leva a cada um. O 50 vem marcado
+// porque e a linha de agua: acima dele a forca e compradora.
+const RSI_ESCADA=[20,30,40,50,60,70,80];
+
 function updateRsiInversoPanel(closes){
-  const curEl=document.getElementById('rsiinv-current'),osEl=document.getElementById('rsiinv-os'),obEl=document.getElementById('rsiinv-ob');
-  if(!curEl||!osEl||!obEl)return;
+  const curEl=document.getElementById('rsiinv-current');
+  const box=document.getElementById('rsiinv-escada');
+  if(!curEl||!box)return;
   const st=rsiState(closes,14);
-  if(!st){curEl.textContent='--';osEl.textContent='--';obEl.textContent='--';return;}
-  const {osPrice,obPrice,baseRSI}=calcInverseRSITargets(st.ag,st.al,st.last);
+  if(!st){curEl.textContent='--';box.innerHTML='<div class="stoch-row"><span class="stoch-lbl">sem dados</span></div>';return;}
+  const baseRSI = st.al===0 ? 100 : (st.ag===0 ? 0 : 100-(100/(1+st.ag/st.al)));
   curEl.textContent=`RSI ${baseRSI.toFixed(1)}`;
-  osEl.textContent=osPrice!=null?osPrice.toFixed(2):'ja abaixo';
-  obEl.textContent=obPrice!=null?obPrice.toFixed(2):'ja acima';
+  const px=st.last;
+  box.innerHTML=RSI_ESCADA.map(nv=>{
+    const preco=precoParaRSI(st.ag,st.al,px,nv);
+    const acima=nv>baseRSI;
+    // vermelho embaixo (sobrevendido), verde em cima (sobrecomprado), o 50 neutro
+    const cor = nv<50 ? "var(--red)" : (nv>50 ? "var(--green)" : "var(--t2)");
+    const dist = (preco!=null&&px) ? ((preco-px)/px*100) : null;
+    const distTxt = dist==null ? "" : "  <span style=\"color:var(--t3);font-size:9px;\">("
+      +(dist>=0?"+":"")+dist.toFixed(2)+"%)</span>";
+    const valor = preco==null ? (acima?"ja acima":"ja abaixo") : preco.toFixed(2)+distTxt;
+    const marca = nv===50 ? ' style="border-top:1px solid var(--bd2);border-bottom:1px solid var(--bd2);"' : "";
+    return '<div class="stoch-row"'+marca+'><span class="stoch-lbl">RSI '+nv
+      +(nv===30?" (OS)":nv===70?" (OB)":nv===50?" (agua)":"")+'</span>'
+      +'<span class="stoch-val" style="color:'+cor+'">'+valor+'</span></div>';
+  }).join("");
 }
 
 let sentimentLoadSeq=0;
@@ -1517,6 +1551,24 @@ function toggleFibNivel(lv){
 }
 window.toggleFibNivel=toggleFibNivel;
 
+// QUE FONTES PODEM TOCAR. O sino era tudo ou nada, e so as medias ja sao 7
+// niveis sempre ativos — mais os 29 de cada fibo desenhado. Aqui da pra
+// desligar a fonte que estiver incomodando sem perder as outras.
+let fontesAlarme={fibo:true,preco:true,media:true,cruze:true};
+function carregaFontesAlarme(){
+  try{ Object.assign(fontesAlarme,JSON.parse(localStorage.getItem("alarme-fontes")||"{}")); }catch(e){}
+  ["fibo","preco","media","cruze"].forEach(k=>{
+    const el=document.getElementById("alf-"+k);
+    if(el) el.checked=!!fontesAlarme[k];
+  });
+}
+function setFonteAlarme(k,v){
+  fontesAlarme[k]=!!v;
+  try{ localStorage.setItem("alarme-fontes",JSON.stringify(fontesAlarme)); }catch(e){}
+}
+window.setFonteAlarme=setFonteAlarme;
+window.carregaFontesAlarme=carregaFontesAlarme;
+
 // ALARMES MANUAIS — um preco qualquer que o usuario digita, sem depender de
 // ter desenhado nada. Ficam no localStorage por simbolo: um alarme de 60000
 // no BTC nao faz sentido no ouro.
@@ -1577,10 +1629,10 @@ function niveisDeAlarme(){
   let lista=[];
   try{ lista=drawings()||[]; }catch(e){ lista=[]; }
   lista.forEach((d,i)=>{
-    if(d.type==="horizontal"&&d.p0&&isFinite(d.p0.price)){
+    if(fontesAlarme.preco&&d.type==="horizontal"&&d.p0&&isFinite(d.p0.price)){
       out.push({chave:"preco:"+i,rotulo:"PRECO",nome:d.p0.price.toFixed(2),preco:d.p0.price});
     }
-    if((d.type==="fibbo"||d.type==="fibretr")&&d.p0&&d.p1){
+    if(fontesAlarme.fibo&&(d.type==="fibbo"||d.type==="fibretr")&&d.p0&&d.p1){
       const diff=d.p0.price-d.p1.price;
       const lvs=d.type==="fibretr"?fibRetrLevels:[...fibLevels,...fibBreakLevels];
       lvs.forEach(lv=>{
@@ -1591,10 +1643,10 @@ function niveisDeAlarme(){
       });
     }
   });
-  alarmesManuais.forEach(a=>{
+  if(fontesAlarme.preco) alarmesManuais.forEach(a=>{
     if(isFinite(a.preco)) out.push({chave:"manual:"+a.preco,rotulo:"ALARME",nome:String(a.preco),preco:a.preco});
   });
-  if(ultimasEmas) Object.keys(ultimasEmas).forEach(k=>{
+  if(fontesAlarme.media&&ultimasEmas) Object.keys(ultimasEmas).forEach(k=>{
     const v=ultimasEmas[k];
     if(v!=null&&isFinite(v)) out.push({chave:"media:"+k,rotulo:"MEDIA",nome:ALARME_NOMES[k]||k,preco:v});
   });
@@ -1613,7 +1665,7 @@ const PARES_MEDIAS=[
 const cruzamentoAnterior={};
 
 function verificaCruzamentoMedias(){
-  if(!alertsOn||!serieMedias) return;
+  if(!alertsOn||!fontesAlarme.cruze||!serieMedias) return;
   PARES_MEDIAS.forEach(([a,b])=>{
     const sa=serieMedias[a], sb=serieMedias[b];
     if(!sa||!sb||sa.length<2) return;
@@ -1633,6 +1685,19 @@ function verificaCruzamentoMedias(){
   });
 }
 window.verificaCruzamentoMedias=verificaCruzamentoMedias;
+
+// Zera a referencia de preco. OBRIGATORIO ao trocar de ativo ou de
+// timeframe: sem isto o proximo tick compara o preco do BTC (109000) com o
+// do ETH (3400) e dispara TODOS os niveis entre os dois de uma vez. As series
+// de media tambem saem, senao o alarme compara o preco novo com as medias do
+// ativo anterior ate o motor recalcular.
+function resetaAlarmes(){
+  alarmePrecoAnterior=null;
+  ultimasEmas=null;
+  serieMedias=null;
+  for(const k in cruzamentoAnterior) delete cruzamentoAnterior[k];
+}
+window.resetaAlarmes=resetaAlarmes;
 
 function verificaAlarmes(preco){
   const ant=alarmePrecoAnterior;
@@ -4181,8 +4246,9 @@ function resetLive(){
 }
 async function changeSym(sym){
   currentSym=sym;candles=[];resetLive();
+  resetaAlarmes();
   // alarmes e niveis de fibo sao guardados por simbolo
-  carregaAlarmesManuais(); carregaFibNiveis();
+  carregaAlarmesManuais(); carregaFibNiveis(); carregaFontesAlarme();
   const sel=document.getElementById('sym-select');
   if(sel&&sel.value!==sym)sel.value=sym;
   await loadAll();
@@ -4191,10 +4257,17 @@ async function changeSym(sym){
 }
 async function changeTF(tf){
   currentTF=tf;candles=[];resetLive();
+  // os desenhos sao guardados por simbolo+TF, entao o fibo do 15m nao vale no
+  // 1h — a referencia de preco tem que zerar junto
+  resetaAlarmes();
   if(multiViewOpen){closeMultiCharts();openMultiCharts();}
   await loadAll();
 }
 async function loadAll(){
+  // o loadAll tambem roda quando a aba volta do segundo plano depois de um
+  // salto de varias velas; sem zerar, o primeiro tick depois disso dispararia
+  // todo o caminho que o preco andou enquanto ninguem olhava
+  resetaAlarmes();
   const mySeq=++loadSeq, mySym=currentSym, myTf=currentTF;
   document.getElementById('ws-st').textContent='Carregando...';
   const d=await fetchCandles(mySym,myTf,1000);
