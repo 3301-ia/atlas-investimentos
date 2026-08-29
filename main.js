@@ -7,12 +7,16 @@ function aggregateCandles(candles, factor) {
   for (let i = 0; i < candles.length; i++) {
     const c = candles[i];
     if (count === 0) {
-      current = { time: c.time, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume };
+      current = { time: c.time, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume,
+                  compra: c.compra || 0, venda: c.venda || 0 };
     } else {
       current.high = Math.max(current.high, c.high);
       current.low = Math.min(current.low, c.low);
       current.close = c.close;
       current.volume += c.volume;
+      // os lados somam junto com o volume, senao o 6m e o 15h ficariam sem bolha
+      current.compra += c.compra || 0;
+      current.venda  += c.venda  || 0;
     }
     count++;
     if (count === factor || i === candles.length - 1) {
@@ -1155,6 +1159,7 @@ async function fetchOlderBatch(){
     const addedCount=older.length;
     candles=[...older,...candles];
     if(candles.length>HIST_CAP)candles=candles.slice(-HIST_CAP); // corta as mais ANTIGAS, mantem as recentes/ao vivo
+    semeiaFluxoDoHistorico(); // as velas que acabaram de chegar tambem tem bolha
 
     const visRange=chart.timeScale().getVisibleLogicalRange();
     applySeriesData();
@@ -1289,7 +1294,12 @@ const DATA_SOURCES = [
   {
     name:'binance',
     build:(sym,tf,limit)=>`https://fapi.binance.com/fapi/v1/klines?symbol=${sym}&interval=${tf}&limit=${limit}`,
-    parse:(d)=>d.map(k=>({time:Math.floor(k[0]/1000),open:+k[1],high:+k[2],low:+k[3],close:+k[4],volume:+k[5]})),
+    // k[7] e o volume em dolar da vela e k[10] a parte que veio de quem
+    // comprou a mercado. Os dois ja vinham na resposta e eram jogados fora —
+    // e sao exatamente o que as bolhas precisam, direto da Binance, sem
+    // estimativa. Nenhuma outra fonte publica esse corte.
+    parse:(d)=>d.map(k=>({time:Math.floor(k[0]/1000),open:+k[1],high:+k[2],low:+k[3],close:+k[4],volume:+k[5],
+      compra:+k[10]||0, venda:Math.max(0,(+k[7]||0)-(+k[10]||0))})),
   },
   {
     name:'bybit',
@@ -2163,6 +2173,16 @@ function openWS(){
       if(!stream.includes('@kline'))return;
       const k=d.k;if(!k)return;
       const c={time:Math.floor(k.t/1000),open:+k.o,high:+k.h,low:+k.l,close:+k.c,volume:+k.v};
+      // mesmo corte do historico, agora ao vivo: k.q e o volume em dolar da
+      // vela e k.Q a parte de quem comprou a mercado. Vem acumulado da vela
+      // inteira, entao substitui em vez de somar.
+      if(k.q!=null&&k.Q!=null){
+        c.compra=+k.Q||0; c.venda=Math.max(0,(+k.q||0)-(+k.Q||0));
+        if(c.compra>0||c.venda>0){
+          fluxoPorVela[c.time]={compra:c.compra, venda:c.venda, oficial:true};
+          fluxoVersao++;
+        }
+      }
       const last=candles[candles.length-1];
       if(last&&c.time<last.time)return; // fora de ordem
 
@@ -2170,6 +2190,7 @@ function openWS(){
         c.high=Math.max(c.high,last.high);
         c.low=Math.min(c.low,last.low);
         c.close=last.close; // mantem o close do aggTrade, evita pulo pra tras
+        if(c.compra==null&&last.compra!=null){c.compra=last.compra;c.venda=last.venda;}
         candles[candles.length-1]=c;
       }else if(!last||c.time>last.time){
         if(last)commitLiveState(last.close); // vela anterior fechou de fato
@@ -4099,10 +4120,16 @@ function runBacktest(candlesArr,cfg){
 // leitura ingenua do campo sugere.
 
 const FLUXO_MAX_NEGOCIOS = 400;     // teto do que fica em memoria
-const FLUXO_MAX_DESENHO  = 60;      // teto do que vai pra tela, pra nao poluir
+const FLUXO_MAX_DESENHO  = 14;      // teto do que vai pra tela, pra nao poluir.
+                                    // Com o historico semeado sempre ha
+                                    // candidata de sobra: 60 cobria o grafico
+                                    // inteiro e escondia justamente o candle
+                                    // que a bolha deveria estar apontando.
 let fluxoNegocios = [];             // {t, preco, notional, comprador}
 let fluxoPorVela = {};              // time da vela -> {compra, venda}
 let bolhasLigadas = true;
+let fluxoVersao = 0;                // sobe a cada mudanca no fluxo por vela
+let bolhasCache = null;             // {versao, corte, maior, alvos}
 
 // Minimo pra um negocio virar bolha. Nao pode ser fixo: 500 USD e enorme numa
 // altcoin e invisivel no BTC. Uso a mediana do notional recente como base.
@@ -4115,6 +4142,25 @@ function recalculaCorteFluxo(){
   fluxoCorte = mediana * 8;
 }
 
+// As bolhas nasciam so do que chegava ao vivo. Num grafico de 15m isso quer
+// dizer meia hora de tela aberta antes da PRIMEIRA bolha poder aparecer (o
+// corte precisa de 4 lados de vela com fluxo, e todo negocio da vela em curso
+// cai num unico horario). Em 1h ou 4h, nunca. Agora o historico ja vem com o
+// lado agressor de cada vela e as bolhas aparecem no primeiro quadro.
+function semeiaFluxoDoHistorico(){
+  if(!candles || !candles.length) return;
+  let achou = 0;
+  candles.forEach(c => {
+    if(c.compra == null && c.venda == null) return;
+    if((c.compra||0) <= 0 && (c.venda||0) <= 0) return;
+    fluxoPorVela[c.time] = {compra:c.compra||0, venda:c.venda||0, oficial:true};
+    achou++;
+  });
+  if(achou) fluxoVersao++;
+  return achou;
+}
+window.semeiaFluxoDoHistorico = semeiaFluxoDoHistorico;
+
 function registraNegocio(preco, qtd, comprador, ts, velaTime){
   const notional = preco * qtd;
   if(!isFinite(notional) || notional <= 0) return;
@@ -4124,7 +4170,12 @@ function registraNegocio(preco, qtd, comprador, ts, velaTime){
 
   if(velaTime != null){
     const v = fluxoPorVela[velaTime] || (fluxoPorVela[velaTime] = {compra:0, venda:0});
+    // vela com numero oficial da Binance nao se soma no braco: o kline manda o
+    // acumulado da vela inteira, somar o negocio avulso por cima contaria duas
+    // vezes. Isto aqui e o caminho de quem caiu numa fonte sem esse corte.
+    if(v.oficial) return;
     if(comprador) v.compra += notional; else v.venda += notional;
+    fluxoVersao++;
     // guarda so as ultimas 200 velas, senao isto cresce sem parar
     const chaves = Object.keys(fluxoPorVela);
     if(chaves.length > 200){
@@ -4167,40 +4218,70 @@ function fmtNotional(v){
 //
 // Uma bolha por vela e por lado, com o volume somado. Antes era uma por
 // negocio, o que empilhava dezenas no mesmo ponto.
-function desenhaBolhas(){
-  if(!bolhasLigadas || !dCtx || !chart || !candleSeries) return;
-  if(!candles || !candles.length) return;
+// O corte sai do que esta NA TELA, nao do historico inteiro. Com as mil velas
+// semeadas, um corte global marcava sempre as mesmas velas gigantes e o resto
+// do grafico ficava mudo — ou, se voce estivesse olhando justamente o trecho
+// agitado, cobria tudo de bolha. Olhando so a janela visivel, o corte
+// acompanha o zoom: em qualquer trecho aparecem as velas que destoam DAQUELE
+// trecho, que e a pergunta que a bolha responde.
+//
+// Percentil 88 em vez da mediana vezes 1,6: a distribuicao de volume tem cauda
+// longa e a mediana deixava passar quase um terco das velas.
+function montaAlvosBolha(){
   const chaves = Object.keys(fluxoPorVela);
-  if(!chaves.length) return;
+  if(!chaves.length) return null;
 
-  // O corte e sobre o volume SOMADO da vela, nao sobre o negocio avulso. Uso a
-  // mediana das velas com fluxo: vela normal nao vira bolha, so a que destoa.
-  // Sem isso toda vela ganharia duas bolhas e viraria poluicao.
-  const somas = [];
-  chaves.forEach(k => {
-    const v = fluxoPorVela[k];
-    if(v.compra > 0) somas.push(v.compra);
-    if(v.venda  > 0) somas.push(v.venda);
-  });
-  if(somas.length < 4) return;
-  somas.sort((a,b) => a-b);
-  const corte = somas[Math.floor(somas.length/2)] * 1.6;
-  const maior = somas[somas.length-1];
+  let de = -Infinity, ate = Infinity;
+  try{
+    const r = chart.timeScale().getVisibleRange();
+    if(r && r.from != null && r.to != null){ de = +r.from; ate = +r.to; }
+  }catch(e){}
 
   // indice das velas por tempo, pra achar a maxima e a minima de cada uma
   const porTempo = {};
   candles.forEach(c => { porTempo[c.time] = c; });
 
-  const alvos = [];
+  const naJanela = [], somas = [];
   chaves.forEach(k => {
-    const vela = porTempo[+k];
-    if(!vela) return;
+    const t = +k;
+    if(t < de || t > ate) return;
+    const vela = porTempo[t]; if(!vela) return;
     const v = fluxoPorVela[k];
-    if(v.compra >= corte) alvos.push({vela, notional:v.compra, comprador:true});
-    if(v.venda  >= corte) alvos.push({vela, notional:v.venda,  comprador:false});
+    naJanela.push({vela, v});
+    if(v.compra > 0) somas.push(v.compra);
+    if(v.venda  > 0) somas.push(v.venda);
+  });
+  if(somas.length < 6) return null;
+  somas.sort((a,b) => a-b);
+  const corte = somas[Math.min(somas.length-1, Math.floor(somas.length*0.88))];
+  const maior = somas[somas.length-1];
+
+  const alvos = [];
+  naJanela.forEach(o => {
+    if(o.v.compra >= corte) alvos.push({vela:o.vela, notional:o.v.compra, comprador:true});
+    if(o.v.venda  >= corte) alvos.push({vela:o.vela, notional:o.v.venda,  comprador:false});
   });
   // maior primeiro: quem tem direito ao lugar na tela e o fluxo que interessa
   alvos.sort((a,b) => b.notional - a.notional);
+  return {corte, maior, alvos, de, ate};
+}
+
+function desenhaBolhas(){
+  if(!bolhasLigadas || !dCtx || !chart || !candleSeries) return;
+  if(!candles || !candles.length) return;
+  // Com o historico semeado sao ate mil velas: refazer mediana e ordenacao a
+  // cada quadro custaria caro a 60fps. O resultado so muda quando o fluxo
+  // muda, entao guarda por versao — na pratica recalcula uma vez por tick do
+  // kline, nao 60 vezes por segundo.
+  let janela = "";
+  try{ const r = chart.timeScale().getVisibleRange(); if(r) janela = r.from+"|"+r.to; }catch(e){}
+  const chave = fluxoVersao+"@"+janela;
+  if(!bolhasCache || bolhasCache.chave !== chave){
+    bolhasCache = montaAlvosBolha();
+    if(bolhasCache) bolhasCache.chave = chave;
+  }
+  if(!bolhasCache || !bolhasCache.alvos.length) return;
+  const corte = bolhasCache.corte, maior = bolhasCache.maior, alvos = bolhasCache.alvos;
 
   // A referencia empilhava bolha sobre bolha ate nao dar pra ler nenhuma nem
   // enxergar o candle embaixo. Aqui a maior desenha primeiro e a menor que
@@ -4209,7 +4290,9 @@ function desenhaBolhas(){
   const livre = (x, y, r) => !postas.some(b =>
     Math.hypot(x-b.x, y-b.y) < (r + b.r) * 0.85);
 
-  const larguraTela = dCanvas ? dCanvas.width : 4000;
+  // clientWidth, nao width: o buffer e multiplicado pelo dpr e o t2x devolve
+  // pixel de CSS — comparar com o buffer nunca cortava nada numa tela retina
+  const larguraTela = (dCanvas && dCanvas.clientWidth) || 4000;
   let desenhadas = 0;
 
   for(const a of alvos){
@@ -5653,7 +5736,7 @@ function resetLive(){
 async function changeSym(sym){
   currentSym=sym;candles=[];resetLive();
   // negocio do ativo anterior nao vale aqui
-  fluxoNegocios=[]; fluxoPorVela={}; fluxoCorte=0;
+  fluxoNegocios=[]; fluxoPorVela={}; fluxoCorte=0; bolhasCache=null;
   resetaAlarmes();
   // alarmes e niveis de fibo sao guardados por simbolo
   carregaAlarmesManuais(); carregaFibNiveis(); carregaFontesAlarme(); carregaObservacoes();
@@ -5683,6 +5766,8 @@ async function loadAll(){
   if(mySeq!==loadSeq)return;
   if(!d){document.getElementById('ws-st').textContent='Erro de Conexao';return;}
   candles=d;
+  fluxoPorVela={}; bolhasCache=null;
+  semeiaFluxoDoHistorico();
 
   // RENDERIZA O GRAFICO PRINCIPAL + STOCHRSI + RIBBON PHI INSTANTANEAMENTE!
   renderChart();
