@@ -624,6 +624,19 @@
                   <option value="9-21-ema">9/21 EMA Cross</option>
                   <option value="12-26-ema">12/26 EMA Cross</option>
                   <option value="50-200-sma">Golden/Death Cross (50/200 SMA)</option>
+                  <!-- as medias do proprio Atlas: o backtest so tinha os tres
+                       cruzamentos classicos e nenhum dos que o painel usa -->
+                  <option value="8-16-ema">EMA 8/16 (Atlas)</option>
+                  <option value="8-55-ema">EMA 8/55 (Atlas)</option>
+                  <option value="16-55-ema">EMA 16/55 (Atlas)</option>
+                  <option value="8-98-ema">EMA 8/98 (Atlas)</option>
+                  <option value="16-98-ema">EMA 16/98 (Atlas)</option>
+                  <option value="8-200-ema">EMA 8/200 (Atlas)</option>
+                  <option value="16-200-ema">EMA 16/200 (Atlas)</option>
+                  <option value="55-200-ema">EMA 55/200 (Atlas)</option>
+                  <option value="56-89-sma">MA 56/89 (Ribbon)</option>
+                  <option value="8-89-mix">EMA 8 x MA 89</option>
+                  <option value="16-89-mix">EMA 16 x MA 89</option>
                 </select>
               </div>
               <div>
@@ -988,6 +1001,20 @@
             </div>
 
             <!-- FIBONACCI -->
+            <!-- RELATORIO: junta num arquivo tudo que o painel calculou, com a
+                 sua observacao, pra mandar pros agentes de analise. -->
+            <div class="sp-sec"><span>RELATORIO</span><span class="sp-sec-val" id="rel-count" style="color:var(--accent);">--</span></div>
+            <div style="padding:4px 9px;">
+              <textarea id="rel-obs" rows="2" placeholder="sua observacao sobre este ativo..."
+                style="width:100%;box-sizing:border-box;padding:4px 6px;font-size:10px;font-family:inherit;resize:vertical;"></textarea>
+              <div style="display:flex;gap:4px;margin-top:4px;">
+                <button class="btn" onclick="salvaObservacao()" style="flex:1;padding:3px 6px;font-size:10px;">guardar observacao</button>
+                <button class="btn" onclick="baixaRelatorio()" style="padding:3px 8px;font-size:10px;" title="Baixa um .json com tudo que o painel calculou + as observacoes guardadas">baixar</button>
+                <button class="btn" onclick="copiaRelatorio()" style="padding:3px 8px;font-size:10px;" title="Copia o relatorio pra colar num agente de analise">copiar</button>
+              </div>
+            </div>
+            <div class="sig-list" id="rel-list" style="max-height:110px;flex:none;"><div style="padding:5px 9px;font-size:9px;color:var(--t3);">Nenhuma observacao guardada.</div></div>
+
             <!-- CONTRA-ARGUMENTO: tudo aqui do lado diz por que entrar. Esta
                  secao diz o que pesa contra — e o que evita operacao ruim. -->
             <div class="sp-sec"><span>CONTRA-ARGUMENTO</span><span class="sp-sec-val" id="contra-count" style="color:var(--red);">--</span></div>
@@ -1042,6 +1069,12 @@
             </div>
 
             <!-- FIB MANUAL (ferramenta de desenho) -->
+            <!-- Historico das ancoras automaticas: de todas as vezes que o motor
+                 ancorou um fibo, quantas chegaram em cada alvo. Responde se vale
+                 perseguir o 2.618 ou parar no 1.618. -->
+            <div class="sp-sec"><span>FIBO · ATE ONDE CHEGA</span><span class="sp-sec-val" id="fibh-count" style="color:var(--accent);">--</span></div>
+            <div class="sig-list" id="fibh-list" style="max-height:120px;flex:none;"><div style="padding:5px 9px;font-size:9px;color:var(--t3);">Sem ancoras arquivadas ainda.</div></div>
+
             <div class="sp-sec"><span>FIB MANUAL</span><span class="sp-sec-val" id="mfib-count">--</span></div>
             <div class="fib-list" id="mfib-list" style="max-height:150px;"><div style="color:var(--t3);font-size:9px;padding:4px 0;">Desenhe um fib no grafico...</div></div>
 
