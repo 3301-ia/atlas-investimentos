@@ -427,6 +427,7 @@
       <button class="btn" id="btn-backtest" onclick="toggleBacktestTab()" title="Backtest: simula um sinal contra o historico e mostra Win Rate, Profit Factor, Sharpe e mais">🧪 Backtest</button>
       <button class="btn" id="btn-macro" onclick="toggleMacroTab()" title="Leitura macro: RSI semanal, Canal Gaussiano, StochRSI, MACD/PPO mensal, Pi Cycle">📐 Macro</button>
       <button class="btn" id="btn-terminal" onclick="toggleTerminalTab()" title="Terminal: forca consolidada D/W/M + cruzamento + RSI inverso, e climax de volume nos fundos (VSA/Wyckoff)">🎯 Terminal</button>
+      <button class="btn on" id="btn-bolhas" onclick="toggleBolhas()" title="Bolhas dos negocios grandes: verde = comprador agrediu, vermelho = vendedor. O tamanho e por faixa de notional, com teto pra nao poluir o grafico">● Bolhas</button>
       <button class="btn" id="btn-gold" onclick="toggleGoldTab()" title="Mercados globais: 377 ativos (cripto/forex/indices/commodities/acoes) com RSI H1/H4/D1 + alvo inverso, cotacao ao vivo">🥇 Gold</button>
       <button class="btn" id="btn-bussola" onclick="toggleBussolaModal()" title="Bussola Direcional do Mercado">🧭 Bússola</button>
       <button class="btn" id="btn-potential" onclick="togglePotential()" title="Calculadora Dinâmica de Potencial de Lucro e Risco (Alavancagem 800:1)">⚡ Potential</button>
@@ -1014,6 +1015,11 @@
               </div>
             </div>
             <div class="sig-list" id="rel-list" style="max-height:110px;flex:none;"><div style="padding:5px 9px;font-size:9px;color:var(--t3);">Nenhuma observacao guardada.</div></div>
+
+            <!-- FORCA: o RSI e o StochRSI medem o PRECO. Isto mede quem esta
+                 pagando pra entrar — agressao compradora contra vendedora. -->
+            <div class="sp-sec"><span>FORCA DO FLUXO</span><span class="sp-sec-val" id="forca-count">--</span></div>
+            <div id="forca-box" style="padding:6px 9px;"><div style="font-size:9px;color:var(--t3);">Aguardando negocios ao vivo...</div></div>
 
             <!-- CONTRA-ARGUMENTO: tudo aqui do lado diz por que entrar. Esta
                  secao diz o que pesa contra — e o que evita operacao ruim. -->
