@@ -3048,7 +3048,10 @@ async function recarregaMulti(){
 let forcaTimer=null;
 function iniciaForca(){
   if(forcaTimer) clearInterval(forcaTimer);
-  forcaTimer=setInterval(()=>{ try{ renderForca(); }catch(e){} },2000);
+  forcaTimer=setInterval(()=>{
+    try{ renderForca(); }catch(e){}
+    try{ renderConsolidacao(); }catch(e){}   // mesma cadencia, mesmo motivo
+  },2000);
 }
 
 function startMultiTimers(){
@@ -4723,6 +4726,22 @@ function retratoDoAtivo(){
     if(typeof estadoLiberacao==="function") r.direcao.liberacao=estadoLiberacao(null);
   }catch(e){}
 
+  // ── AS DUAS PONTAS: BINANCE E DERIV
+  try{
+    if(typeof consolidaOfertaProcura==="function"){
+      const c = consolidaOfertaProcura(20);
+      if(c && (c.binance || c.deriv)){
+        r.oferta_procura = {
+          binance_pressao_dinheiro: c.binance ? +c.binance.pressao.toFixed(1) : null,
+          deriv_pressao_ticks:      c.deriv   ? +c.deriv.pressao.toFixed(1)   : null,
+          deriv_ticks:              c.deriv   ? c.deriv.ticks : null,
+          acordo: c.acordo,
+          nota: "unidades diferentes: Binance mede dolar agressor do livro; Deriv conta ticks pra cima, pois nao publica volume negociado"
+        };
+      }
+    }
+  }catch(e){}
+
   // ── QUANTO TEMPO DO MESMO LADO DA EMA200
   // Nao e so "esta acima": ha diferenca entre estar acima ha tres velas e ha
   // trezentas. A segunda e tendencia estabelecida, a primeira e um repique
@@ -5139,6 +5158,25 @@ function analiseDoMercado(r){
       p.push(t);
     }
   }catch(e){}
+
+  // 3a2) AS DUAS PONTAS — mesma pergunta, dois livros
+  if(r.oferta_procura && r.oferta_procura.acordo){
+    const o = r.oferta_procura;
+    let t = "Cruzando as duas fontes: na Binance o dinheiro agressor esta <b>"+sin(o.binance_pressao_dinheiro)
+          + "%</b>; na Deriv, <b>"+sin(o.deriv_pressao_ticks)+"%</b> dos ticks foram pra cima ("
+          + (o.deriv_ticks||0).toLocaleString("pt-BR")+" ticks).";
+    t += o.acordo === "concordam"
+      ? " <b>As duas apontam pro mesmo lado</b> — e a leitura mais firme que este painel consegue dar,"
+        + " porque sao livros diferentes chegando na mesma conclusao."
+      : o.acordo === "divergem"
+        ? " <b>As duas discordam.</b> O livro da Binance e o feed da Deriv estao contando historias"
+          + " diferentes sobre quem esta com pressa. Divergencia entre fontes nao diz quem esta certo,"
+          + " diz que a leitura ainda nao esta pronta."
+        : " Pelo menos uma das duas nao tem lado definido, entao o cruzamento nao confirma nada aqui.";
+    t += " Vale lembrar que nao sao a mesma medida: a Binance conta dolar, a Deriv conta tick —"
+      + " ela nao publica volume negociado.";
+    p.push(t);
+  }
 
   // 3b) O VALOR DO VOLUME — o numero que a bolha mostra, com contexto
   if(r.volume && r.volume.vela_atual_usd != null){
@@ -6292,6 +6330,220 @@ function onBuyClick(){
 updateTTCalc();
 
 // ══════════════════════════════════════════════════════
+// DADOS DE MERCADO DA DERIV — segunda leitura de oferta e procura
+// ══════════════════════════════════════════════════════
+// O derivAPI daqui de baixo e pra ENVIAR ORDEM e precisa de token. Este aqui e
+// so leitura de mercado, que na Deriv e publica: basta o App ID, nenhum token.
+//
+// UMA RESSALVA QUE MUDA COMO SE LE O NUMERO:
+// A Deriv NAO publica volume negociado. Ela e corretora de CFD, nao bolsa —
+// nao ha livro central cujo volume dê pra publicar. O ticks_history devolve
+// preco e horario, mais nada.
+//
+// O que da pra extrair dai e VOLUME DE TICK: quantas vezes o preco foi
+// atualizado dentro da vela, e quantas dessas foram pra cima e pra baixo. E o
+// padrao de quem opera cambio e CFD, onde volume real nao existe pra ninguem —
+// atividade de tick anda junto com atividade de mercado.
+//
+// Entao NAO sao "dois pontos de volume" na mesma unidade. Sao duas medidas
+// diferentes da mesma pergunta:
+//   Binance  -> quanto DINHEIRO foi agressor comprador (dolar, do livro real)
+//   Deriv    -> quantos TICKS foram pra cima (contagem, do feed da corretora)
+// Quando as duas apontam junto, a leitura fica mais firme. Quando divergem,
+// isso tambem e informacao: alguma das duas pontas esta vendo outra coisa.
+const DERIV_SIMBOLO = {
+  BTCUSDT:'cryBTCUSD', ETHUSDT:'cryETHUSD',
+  XAUUSDT:'frxXAUUSD', XAGUSDT:'frxXAGUSD',
+};
+const DERIV_TICKS_HIST = 5000;   // teto que a API aceita por pedido
+
+const derivDados = {
+  ws:null, aberto:false, sym:null, pedido:0,
+  porVela:{},          // time da vela -> {ticks, sobe, desce}
+  ultimo:null,         // ultimo preco visto, pra classificar o proximo tick
+  versao:0,
+  erro:null,
+
+  appId(){ try{ return localStorage.getItem('deriv_app_id')||''; }catch(e){ return ''; } },
+
+  liga(){
+    const id = this.appId();
+    if(!id){ this.erro = "sem App ID"; renderConsolidacao(); return; }
+    if(this.ws && (this.ws.readyState===0 || this.ws.readyState===1)){ this.pedeHistorico(); return; }
+    this.erro = null;
+    try{
+      this.ws = new WebSocket("wss://ws.derivws.com/websockets/v3?app_id="+encodeURIComponent(id));
+    }catch(e){ this.erro = "nao abriu: "+e.message; renderConsolidacao(); return; }
+    this.ws.onopen = () => { this.aberto = true; this.pedeHistorico(); renderConsolidacao(); };
+    this.ws.onclose = () => { this.aberto = false; renderConsolidacao(); };
+    this.ws.onerror = () => { this.erro = "conexao recusada"; renderConsolidacao(); };
+    this.ws.onmessage = ev => { try{ this.recebe(JSON.parse(ev.data)); }catch(e){} };
+  },
+
+  desliga(){
+    try{ if(this.ws) this.ws.close(1000); }catch(e){}
+    this.ws=null; this.aberto=false; this.zera();
+  },
+
+  zera(){ this.porVela={}; this.ultimo=null; this.versao++; },
+
+  pedeHistorico(){
+    const alvo = DERIV_SIMBOLO[typeof currentSym!=="undefined"?currentSym:""];
+    if(!this.ws || this.ws.readyState!==1) return;
+    if(!alvo){ this.sym=null; this.zera(); this.erro="a Deriv nao tem este ativo"; renderConsolidacao(); return; }
+    if(this.sym && this.sym!==alvo){
+      // cancela a assinatura do ativo anterior, senao os ticks continuam vindo
+      try{ this.ws.send(JSON.stringify({forget_all:"ticks"})); }catch(e){}
+    }
+    this.sym = alvo; this.erro = null; this.zera();
+    // style:"ticks" e nao "candles" de proposito: a vela da Deriv vem sem
+    // volume nenhum, entao ela nao acrescentaria nada ao que a Binance ja da.
+    // O tick cru e que permite contar quantos houve e quantos subiram.
+    this.ws.send(JSON.stringify({
+      ticks_history: alvo, adjust_start_time:1, count:DERIV_TICKS_HIST,
+      end:"latest", start:1, style:"ticks", subscribe:1, req_id:++this.pedido
+    }));
+  },
+
+  balde(epochSeg){
+    const tf = (typeof tfToSeconds==="function" && typeof currentTF!=="undefined")
+      ? tfToSeconds(currentTF) : 900;
+    return epochSeg - (epochSeg % tf);
+  },
+
+  // REGRA DO TICK: preco subiu = quem tinha pressa era comprador; desceu =
+  // vendedor; igual nao conta pra lado nenhum. E aproximacao, nao a bandeira
+  // de agressor que a Binance manda de verdade — mas e a mesma aproximacao que
+  // o mercado de cambio usa ha decadas, por nao ter outra.
+  come(preco, epochSeg){
+    if(!isFinite(preco)) return;
+    const t = this.balde(epochSeg);
+    const v = this.porVela[t] || (this.porVela[t] = {ticks:0, sobe:0, desce:0});
+    v.ticks++;
+    if(this.ultimo != null){
+      if(preco > this.ultimo) v.sobe++;
+      else if(preco < this.ultimo) v.desce++;
+    }
+    this.ultimo = preco;
+    const chaves = Object.keys(this.porVela);
+    if(chaves.length > 400){
+      chaves.sort((a,b)=>a-b).slice(0, chaves.length-400).forEach(k=>{ delete this.porVela[k]; });
+    }
+  },
+
+  recebe(msg){
+    if(msg.error){ this.erro = msg.error.message||"erro na Deriv"; renderConsolidacao(); return; }
+    if(msg.msg_type === "history" && msg.history){
+      const p = msg.history.prices||[], t = msg.history.times||[];
+      this.zera();
+      for(let i=0;i<p.length;i++) this.come(+p[i], +t[i]);
+      this.versao++;
+      renderConsolidacao();
+      return;
+    }
+    if(msg.msg_type === "tick" && msg.tick){
+      this.come(+msg.tick.quote, +msg.tick.epoch);
+      this.versao++;
+      return;
+    }
+  },
+
+  // Pressao de tick das ultimas N velas: -100 (so desceu) a +100 (so subiu)
+  pressao(nVelas){
+    const chaves = Object.keys(this.porVela).map(Number).sort((a,b)=>a-b);
+    if(!chaves.length) return null;
+    const usadas = chaves.slice(-(nVelas||20));
+    let sobe=0, desce=0, ticks=0;
+    usadas.forEach(k=>{ const v=this.porVela[k]; sobe+=v.sobe; desce+=v.desce; ticks+=v.ticks; });
+    const dir = sobe + desce;
+    if(!dir) return null;
+    return {velas:usadas.length, ticks, sobe, desce,
+            pressao: (sobe-desce)/dir*100};
+  }
+};
+window.derivDados = derivDados;
+
+// ── CONSOLIDACAO: as duas pontas lado a lado ────────────────────────────
+// A pergunta que as duas respondem e a mesma — de que lado esta a pressao —
+// mas com dados diferentes e de livros diferentes. Concordancia reforca;
+// divergencia e aviso de que uma das pontas esta vendo outra coisa.
+function consolidaOfertaProcura(nVelas){
+  let bin = null, der = null;
+  try{ bin = forcaDoFluxo(nVelas||20); }catch(e){}
+  try{ der = derivDados.pressao(nVelas||20); }catch(e){}
+  const pb = (bin && (bin.compra+bin.venda) > 0) ? bin.pressao : null;
+  const pd = der ? der.pressao : null;
+  let acordo = null, quemEstaMorno = null;
+  if(pb != null && pd != null){
+    const mesmoLado = (pb >= 0) === (pd >= 0);
+    const binForte = Math.abs(pb) >= 10, derForte = Math.abs(pd) >= 10;
+    acordo = (binForte && derForte) ? (mesmoLado ? "concordam" : "divergem") : "morno";
+    // dizer "fraca nos dois" quando so uma esta fraca e mentira pequena que
+    // custa confianca: nomeio qual delas nao se decidiu
+    if(acordo === "morno"){
+      quemEstaMorno = (!binForte && !derForte) ? "ambas" : (binForte ? "deriv" : "binance");
+    }
+  }
+  return {
+    binance: pb==null ? null : {pressao:pb, compra:bin.compra, venda:bin.venda, velas:bin.velas},
+    deriv:   pd==null ? null : {pressao:pd, ticks:der.ticks, sobe:der.sobe, desce:der.desce, velas:der.velas},
+    acordo, quemEstaMorno,
+    // media so quando as duas existem; peso igual, porque nao ha razao pra
+    // confiar mais numa que na outra
+    media: (pb!=null && pd!=null) ? (pb+pd)/2 : (pb!=null ? pb : pd)
+  };
+}
+window.consolidaOfertaProcura = consolidaOfertaProcura;
+
+function renderConsolidacao(){
+  const box = document.getElementById('consolida-box'), cnt = document.getElementById('consolida-count');
+  if(!box) return;
+  const c = consolidaOfertaProcura(20);
+  const cor = p => p >= 10 ? "#00C853" : (p <= -10 ? "#FF3B30" : "#F5A623");
+  const linha = (rot, p, det) => p==null
+    ? '<div style="font-size:9px;color:var(--t3);margin-bottom:5px;">'+rot+' <span style="color:var(--t3);">'+det+'</span></div>'
+    : '<div style="font-size:9px;color:var(--t3);margin-bottom:2px;">'+rot
+      +' <span style="color:'+cor(p)+';font-family:var(--mono);">'+(p>=0?"+":"")+p.toFixed(1)+'%</span>'
+      +' <span style="color:var(--t3);">'+det+'</span></div>'
+      +'<div style="position:relative;height:6px;background:var(--bg4);border-radius:3px;margin-bottom:6px;">'
+      +'<span style="position:absolute;left:50%;top:-1px;width:1px;height:8px;background:var(--bd3);"></span>'
+      +'<span style="position:absolute;left:'+(p>=0?50:50-Math.min(50,Math.abs(p)/2))+'%;width:'
+      +Math.min(50,Math.abs(p)/2)+'%;height:100%;background:'+cor(p)+';border-radius:3px;"></span></div>';
+
+  const detDeriv = c.deriv
+    ? c.deriv.ticks.toLocaleString('pt-BR')+' ticks'
+    : (derivDados.erro ? derivDados.erro : (derivDados.aberto ? 'aguardando...' : 'desligado'));
+
+  if(cnt){
+    cnt.textContent = c.acordo ? c.acordo : '--';
+    cnt.style.color = c.acordo==="concordam" ? "#00C853"
+      : c.acordo==="divergem" ? "#FF3B30" : "var(--t3)";
+  }
+
+  box.innerHTML =
+      linha('Binance &middot; dinheiro agressor', c.binance?c.binance.pressao:null,
+            c.binance ? 'em '+c.binance.velas+' velas' : 'aguardando negocios')
+    + linha('Deriv &middot; ticks pra cima', c.deriv?c.deriv.pressao:null, detDeriv)
+    + (c.acordo
+        ? '<div style="font-size:8.5px;color:var(--t3);line-height:1.45;margin-top:3px;">'
+          + (c.acordo==="concordam"
+              ? 'As duas pontas apontam pro mesmo lado. E a leitura mais firme que da pra ter aqui.'
+              : c.acordo==="divergem"
+                ? 'As duas pontas discordam. O livro da Binance e o feed da Deriv estao contando historias diferentes — vale esperar.'
+                : c.quemEstaMorno === "ambas"
+                  ? 'Pressao fraca nos dois. Nao ha lado definido pra confirmar nem desmentir.'
+                  : c.quemEstaMorno === "binance"
+                    ? 'A Deriv tem lado, a Binance nao. Uma ponta so nao confirma nada — o dinheiro do livro grande esta indeciso.'
+                    : 'A Binance tem lado, a Deriv nao. O dinheiro se moveu sem que o feed da corretora acompanhasse.')
+          + '</div>'
+        : '')
+    + '<div style="font-size:8px;color:var(--t3);line-height:1.4;margin-top:4px;opacity:.8;">'
+    + 'Unidades diferentes: a Binance mede DINHEIRO agressor, a Deriv conta TICKS pra cima — '
+    + 'ela nao publica volume negociado. Sao duas medidas da mesma pergunta, nao a mesma medida duas vezes.</div>';
+}
+window.renderConsolidacao = renderConsolidacao;
+
+// ══════════════════════════════════════════════════════
 // DERIV API — apenas a estrutura, nada aqui se conecta de verdade ainda.
 // Para operar de fato:
 //   1. Crie um app_id gratuito em https://api.deriv.com
@@ -6424,6 +6676,9 @@ async function changeSym(sym){
   // negocio do ativo anterior nao vale aqui
   fluxoNegocios=[]; fluxoPorVela={}; fluxoCorte=0; bolhasCache=null; estatFluxo=null;
   avisouFluxoSemFonte=false; divergAnterior=null;
+  // ativo novo: o historico de ticks e de outro simbolo, e o balde da vela
+  // muda com o tempo grafico — pede tudo de novo
+  try{ derivDados.pedeHistorico(); }catch(e){}
   resetaAlarmes();
   // alarmes e niveis de fibo sao guardados por simbolo
   carregaAlarmesManuais(); carregaFibNiveis(); carregaFontesAlarme(); carregaObservacoes();
@@ -6436,6 +6691,9 @@ async function changeSym(sym){
 }
 async function changeTF(tf){
   currentTF=tf;candles=[];resetLive();
+  // o balde da vela e o tempo grafico: mudou o tempo, os ticks da Deriv
+  // precisam ser reagrupados do zero
+  try{ derivDados.pedeHistorico(); }catch(e){}
   // os desenhos sao guardados por simbolo+TF, entao o fibo do 15m nao vale no
   // 1h — a referencia de preco tem que zerar junto
   resetaAlarmes();
@@ -6993,6 +7251,12 @@ let catF='all';
 function initApp(){
   initTheme();
   carregaAlarmesManuais(); carregaFibNiveis(); carregaFontesAlarme(); carregaObservacoes();
+  // Leitura de mercado da Deriv: so precisa do App ID, nao do token. Sem App
+  // ID salvo o painel apenas diz isso, em vez de tentar conectar sem parar.
+  // (Aqui no initApp, nao no changeSym: no changeSym so conectaria depois de
+  // voce trocar de ativo, que foi exatamente o bug que o carregaFontesAlarme
+  // ja teve neste arquivo.)
+  try{ derivDados.liga(); }catch(e){}
   if(typeof iniciaForca==="function") iniciaForca();
   const cb=document.getElementById('cat-bar');
   if(cb && !cb.children.length){
