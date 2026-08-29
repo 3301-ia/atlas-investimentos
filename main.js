@@ -7302,6 +7302,7 @@ function initDrawingTools(){
 }
 
 let syncLoopRunning = false;
+let projAnterior = "";   // ultima projecao vista pelo laco de sincronia
 function startDrawSyncLoop(){
   if(syncLoopRunning) return;
   syncLoopRunning = true;
@@ -7310,7 +7311,30 @@ function startDrawSyncLoop(){
     // transitorio do chart durante troca de simbolo), o loop NAO pode morrer —
     // antes, um unico erro parava a sincronizacao do zoom pra sempre.
     try{
-      if(drawings().length || isDragging) redrawDrawings();
+      // DETECTOR DE "A PROJECAO MUDOU".
+      // Arrastar o eixo de PRECO nao mexe no range logico do tempo, entao
+      // nenhuma assinatura da lib avisa — e a condicao daqui so redesenhava
+      // quando havia traco do usuario na tela. Sem nenhum desenho, as bolhas e
+      // o brilho dos marcos ficavam parados nas coordenadas antigas enquanto os
+      // candles se moviam: exatamente o "deslocam junto" do zoom lateral.
+      //
+      // Comparo a projecao de tres pontos entre um quadro e o outro. Maxima e
+      // minima da ultima vela pegam mudanca de ESCALA vertical (a distancia
+      // entre elas em pixel muda); o x pega o eixo do tempo. Se nada mudou, nao
+      // redesenho nada.
+      let proj = "";
+      if(candles.length){
+        const c = candles[candles.length-1];
+        const yA = p2y(c.high), yB = p2y(c.low), x = t2x(c.time);
+        if(yA!=null && yB!=null && x!=null)
+          proj = Math.round(yA)+"|"+Math.round(yB)+"|"+Math.round(x);
+      }
+      if(proj && proj !== projAnterior){
+        projAnterior = proj;
+        redrawDrawings();
+      }else if(drawings().length || isDragging){
+        redrawDrawings();
+      }
     }catch(e){
       console.warn('[draw-sync] erro num frame, seguindo pro proximo:',e);
     }
