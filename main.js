@@ -1288,17 +1288,79 @@ function computePhiScoreSeries(phiArrs){
   });
 }
 
+// EXAUSTAO — o branco.
+// Nem todo neutro e igual. Ha o neutro de indecisao, com as medias brigando, e
+// ha o neutro de MERCADO SECO: preco arrastando embaixo da EMA200 ha um tempo,
+// RSI sem forca e volume abaixo do proprio normal. Nesse segundo caso nao ha
+// disputa — nao ha ninguem. A vela fica branca, e dai ela esverdeia sozinha
+// conforme o comprador volta, que e o que se quer enxergar.
+//
+// As tres condicoes juntas, porque cada uma sozinha e comum demais:
+//   - abaixo da EMA200 ha pelo menos 10 velas (nao um repique de duas)
+//   - RSI abaixo de 45 (fraquejando, nao necessariamente sobrevendido)
+//   - volume das ultimas 10 velas abaixo de 85% da media das ultimas 50
+const EXAUST_VELAS_ABAIXO = 10;
+const EXAUST_RSI = 45;
+const EXAUST_VOL_RAZAO = 0.85;
+
+// Devolve um GRAU de 0 a 1, nao um sim/nao. Com booleano, a vela pulava de
+// quase branca pra vermelho cheio de uma vela pra outra, quando uma das tres
+// condicoes deixava de valer — e o que se quer ver e justamente a transicao.
+// Uma EMA de 8 sobre o sim/nao faz o branco entrar e sair aos poucos.
+function serieExaustao(velas, rsiArr, e200){
+  const n = velas.length;
+  const out = new Array(n).fill(false);
+  if(!n || !e200) return out;
+  const vol = velas.map(c => (c.compra||0)+(c.venda||0) || (c.volume||0)*(c.close||1));
+  const media = (ate, quantas) => {
+    const de = Math.max(0, ate-quantas+1);
+    let s=0, k=0;
+    for(let i=de;i<=ate;i++){ s+=vol[i]; k++; }
+    return k ? s/k : 0;
+  };
+  let abaixo = 0;
+  for(let i=0;i<n;i++){
+    if(e200[i]==null){ abaixo=0; continue; }
+    if(velas[i].close < e200[i]) abaixo++; else abaixo = 0;
+    if(abaixo < EXAUST_VELAS_ABAIXO) continue;
+    const r = rsiArr ? rsiArr[i] : null;
+    if(r == null || r >= EXAUST_RSI) continue;
+    if(i < 50) continue;
+    const curto = media(i,10), longo = media(i,50);
+    if(!(longo > 0) || curto >= longo*EXAUST_VOL_RAZAO) continue;
+    out[i] = true;
+  }
+  const k = 2/(8+1);
+  let ant = 0;
+  return out.map(v => { ant = (v?1:0)*k + ant*(1-k); return ant; });
+}
+
 // Vermelho cheio (-1) -> neutro claro (0) -> verde cheio (+1). Passa pelo
 // neutro de proposito: interpolar vermelho direto pra verde atravessa o marrom,
 // que e o que faz um gradiente desses ficar sujo.
 //
 // O expoente 0,7 acende a cor mais rapido perto dos extremos, entao a vela
 // so fica pastel de verdade quando o ribbon esta mesmo indeciso.
-function corTemperaturaVela(score){
+function corTemperaturaVela(score, exausto){
   const escuro = (typeof darkMode!=="undefined") && darkMode;
-  const neutro = escuro ? [64,70,80] : [219,224,230];
+  // No mercado seco o ponto neutro vira BRANCO, nao o cinza de sempre. E o
+  // mesmo gradiente, so trocando de onde ele parte: a vela nasce branca e vai
+  // esverdeando quando a forca volta, em vez de sair de um cinza morto.
+  // 'exausto' e um grau de 0 a 1: o neutro caminha do cinza de sempre ate o
+  // branco na mesma proporcao, em vez de trocar de um golpe
+  const seco = Math.max(0, Math.min(1, exausto||0));
+  const cinza  = escuro ? [64,70,80]    : [219,224,230];
+  const branco = escuro ? [236,240,245] : [252,253,254];
+  const neutro = cinza.map((v,i)=> v + (branco[i]-v)*seco);
   const alvo   = score >= 0 ? [8,153,129] : [242,54,69];
-  const f = Math.pow(Math.min(1, Math.abs(score)), 0.7);
+  // No mercado seco a cor tambem PERDE PIGMENTO, nao so muda de ponto de
+  // partida. Um score de -0,5 num mercado sem volume nao e uma queda convicta:
+  // e o preco escorregando porque nao ha ninguem do outro lado. Pintar isso de
+  // vermelho forte diria uma coisa que o dado nao sustenta. Entao a exaustao
+  // corta a intensidade pra menos da metade, e a vela fica quase branca nos
+  // dois sentidos — que e o ponto: falta de forca nao tem lado.
+  const intensidade = Math.abs(score) * (1 - 0.55*seco);
+  const f = Math.pow(Math.min(1, intensidade), 0.7);
   const c = neutro.map((v,i)=> Math.round(v + (alvo[i]-v)*f));
   return "rgb("+c[0]+","+c[1]+","+c[2]+")";
 }
@@ -1312,6 +1374,8 @@ function refreshPhiRibbonAndBorders(){
 
   // marcos de volume: a maior vela do dia, da semana e do mes
   const rsiArr = rsiCalc(candles.map(c=>c.close), 14);
+  const e200Arr = ema(candles.map(c=>c.close), 200);
+  const exaustao = serieExaustao(candles, rsiArr, e200Arr);
   marcosVolume = calculaMarcosVolume(candles, tfToSeconds(currentTF));
   marcosFortes = {};
   Object.keys(marcosVolume).forEach(k=>{
@@ -1332,11 +1396,12 @@ function refreshPhiRibbonAndBorders(){
       return {...c, color:cfg.corpo, wickColor:cfg.corpo, borderColor:cfg.corpo};
     }
     if(s==null) return c;
-    const cor=corTemperaturaVela(s);
+    const cor=corTemperaturaVela(s, exaustao[i]);
     return {...c, color:cor, wickColor:cor,
             borderColor: c.close>=c.open ? BORDER_BULL : BORDER_BEAR};
   }));
-  return {phiArrs,alignmentPerBar,scorePerBar};
+  ultimaExaustao = exaustao;
+  return {phiArrs,alignmentPerBar,scorePerBar,exaustao};
 }
 
 // Versao leve pra rodar A CADA TICK (nao so no fechamento) — so recalcula o
@@ -1357,7 +1422,7 @@ function updateLiveCandleBorder(){
   });
   if(up===0&&down===0)return;
   const last=candles[n];
-  const cor=corTemperaturaVela((up-down)/(up+down));
+  const cor=corTemperaturaVela((up-down)/(up+down), ultimaExaustao[n]);
   try{ candleSeries.update({time:last.time,open:last.open,high:last.high,low:last.low,close:last.close,
     color:cor, wickColor:cor,
     borderColor: last.close>=last.open ? BORDER_BULL : BORDER_BEAR}); }catch(e){}
@@ -5090,6 +5155,19 @@ function retratoDoAtivo(){
     if(typeof estadoLiberacao==="function") r.direcao.liberacao=estadoLiberacao(null);
   }catch(e){}
 
+  // ── MERCADO SECO (a vela branca)
+  try{
+    const ex = ultimaExaustao||[];
+    if(ex.length === candles.length && candles.length){
+      const agora = ex[ex.length-1]||0;
+      // ha quantas velas o grau esta alto
+      let corrida = 0;
+      for(let i=ex.length-1;i>=0 && ex[i]>0.5;i--) corrida++;
+      r.mercado_seco = {grau:+agora.toFixed(2), seco:agora>0.5, velas_seguidas:corrida,
+        criterio:"abaixo da EMA200 ha 10+ velas, RSI<45 e volume das ultimas 10 abaixo de 85% da media de 50"};
+    }
+  }catch(e){}
+
   // ── CVD E MARCOS DE VOLUME
   try{
     const dv = divergenciaCVD(candles, 60);
@@ -5583,6 +5661,21 @@ function analiseDoMercado(r){
       t += " Movimento com volume bem abaixo da media costuma nao sustentar: falta gente do"
         + " outro lado pra continuar empurrando.";
     }
+    p.push(t);
+  }
+
+  // 3a3) MERCADO SECO — a vela branca
+  if(r.mercado_seco && r.mercado_seco.grau > 0.25){
+    const m = r.mercado_seco;
+    let t = m.seco
+      ? "O mercado esta <b>seco</b> ha "+m.velas_seguidas+" velas: preco abaixo da EMA200 ha um tempo,"
+        + " RSI sem forca e volume abaixo do proprio normal. E por isso que as velas estao brancas —"
+        + " nao e indecisao entre comprador e vendedor, e ausencia dos dois."
+      : "O mercado vem <b>saindo de um periodo seco</b> (grau "+num(m.grau)+"): as velas estao"
+        + " recuperando cor conforme o volume e a forca voltam.";
+    t += " Queda em mercado seco engana: o preco escorrega por falta de comprador, nao por pressao"
+      + " vendedora — e sobe do mesmo jeito quando o comprador volta. O que vale esperar aqui e a"
+      + " vela deixar de ser branca.";
     p.push(t);
   }
 
@@ -7225,6 +7318,7 @@ let bCanvas, bCtx;
 // indice da vela -> 'dia'|'semana'|'mes', e quais deles cairam em momento frio
 // com o RSI cruzando (esses ganham brilho forte)
 let marcosVolume = {}, marcosFortes = {};
+let ultimaExaustao = [];   // por vela: mercado seco (branco) ou nao
 let activeTool = 'cursor';
 let drawColor = '#FFEB3B';
 let magnetOn = false;
