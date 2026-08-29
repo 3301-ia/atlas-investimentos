@@ -2094,13 +2094,25 @@ function commitLiveState(closePx){
   }
 }
 
+// Duas casas servem pro BTC, nao pra prata: XAG anda perto de 30 dolares e se
+// move de milesimo, entao com 2 casas o preco parecia congelado entre os ticks.
+function casasDoPreco(p){
+  const a=Math.abs(p);
+  if(a >= 1000) return 2;
+  if(a >= 100)  return 2;
+  if(a >= 1)    return 3;
+  if(a >= 0.01) return 5;
+  return 7;
+}
+
 function updatePriceUI(p){
+  const casas=casasDoPreco(p);
   const rt=document.getElementById('rt-price');
-  if(rt)rt.textContent=`$${p.toFixed(2)}`;
+  if(rt)rt.textContent=`$${p.toFixed(casas)}`;
   const big=document.getElementById('big-price'),bigSym=document.getElementById('big-sym');
   if(big){
     const oldP=parseFloat(big.dataset.p||p);
-    big.textContent=`$${p.toFixed(2)}`;
+    big.textContent=`$${p.toFixed(casas)}`;
     big.dataset.p=p;
     big.style.color=p>=oldP?'var(--green)':'var(--red)';
   }
@@ -2111,12 +2123,47 @@ function updatePriceUI(p){
   document.title=`${p.toFixed(2)} | ${currentSym.replace('USDT','')}`;
 }
 
+// A Binance de futuros nao serve ouro nem prata. O historico ja caia nas fontes
+// alternativas (Bybit, OKX, Kraken), mas o tempo real nao caia em lugar nenhum:
+// o openWS pedia btcusdt-style pra fstream.binance.com, a conexao morria, e o
+// grafico de XAU/XAG ficava parado no ultimo candle do historico — sem tick,
+// sem alarme, sem vela em formacao.
+//
+// A cotacao ja existia no app: o painel Ouro mantem um WebSocket da SimpleFX
+// com 377 ativos, XAUUSD e XAGUSD entre eles. Aqui so aponto o grafico
+// principal pra ele quando o ativo for um desses.
+const SEM_STREAM_BINANCE = {XAUUSDT:'XAUUSD', XAGUSDT:'XAGUSD'};
+let fxAtivo = null;   // simbolo SimpleFX que esta alimentando o grafico principal
+
+function ligaTempoRealSimpleFX(symFx){
+  fxAtivo = symFx;
+  const dot=document.getElementById('ws-dot'), st=document.getElementById('ws-st');
+  const vivo = goldWs && (goldWs.readyState===0 || goldWs.readyState===1);
+  if(dot) dot.className = vivo ? 'dot grn blink' : 'dot ylw blink';
+  if(st)  st.textContent = vivo ? 'LIVE (SimpleFX)' : 'Conectando...';
+  // O goldConnectWS basta: o goldAssetsMap ja nasce montado no carregamento do
+  // arquivo, entao nao preciso do goldInitOnce inteiro (tabela, globo, RSI) so
+  // pra receber cotacao.
+  if(!vivo){ try{ goldConnectWS(); }catch(e){} }
+}
+
 function openWS(){
   if(wsKline){
     wsKline.onclose=null; // Previne loop infinito de reconexao
     try{wsKline.close();}catch{}
   }
   if(rtInterval)clearInterval(rtInterval);
+
+  const fx = SEM_STREAM_BINANCE[currentSym];
+  if(fx){
+    // zera a referencia: o socket acima ja foi fechado, mas deixar o objeto
+    // antigo em wsKline faz qualquer checagem de "estou conectado?" responder
+    // sim olhando pra uma conexao morta da Binance
+    wsKline = null;
+    ligaTempoRealSimpleFX(fx);
+    return;
+  }
+  fxAtivo = null;   // voltou pra um ativo que a Binance serve
 
   const symL=currentSym.toLowerCase();
   const wantedSym=currentSym; // guarda o simbolo desta conexao
@@ -7386,6 +7433,19 @@ function goldUpdateQuote(sym,bid,ask){
   if(!a)return;
   const mid=(bid+ask)/2;
   a.prevMid=mid;a.bid=bid;a.ask=ask;a.spread=Math.abs(ask-bid);
+
+  // Ouro e prata no grafico principal andam por aqui. Passa pelo mesmo
+  // forceChartTick da Binance, entao ganham de graca a vela em formacao, os
+  // alarmes, o Multi-TF e o resto — nao e so o numero do topo mudando.
+  if(fxAtivo && sym===fxAtivo){
+    try{
+      updatePriceUI(mid);
+      forceChartTick(mid, Date.now());
+      const dot=document.getElementById('ws-dot'), st=document.getElementById('ws-st');
+      if(dot) dot.className='dot grn blink';
+      if(st && st.textContent!=='LIVE (SimpleFX)') st.textContent='LIVE (SimpleFX)';
+    }catch(e){}
+  }
 
   if(!GOLD_BINANCE_FUTURES_MAP[sym]&&!GOLD_BINANCE_SPOT_MAP[sym]){
     const buf=goldPriceBuffers[sym];
