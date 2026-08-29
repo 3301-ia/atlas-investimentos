@@ -1199,34 +1199,58 @@ function marcoQualificado(idx, score, rsiArr){
   return false;
 }
 
-// O brilho vai no canvas de TRAS, entao ele aparece em volta da vela sem
-// cobri-la — o mesmo motivo pelo qual as bolhas foram pra la.
-function pintaHalosMarcos(ctx, larguraCss, velas, marcas, qualificados, t2xFn, p2yFn){
+// O BRILHO E DO CANDLE, NAO UM HOLOFOTE ATRAS DELE.
+//
+// A primeira versao era um gradiente radial grande centrado na vela, e virava
+// uma coluna de luz que subia e descia muito alem dela — sujava o grafico e
+// nem parecia que era a vela que estava acesa.
+//
+// Agora desenho a PROPRIA FORMA da vela (pavio + corpo) com shadowBlur na cor
+// do metal. Como isto vai no canvas de tras, a vela de verdade e pintada por
+// cima e cobre o preenchimento: o que sobra visivel e so o borrao que escapa
+// pelas beiradas. O brilho fica colado no contorno, do tamanho da vela.
+function pintaBrilhoMarcos(ctx, larguraCss, velas, marcas, qualificados, t2xFn, p2yFn){
   if(!ctx || !marcas) return 0;
+  const chaves = Object.keys(marcas);
+  if(!chaves.length) return 0;
+
+  // largura do candle: o mesmo criterio da lib, ~0,7 do espaco entre velas
+  let espacamento = 12;
+  try{
+    const n = velas.length;
+    if(n > 1){
+      const x1 = t2xFn(velas[n-1].time), x0 = t2xFn(velas[n-2].time);
+      if(x1 != null && x0 != null && x1 > x0) espacamento = x1 - x0;
+    }
+  }catch(e){}
+  const largCorpo = Math.max(2, espacamento * 0.7);
+  const largPavio = Math.max(1, Math.min(3, espacamento * 0.12));
+
   let n = 0;
-  Object.keys(marcas).forEach(k => {
+  chaves.forEach(k => {
     const i = +k, vela = velas[i];
     if(!vela) return;
     const x = t2xFn(vela.time);
-    if(x == null || x < -60 || x > larguraCss + 60) return;
-    const yA = p2yFn(vela.high), yB = p2yFn(vela.low);
-    if(yA == null || yB == null) return;
+    if(x == null || x < -40 || x > larguraCss + 40) return;
+    const yH = p2yFn(vela.high), yL = p2yFn(vela.low);
+    const yO = p2yFn(vela.open), yC = p2yFn(vela.close);
+    if(yH == null || yL == null || yO == null || yC == null) return;
+
     const cfg = MARCO_CORES[marcas[i]];
     const forte = qualificados && qualificados[i];
-    const cy = (yA + yB) / 2;
-    // O halo acompanha o tamanho da vela mas tem piso proprio: numa vela
-    // pequena ele ainda precisa ser visto, senao o marco vira so uma vela de
-    // cor diferente e o "aceso" se perde.
-    const raio = Math.max(forte ? 34 : 24, Math.abs(yB - yA)/2 + (forte ? 38 : 24));
-    const g = ctx.createRadialGradient(x, cy, 0, x, cy, raio);
-    g.addColorStop(0,    "rgba("+cfg.halo+","+(forte ? 0.85 : 0.5)+")");
-    g.addColorStop(0.35, "rgba("+cfg.halo+","+(forte ? 0.45 : 0.24)+")");
-    g.addColorStop(0.7,  "rgba("+cfg.halo+","+(forte ? 0.16 : 0.08)+")");
-    g.addColorStop(1,    "rgba("+cfg.halo+",0)");
-    ctx.beginPath();
-    ctx.arc(x, cy, raio, 0, Math.PI*2);
-    ctx.fillStyle = g;
-    ctx.fill();
+    const topo = Math.min(yO, yC), base = Math.max(yO, yC);
+
+    ctx.save();
+    ctx.shadowColor = "rgba("+cfg.halo+","+(forte ? 0.95 : 0.7)+")";
+    ctx.shadowBlur  = forte ? 16 : 9;
+    ctx.fillStyle   = "rgba("+cfg.halo+",0.95)";
+    // duas passadas na mesma forma: o shadowBlur do canvas soma, entao a
+    // segunda adensa o brilho sem alargar a silhueta
+    for(let passo = 0; passo < (forte ? 3 : 2); passo++){
+      ctx.fillRect(x - largPavio/2, Math.min(yH,yL), largPavio, Math.abs(yL-yH) || 1);
+      ctx.fillRect(x - largCorpo/2, topo, largCorpo, Math.max(1, base - topo));
+    }
+    ctx.restore();
     n++;
   });
   return n;
@@ -3093,7 +3117,11 @@ function desenhaBolhasMulti(sym){
   mc.bctx.setTransform(1,0,0,1,0,0);
   mc.bctx.clearRect(0,0,mc.bcv.width,mc.bcv.height);
   mc.bctx.restore();
-  if(!bolhasLigadas || !mc.candles || !mc.candles.length) return;
+  if(!mc.candles || !mc.candles.length) return;
+
+  const ts = mc.chart.timeScale();
+  const t2 = t => { try{ return ts.timeToCoordinate(t); }catch(e){ return null; } };
+  const p2 = p => { try{ return mc.series.priceToCoordinate(p); }catch(e){ return null; } };
 
   // a lista so muda quando as velas mudam, entao guardo por quantidade + ultimo
   // horario, e o pan/zoom reaproveita
@@ -3101,20 +3129,33 @@ function desenhaBolhasMulti(sym){
   if(!mc.bolhas || mc.bolhas.sel !== sel){
     const r = alvosDeVelas(mc.candles);
     mc.bolhas = r ? {sel, corte:r.corte, alvos:r.alvos} : {sel, corte:0, alvos:[]};
+    // os marcos do mini saem das velas dele, nao das do grafico principal
+    mc.marcos = calculaMarcosVolume(mc.candles, tfToSeconds(currentTF));
   }
-  if(!mc.bolhas.alvos.length) return;
 
-  const ts = mc.chart.timeScale();
-  pintaBolhas(mc.bctx, mc.el.clientWidth, mc.bolhas.alvos, mc.bolhas.corte, mc.candles,
-    t => { try{ return ts.timeToCoordinate(t); }catch(e){ return null; } },
-    p => { try{ return mc.series.priceToCoordinate(p); }catch(e){ return null; } });
+  // o brilho antes das bolhas, e antes da saida por falta de fluxo: o marco sai
+  // do volume da propria vela e existe mesmo sem o corte agressor
+  try{ pintaBrilhoMarcos(mc.bctx, mc.el.clientWidth, mc.candles, mc.marcos||{}, null, t2, p2); }catch(e){}
+
+  if(!bolhasLigadas) return;
+  if(!mc.bolhas.alvos.length) return;
+  pintaBolhas(mc.bctx, mc.el.clientWidth, mc.bolhas.alvos, mc.bolhas.corte, mc.candles, t2, p2);
 }
 window.desenhaBolhasMulti = desenhaBolhasMulti;
 
 function applyMultiSeries(sym){
   const mc=multiCharts[sym];if(!mc)return;
-  mc.series.setData(mc.candles);
   mc.bolhas=null;   // velas novas, lista de bolhas refeita no proximo desenho
+  // a vela do marco toma a cor do metal aqui tambem, senao no Multi so
+  // apareceria o brilho em volta de uma vela comum
+  const marcos=calculaMarcosVolume(mc.candles, tfToSeconds(currentTF));
+  mc.marcos=marcos;
+  mc.series.setData(mc.candles.map((c,i)=>{
+    const m=marcos[i];
+    if(!m) return c;
+    const cfg=MARCO_CORES[m];
+    return {...c, color:cfg.corpo, wickColor:cfg.corpo, borderColor:cfg.corpo};
+  }));
   const closes=mc.candles.map(c=>c.close);
   const e8=ema(closes,8),e16=ema(closes,16),e55=ema(closes,55),e98=ema(closes,98),e200=ema(closes,200);
   const m56=sma(closes,56),m89=sma(closes,89);
@@ -4809,17 +4850,21 @@ function desenhaBolhas(){
   const dpr = window.devicePixelRatio || 1;
   bCtx.save(); bCtx.setTransform(1,0,0,1,0,0);
   bCtx.clearRect(0,0,bCanvas.width,bCanvas.height); bCtx.restore();
-  if(!bolhasLigadas) return;
   if(!candles || !candles.length) return;
 
   // clientWidth, nao width: o buffer e multiplicado pelo dpr e o t2x devolve
   // pixel de CSS — comparar com o buffer nunca cortava nada numa tela retina
   const larguraTela = (bCanvas && bCanvas.clientWidth) || 4000;
 
-  // O BRILHO VEM PRIMEIRO, e antes de qualquer saida por falta de fluxo: o
-  // marco de volume sai do volume da propria vela, entao ele existe mesmo numa
-  // fonte que nao publica o lado agressor — e ali as bolhas nem aparecem.
-  try{ pintaHalosMarcos(bCtx, larguraTela, candles, marcosVolume, marcosFortes, t2x, p2y); }catch(e){}
+  // O BRILHO VEM PRIMEIRO, e NAO obedece ao botao de bolhas: a vela do marco ja
+  // e pintada na cor do metal pelo refreshPhiRibbonAndBorders, que tambem
+  // ignora esse botao. Deixar so o brilho sumir daria uma vela dourada apagada,
+  // que nao e nem uma coisa nem outra. Tambem vem antes de qualquer saida por
+  // falta de fluxo: o marco sai do volume da propria vela e existe ate numa
+  // fonte que nao publica o lado agressor.
+  try{ pintaBrilhoMarcos(bCtx, larguraTela, candles, marcosVolume, marcosFortes, t2x, p2y); }catch(e){}
+
+  if(!bolhasLigadas) return;
 
   // Cache so pela versao do fluxo: a lista e a mesma em qualquer zoom, o que
   // muda e quem esta na tela — e isso o t2x resolve por vela.
