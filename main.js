@@ -4160,69 +4160,97 @@ function fmtNotional(v){
   return v.toFixed(0);
 }
 
+// Desenhadas na MAXIMA e na MINIMA da vela, nao no preco do negocio: dentro do
+// corpo do candle a bolha fica enterrada e nao da pra ver. Na ponta do pavio
+// ela sobra na tela e ainda diz onde a agressao aconteceu — compra empurrando
+// pra maxima, venda pressionando a minima.
+//
+// Uma bolha por vela e por lado, com o volume somado. Antes era uma por
+// negocio, o que empilhava dezenas no mesmo ponto.
 function desenhaBolhas(){
   if(!bolhasLigadas || !dCtx || !chart || !candleSeries) return;
-  if(!fluxoNegocios.length || !fluxoCorte) return;
+  if(!candles || !candles.length) return;
+  const chaves = Object.keys(fluxoPorVela);
+  if(!chaves.length) return;
 
-  // AGRUPA POR PIXEL. Varios negocios grandes no mesmo instante e preco caem
-  // no mesmo ponto da tela e viravam circulos empilhados com os numeros um por
-  // cima do outro. Somando o notional dos que caem na mesma celula, uma rajada
-  // de compras vira UMA bolha maior, que e o que ela e de verdade.
-  const CELULA = 6;   // px
-  const celulas = {};
-  fluxoNegocios.forEach(n => {
-    if(n.notional < fluxoCorte) return;
-    const x = t2x(Math.floor(n.t/1000));
-    const y = p2y(n.preco);
-    if(x == null || y == null) return;
-    const k = Math.round(x/CELULA) + ":" + Math.round(y/CELULA);
-    const c = celulas[k] || (celulas[k] = {x:0, y:0, notional:0, compra:0, venda:0, n:0});
-    c.x += x; c.y += y; c.n++;
-    c.notional += n.notional;
-    if(n.comprador) c.compra += n.notional; else c.venda += n.notional;
+  // O corte agora e sobre o volume SOMADO da vela, nao sobre o negocio avulso.
+  // Uso a mediana das velas com fluxo: vela normal nao vira bolha, so a que
+  // destoa. Sem isso toda vela ganharia duas bolhas e viraria poluicao.
+  const somas = [];
+  chaves.forEach(k => {
+    const v = fluxoPorVela[k];
+    if(v.compra > 0) somas.push(v.compra);
+    if(v.venda  > 0) somas.push(v.venda);
   });
+  if(somas.length < 4) return;
+  somas.sort((a,b) => a-b);
+  const corte = somas[Math.floor(somas.length/2)] * 1.6;
 
-  // do maior pro menor, e so os N maiores: em mercado agitado a tela viraria
-  // uma nuvem de circulos
-  const grupos = Object.values(celulas)
-    .map(c => ({x:c.x/c.n, y:c.y/c.n, notional:c.notional,
-                comprador:c.compra >= c.venda, n:c.n}))
-    .sort((a,b) => b.notional - a.notional)
-    .slice(0, FLUXO_MAX_DESENHO);
+  // indice das velas por tempo, pra achar a maxima e a minima de cada uma
+  const porTempo = {};
+  candles.forEach(c => { porTempo[c.time] = c; });
 
-  // Rotulos so nos maiores, e so onde nao esbarram num ja desenhado. O
-  // indicador do TradingView resolve isso separando o texto da bolha; aqui da
-  // pra simplesmente nao desenhar o que ia ficar ilegivel.
   const rotulos = [];
   const cabe = (x, y, larg) => !rotulos.some(r =>
     x < r.x + r.larg + 4 && x + larg + 4 > r.x && Math.abs(y - r.y) < 11);
 
-  grupos.forEach(g => {
-    const raio = raioBolha(g.notional);
+  const desenha = (vela, notional, comprador) => {
+    if(notional < corte) return;
+    const x = t2x(vela.time);
+    // compra na maxima, venda na minima
+    const y = p2y(comprador ? vela.high : vela.low);
+    if(x == null || y == null) return;
+    const raio = raioBolhaVela(notional, corte);
     if(!raio) return;
-    const cor = g.comprador ? "0,200,83" : "255,59,48";
+    // afastada do pavio uns pixels pra nao encostar no candle
+    const yy = comprador ? y - raio - 2 : y + raio + 2;
+    const cor = comprador ? "0,200,83" : "255,59,48";
 
     dCtx.beginPath();
-    dCtx.arc(g.x, g.y, raio, 0, Math.PI*2);
-    dCtx.fillStyle = "rgba("+cor+",0.22)";
+    dCtx.arc(x, yy, raio, 0, Math.PI*2);
+    dCtx.fillStyle = "rgba("+cor+",0.20)";
     dCtx.fill();
     dCtx.lineWidth = 1;
-    dCtx.strokeStyle = "rgba("+cor+",0.75)";
+    dCtx.strokeStyle = "rgba("+cor+",0.8)";
     dCtx.stroke();
 
-    if(raio >= 7.5){
-      const txt = fmtNotional(g.notional) + (g.n > 1 ? " ("+g.n+")" : "");
-      dCtx.font = "9px ui-monospace, monospace";
-      const larg = dCtx.measureText(txt).width;
-      const tx = g.x + raio + 3, ty = g.y + 3;
-      if(cabe(tx, ty, larg)){
-        rotulos.push({x:tx, y:ty, larg});
-        dCtx.fillStyle = "rgba("+cor+",0.95)";
-        dCtx.textAlign = "left";
-        dCtx.fillText(txt, tx, ty);
-      }
+    // o volume vai junto, que era o pedido; so nao desenho o que ia se sobrepor
+    const txt = fmtNotional(notional);
+    dCtx.font = "9px ui-monospace, monospace";
+    const larg = dCtx.measureText(txt).width;
+    const tx = x - larg/2, ty = comprador ? yy - raio - 3 : yy + raio + 9;
+    if(cabe(tx, ty, larg)){
+      rotulos.push({x:tx, y:ty, larg});
+      dCtx.fillStyle = "rgba("+cor+",0.95)";
+      dCtx.textAlign = "left";
+      dCtx.fillText(txt, tx, ty);
     }
+  };
+
+  // das maiores pras menores, com teto: em mercado agitado sao centenas de velas
+  const alvos = [];
+  chaves.forEach(k => {
+    const vela = porTempo[+k];
+    if(!vela) return;
+    const v = fluxoPorVela[k];
+    if(v.compra >= corte) alvos.push({vela, notional:v.compra, comprador:true});
+    if(v.venda  >= corte) alvos.push({vela, notional:v.venda,  comprador:false});
   });
+  alvos.sort((a,b) => b.notional - a.notional)
+       .slice(0, FLUXO_MAX_DESENHO)
+       .forEach(a => desenha(a.vela, a.notional, a.comprador));
+}
+
+// Faixas sobre o corte da vela. Teto de 9px pelo mesmo motivo de antes: bolha
+// grande cobre o candle e briga com o resto do grafico.
+function raioBolhaVela(notional, corte){
+  const r = notional / corte;
+  if(r < 1)  return 0;
+  if(r < 1.5) return 3.5;
+  if(r < 2.5) return 5;
+  if(r < 4)   return 6.5;
+  if(r < 7)   return 8;
+  return 9;
 }
 window.desenhaBolhas = desenhaBolhas;
 
