@@ -624,6 +624,19 @@
                   <option value="9-21-ema">9/21 EMA Cross</option>
                   <option value="12-26-ema">12/26 EMA Cross</option>
                   <option value="50-200-sma">Golden/Death Cross (50/200 SMA)</option>
+                  <!-- as medias do proprio Atlas: o backtest so tinha os tres
+                       cruzamentos classicos e nenhum dos que o painel usa -->
+                  <option value="8-16-ema">EMA 8/16 (Atlas)</option>
+                  <option value="8-55-ema">EMA 8/55 (Atlas)</option>
+                  <option value="16-55-ema">EMA 16/55 (Atlas)</option>
+                  <option value="8-98-ema">EMA 8/98 (Atlas)</option>
+                  <option value="16-98-ema">EMA 16/98 (Atlas)</option>
+                  <option value="8-200-ema">EMA 8/200 (Atlas)</option>
+                  <option value="16-200-ema">EMA 16/200 (Atlas)</option>
+                  <option value="55-200-ema">EMA 55/200 (Atlas)</option>
+                  <option value="56-89-sma">MA 56/89 (Ribbon)</option>
+                  <option value="8-89-mix">EMA 8 x MA 89</option>
+                  <option value="16-89-mix">EMA 16 x MA 89</option>
                 </select>
               </div>
               <div>
@@ -1056,6 +1069,12 @@
             </div>
 
             <!-- FIB MANUAL (ferramenta de desenho) -->
+            <!-- Historico das ancoras automaticas: de todas as vezes que o motor
+                 ancorou um fibo, quantas chegaram em cada alvo. Responde se vale
+                 perseguir o 2.618 ou parar no 1.618. -->
+            <div class="sp-sec"><span>FIBO · ATE ONDE CHEGA</span><span class="sp-sec-val" id="fibh-count" style="color:var(--accent);">--</span></div>
+            <div class="sig-list" id="fibh-list" style="max-height:120px;flex:none;"><div style="padding:5px 9px;font-size:9px;color:var(--t3);">Sem ancoras arquivadas ainda.</div></div>
+
             <div class="sp-sec"><span>FIB MANUAL</span><span class="sp-sec-val" id="mfib-count">--</span></div>
             <div class="fib-list" id="mfib-list" style="max-height:150px;"><div style="color:var(--t3);font-size:9px;padding:4px 0;">Desenhe um fib no grafico...</div></div>
 
