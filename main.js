@@ -378,15 +378,6 @@ async function fetchMaRibbon(sym){
   return out;
 }
 
-function computeMaRibbonSeries(ribbonData){
-  return MA_RIBBON_TFS.map(tf=>{
-    const d=ribbonData[tf.key];
-    if(!d||d.length<89)return [];
-    const closes=d.map(c=>c.close);
-    const ma=sma(closes,89);
-    return d.map((c,i)=>({time:c.time,value:ma[i]})).filter(pt=>pt.value!=null);
-  });
-}
 
 function sma(d,p){const r=new Array(d.length).fill(null);for(let i=p-1;i<d.length;i++){let s=0;for(let j=0;j<p;j++)s+=d[i-j];r[i]=s/p;}return r;}
 function rsiCalc(c,p){const r=new Array(c.length).fill(null);if(c.length<p+1)return r;let ag=0,al=0;for(let i=1;i<=p;i++){const d=c[i]-c[i-1];d>0?ag+=d:al-=d;}ag/=p;al/=p;r[p]=al===0?100:100-100/(1+ag/al);for(let i=p+1;i<c.length;i++){const d=c[i]-c[i-1];ag=(ag*(p-1)+Math.max(d,0))/p;al=(al*(p-1)+Math.max(-d,0))/p;r[i]=al===0?100:100-100/(1+ag/al);}return r;}
@@ -2103,13 +2094,25 @@ function commitLiveState(closePx){
   }
 }
 
+// Duas casas servem pro BTC, nao pra prata: XAG anda perto de 30 dolares e se
+// move de milesimo, entao com 2 casas o preco parecia congelado entre os ticks.
+function casasDoPreco(p){
+  const a=Math.abs(p);
+  if(a >= 1000) return 2;
+  if(a >= 100)  return 2;
+  if(a >= 1)    return 3;
+  if(a >= 0.01) return 5;
+  return 7;
+}
+
 function updatePriceUI(p){
+  const casas=casasDoPreco(p);
   const rt=document.getElementById('rt-price');
-  if(rt)rt.textContent=`$${p.toFixed(2)}`;
+  if(rt)rt.textContent=`$${p.toFixed(casas)}`;
   const big=document.getElementById('big-price'),bigSym=document.getElementById('big-sym');
   if(big){
     const oldP=parseFloat(big.dataset.p||p);
-    big.textContent=`$${p.toFixed(2)}`;
+    big.textContent=`$${p.toFixed(casas)}`;
     big.dataset.p=p;
     big.style.color=p>=oldP?'var(--green)':'var(--red)';
   }
@@ -2120,12 +2123,47 @@ function updatePriceUI(p){
   document.title=`${p.toFixed(2)} | ${currentSym.replace('USDT','')}`;
 }
 
+// A Binance de futuros nao serve ouro nem prata. O historico ja caia nas fontes
+// alternativas (Bybit, OKX, Kraken), mas o tempo real nao caia em lugar nenhum:
+// o openWS pedia btcusdt-style pra fstream.binance.com, a conexao morria, e o
+// grafico de XAU/XAG ficava parado no ultimo candle do historico — sem tick,
+// sem alarme, sem vela em formacao.
+//
+// A cotacao ja existia no app: o painel Ouro mantem um WebSocket da SimpleFX
+// com 377 ativos, XAUUSD e XAGUSD entre eles. Aqui so aponto o grafico
+// principal pra ele quando o ativo for um desses.
+const SEM_STREAM_BINANCE = {XAUUSDT:'XAUUSD', XAGUSDT:'XAGUSD'};
+let fxAtivo = null;   // simbolo SimpleFX que esta alimentando o grafico principal
+
+function ligaTempoRealSimpleFX(symFx){
+  fxAtivo = symFx;
+  const dot=document.getElementById('ws-dot'), st=document.getElementById('ws-st');
+  const vivo = goldWs && (goldWs.readyState===0 || goldWs.readyState===1);
+  if(dot) dot.className = vivo ? 'dot grn blink' : 'dot ylw blink';
+  if(st)  st.textContent = vivo ? 'LIVE (SimpleFX)' : 'Conectando...';
+  // O goldConnectWS basta: o goldAssetsMap ja nasce montado no carregamento do
+  // arquivo, entao nao preciso do goldInitOnce inteiro (tabela, globo, RSI) so
+  // pra receber cotacao.
+  if(!vivo){ try{ goldConnectWS(); }catch(e){} }
+}
+
 function openWS(){
   if(wsKline){
     wsKline.onclose=null; // Previne loop infinito de reconexao
     try{wsKline.close();}catch{}
   }
   if(rtInterval)clearInterval(rtInterval);
+
+  const fx = SEM_STREAM_BINANCE[currentSym];
+  if(fx){
+    // zera a referencia: o socket acima ja foi fechado, mas deixar o objeto
+    // antigo em wsKline faz qualquer checagem de "estou conectado?" responder
+    // sim olhando pra uma conexao morta da Binance
+    wsKline = null;
+    ligaTempoRealSimpleFX(fx);
+    return;
+  }
+  fxAtivo = null;   // voltou pra um ativo que a Binance serve
 
   const symL=currentSym.toLowerCase();
   const wantedSym=currentSym; // guarda o simbolo desta conexao
@@ -2213,6 +2251,9 @@ function openWS(){
         // Ribbon Phi + bordas de TODAS as velas — refeito a cada fechamento,
         // pra nunca ficar mais desatualizado que uma vela de atraso.
         try{ refreshPhiRibbonAndBorders(); }catch(e){}
+        // divergencia preco x fluxo: no fechamento, que e quando as duas
+        // pontas (angulo das medias e pressao das 20 velas) estao fechadas
+        try{ verificaDivergenciaFluxo(); }catch(e){}
       }
     }catch(err){}
   };
@@ -2761,9 +2802,53 @@ function resumeMainEngine(){
 // (EMA 8/16/55/98/200 + SMA 56/89) num mini-grafico do Multi, e semeia o
 // estado incremental (mc.live) pra ticks ao vivo virarem O(1) em vez de
 // recalcular tudo a cada mensagem — o mesmo ganho de fluidez do grafico principal.
+// O buffer segue o dpr da tela, como no canvas do grafico principal: sem isso
+// o circulo sai serrilhado num monitor retina.
+function dimensionaCanvasMulti(sym){
+  const mc = multiCharts[sym];
+  if(!mc || !mc.bcv || !mc.el) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = mc.el.clientWidth, h = mc.el.clientHeight;
+  if(w < 2 || h < 2) return;
+  mc.bcv.width = Math.round(w*dpr);
+  mc.bcv.height = Math.round(h*dpr);
+  mc.bctx.setTransform(dpr,0,0,dpr,0,0);
+  desenhaBolhasMulti(sym);
+}
+
+// Os mini-graficos nao tem fluxoPorVela proprio — nem precisam: as velas que o
+// fetchCandles devolve ja trazem compra/venda quando a fonte e a Binance, que
+// e a mesma origem que alimenta o grafico principal.
+function desenhaBolhasMulti(sym){
+  const mc = multiCharts[sym];
+  if(!mc || !mc.bctx || !mc.bcv) return;
+  const dpr = window.devicePixelRatio || 1;
+  mc.bctx.save();
+  mc.bctx.setTransform(1,0,0,1,0,0);
+  mc.bctx.clearRect(0,0,mc.bcv.width,mc.bcv.height);
+  mc.bctx.restore();
+  if(!bolhasLigadas || !mc.candles || !mc.candles.length) return;
+
+  // a lista so muda quando as velas mudam, entao guardo por quantidade + ultimo
+  // horario, e o pan/zoom reaproveita
+  const sel = mc.candles.length+"|"+mc.candles[mc.candles.length-1].time;
+  if(!mc.bolhas || mc.bolhas.sel !== sel){
+    const r = alvosDeVelas(mc.candles);
+    mc.bolhas = r ? {sel, corte:r.corte, alvos:r.alvos} : {sel, corte:0, alvos:[]};
+  }
+  if(!mc.bolhas.alvos.length) return;
+
+  const ts = mc.chart.timeScale();
+  pintaBolhas(mc.bctx, mc.el.clientWidth, mc.bolhas.alvos, mc.bolhas.corte, mc.candles,
+    t => { try{ return ts.timeToCoordinate(t); }catch(e){ return null; } },
+    p => { try{ return mc.series.priceToCoordinate(p); }catch(e){ return null; } });
+}
+window.desenhaBolhasMulti = desenhaBolhasMulti;
+
 function applyMultiSeries(sym){
   const mc=multiCharts[sym];if(!mc)return;
   mc.series.setData(mc.candles);
+  mc.bolhas=null;   // velas novas, lista de bolhas refeita no proximo desenho
   const closes=mc.candles.map(c=>c.close);
   const e8=ema(closes,8),e16=ema(closes,16),e55=ema(closes,55),e98=ema(closes,98),e200=ema(closes,200);
   const m56=sma(closes,56),m89=sma(closes,89);
@@ -2808,9 +2893,26 @@ async function openMultiCharts(){
       ma89:mchart.addLineSeries({color:C.ma89,lineWidth:1,...maCfg}),
       
     };
-    const ro=new ResizeObserver(()=>mchart.applyOptions({width:el.clientWidth,height:el.clientHeight}));
+    // Canvas por cima do mini-grafico, so pras bolhas. O Multi ficou sem elas
+    // ate agora porque o desenho morava dentro do desenhaBolhas, amarrado ao
+    // canvas de desenho do grafico principal.
+    if(getComputedStyle(el).position === 'static') el.style.position = 'relative';
+    const bcv = document.createElement('canvas');
+    bcv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2;';
+    el.appendChild(bcv);
+    const bctx = bcv.getContext('2d');
+
+    const ro=new ResizeObserver(()=>{
+      mchart.applyOptions({width:el.clientWidth,height:el.clientHeight});
+      dimensionaCanvasMulti(sym);
+    });
     ro.observe(el);
-    multiCharts[sym]={chart:mchart,series,ma,candles:[],ro,noMore:false,loadingMore:false,live:null};
+    multiCharts[sym]={chart:mchart,series,ma,candles:[],ro,noMore:false,loadingMore:false,live:null,
+                      bcv,bctx,bolhas:null,el};
+    dimensionaCanvasMulti(sym);
+
+    // redesenha junto com o pan/zoom do proprio mini-grafico
+    mchart.timeScale().subscribeVisibleTimeRangeChange(()=>desenhaBolhasMulti(sym));
 
     // Zoom/pan perto da borda esquerda -> busca mais historico pra esse simbolo
     mchart.timeScale().subscribeVisibleLogicalRangeChange(range=>{
@@ -2824,6 +2926,7 @@ async function openMultiCharts(){
     if(d&&multiCharts[sym]){
       multiCharts[sym].candles=d;
       applyMultiSeries(sym);
+      desenhaBolhasMulti(sym);
       mchart.timeScale().fitContent();
       const last=d[d.length-1];
       const pxEl=document.getElementById(`multi-px-${sym}`);
@@ -2861,6 +2964,7 @@ async function fetchMultiOlderBatch(sym,mySession=multiSession){
     if(mc.candles.length>MULTI_HIST_CAP)mc.candles=mc.candles.slice(-MULTI_HIST_CAP);
     const visRange=mc.chart.timeScale().getVisibleLogicalRange();
     applyMultiSeries(sym);
+      desenhaBolhasMulti(sym);
     if(visRange)mc.chart.timeScale().setVisibleLogicalRange({from:visRange.from+addedCount,to:visRange.to+addedCount});
     mc.loadingMore=false;
     return true;
@@ -2924,6 +3028,7 @@ async function recarregaMulti(){
       if(d&&d.length&&mySession===multiSession){
         mc.candles=d;
         applyMultiSeries(sym);
+      desenhaBolhasMulti(sym);
         const px=document.getElementById(`multi-px-${sym}`);
         if(px) px.textContent="$"+d[d.length-1].close.toFixed(sym.startsWith("XAG")?3:2);
       }
@@ -4157,8 +4262,19 @@ function semeiaFluxoDoHistorico(){
     achou++;
   });
   if(achou) fluxoVersao++;
+  // So a Binance publica o lado agressor por vela (indices 7 e 10 do kline).
+  // Bybit, OKX, Kraken e Coinbase nao — e o fallback entra justamente quando a
+  // Binance esta fora. Sem aviso, a pessoa ficava olhando um grafico sem bolha
+  // sem saber por que.
+  if(!achou && candles.length > 50 && typeof lastDataSource!=="undefined"
+     && lastDataSource && lastDataSource!=="binance" && !avisouFluxoSemFonte){
+    avisouFluxoSemFonte = true;
+    if(typeof showInfoToast==="function")
+      showInfoToast("FLUXO", "sem bolhas: a "+lastDataSource+" nao publica o lado agressor por vela");
+  }
   return achou;
 }
+let avisouFluxoSemFonte = false;
 window.semeiaFluxoDoHistorico = semeiaFluxoDoHistorico;
 
 function registraNegocio(preco, qtd, comprador, ts, velaTime){
@@ -4185,23 +4301,6 @@ function registraNegocio(preco, qtd, comprador, ts, velaTime){
 }
 window.registraNegocio = registraNegocio;
 
-// ── AS BOLHAS ────────────────────────────────────────────────────────────
-// Desenhadas no mesmo canvas dos desenhos, entao herdam de graca a sincronia
-// de zoom e rolagem que o redrawDrawings ja faz a cada quadro.
-//
-// O tamanho e o ponto que voce levantou: bolha grande cobre o candle e briga
-// com o resto. Raio entre 3 e 9px, por faixa, e sem texto — o numero aparece
-// so no negocio muito grande, e mesmo assim pequeno e deslocado.
-function raioBolha(notional){
-  if(!fluxoCorte) return 0;
-  const r = notional / fluxoCorte;
-  if(r < 1)  return 0;
-  if(r < 2)  return 3;
-  if(r < 4)  return 4.5;
-  if(r < 8)  return 6;
-  if(r < 16) return 7.5;
-  return 9;
-}
 
 function fmtNotional(v){
   const a = Math.abs(v);
@@ -4282,22 +4381,14 @@ function montaAlvosBolha(){
   return {corte:est.corte, maior:est.maior, alvos};
 }
 
-function desenhaBolhas(){
-  if(!bolhasLigadas || !dCtx || !chart || !candleSeries) return;
-  if(!candles || !candles.length) return;
-
-  // Cache so pela versao do fluxo: a lista e a mesma em qualquer zoom, o que
-  // muda e quem esta na tela — e isso o t2x resolve por vela.
-  if(!bolhasCache || bolhasCache.versao !== fluxoVersao){
-    bolhasCache = montaAlvosBolha();
-    if(bolhasCache) bolhasCache.versao = fluxoVersao;
-  }
-  if(!bolhasCache || !bolhasCache.alvos.length) return;
-  const corte = bolhasCache.corte, maior = bolhasCache.maior, alvos = bolhasCache.alvos;
-
-  // clientWidth, nao width: o buffer e multiplicado pelo dpr e o t2x devolve
-  // pixel de CSS — comparar com o buffer nunca cortava nada numa tela retina
-  const larguraTela = (dCanvas && dCanvas.clientWidth) || 4000;
+// O DESENHO EM SI, sem saber de qual grafico veio. O principal e os quatro
+// mini-graficos do Multi chamam esta mesma funcao — antes o desenho morava
+// dentro do desenhaBolhas e por isso o Multi ficou sem bolha nenhuma.
+//
+// Recebe as funcoes de coordenada porque cada grafico tem a sua: no principal
+// sao t2x/p2y, no mini sao os metodos do proprio chart.
+function pintaBolhas(ctx, larguraCss, alvos, corte, velas, t2xFn, p2yFn){
+  if(!ctx || !alvos || !alvos.length || !velas || !velas.length) return 0;
 
   // Com uma bolha por vela, o espaco entre velas e o teto natural do raio:
   // metade dele e duas vizinhas encostam sem se cobrir. E o mesmo criterio que
@@ -4305,9 +4396,9 @@ function desenhaBolhas(){
   // com ele em vez de virar mancha.
   let espacamento = 12;
   try{
-    const n = candles.length;
+    const n = velas.length;
     if(n > 1){
-      const x1 = t2x(candles[n-1].time), x0 = t2x(candles[n-2].time);
+      const x1 = t2xFn(velas[n-1].time), x0 = t2xFn(velas[n-2].time);
       if(x1 != null && x0 != null && x1 > x0) espacamento = x1 - x0;
     }
   }catch(e){}
@@ -4320,11 +4411,12 @@ function desenhaBolhas(){
   // arc e obrigatorio, senao o canvas liga um circulo no outro com uma reta.
   const grupos = new Map();
   const rotulos = [];
+  let n = 0;
 
   for(const a of alvos){
-    const x = t2x(a.vela.time);
-    if(x == null || x < -40 || x > larguraTela + 40) continue;
-    const y = p2y(a.comprador ? a.vela.high : a.vela.low);
+    const x = t2xFn(a.vela.time);
+    if(x == null || x < -40 || x > larguraCss + 40) continue;
+    const y = p2yFn(a.comprador ? a.vela.high : a.vela.low);
     if(y == null) continue;
 
     // Area proporcional ao volume (dai a raiz): dobrar o volume dobra a
@@ -4349,64 +4441,96 @@ function desenhaBolhas(){
     let g = grupos.get(chave);
     if(!g){ g = {cor, destaque:a.destaque, itens:[]}; grupos.set(chave, g); }
     g.itens.push({x, y:yy, r:raio});
+    n++;
 
     // O numero so entra quando cabe dentro. Com uma bolha por vela, isso
-    // acontece de uns 40 candles na tela pra baixo — mais afastado que isso a
+    // acontece de uns 30 candles na tela pra baixo — mais afastado que isso a
     // bolha continua no lugar, so sem rotulo, porque dois numeros vizinhos se
     // sobrepondo nao se leem de qualquer jeito.
     if(raio >= 10){
       // rotulo curto: com uma bolha por vela a largura disponivel e metade do
-      // espaco entre velas, e "24.57M" nunca caberia. "25M" cabe. A casa
-      // decimal so entra abaixo de 10 unidades, onde ela muda a leitura.
+      // espaco entre velas, e "24.57M" nunca caberia. "25M" cabe.
       const txt = fmtBolhaCurto(a.notional);
       const fonte = raio >= 19 ? 10 : raio >= 14 ? 9 : 8;
-      dCtx.font = fonte+"px ui-monospace, monospace";
+      ctx.font = fonte+"px ui-monospace, monospace";
       // 2,1x o raio em vez de 2x: deixo o texto passar de raspao da borda, que
       // e o que faz o numero caber uns cinco candles antes
-      if(dCtx.measureText(txt).width <= raio * 2.1) rotulos.push({txt, x, y:yy, fonte});
+      if(ctx.measureText(txt).width <= raio * 2.1) rotulos.push({txt, x, y:yy, fonte});
     }
   }
 
   grupos.forEach(g => {
-    dCtx.beginPath();
-    g.itens.forEach(i => { dCtx.moveTo(i.x + i.r, i.y); dCtx.arc(i.x, i.y, i.r, 0, Math.PI*2); });
-    dCtx.fillStyle = "rgba("+g.cor+","+(g.destaque ? 0.42 : 0.24)+")";
-    dCtx.fill();
-    dCtx.lineWidth = g.destaque ? 1.4 : 0.8;
-    dCtx.strokeStyle = "rgba("+g.cor+","+(g.destaque ? 0.95 : 0.5)+")";
-    dCtx.stroke();
+    ctx.beginPath();
+    g.itens.forEach(i => { ctx.moveTo(i.x + i.r, i.y); ctx.arc(i.x, i.y, i.r, 0, Math.PI*2); });
+    ctx.fillStyle = "rgba("+g.cor+","+(g.destaque ? 0.42 : 0.24)+")";
+    ctx.fill();
+    ctx.lineWidth = g.destaque ? 1.4 : 0.8;
+    ctx.strokeStyle = "rgba("+g.cor+","+(g.destaque ? 0.95 : 0.5)+")";
+    ctx.stroke();
   });
 
   if(rotulos.length){
-    dCtx.textAlign = "center";
-    dCtx.textBaseline = "middle";
-    dCtx.lineWidth = 2.2;
-    dCtx.lineJoin = "round";
-    dCtx.miterLimit = 2;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.lineWidth = 2.2;
+    ctx.lineJoin = "round";
+    ctx.miterLimit = 2;
     rotulos.forEach(r => {
-      dCtx.font = r.fonte+"px ui-monospace, monospace";
-      dCtx.strokeStyle = "rgba(0,0,0,0.55)";
-      dCtx.strokeText(r.txt, r.x, r.y);
-      dCtx.fillStyle = "#fff";
-      dCtx.fillText(r.txt, r.x, r.y);
+      ctx.font = r.fonte+"px ui-monospace, monospace";
+      ctx.strokeStyle = "rgba(0,0,0,0.55)";
+      ctx.strokeText(r.txt, r.x, r.y);
+      ctx.fillStyle = "#fff";
+      ctx.fillText(r.txt, r.x, r.y);
     });
-    dCtx.lineJoin = "miter";
-    dCtx.textAlign = "left";
-    dCtx.textBaseline = "alphabetic";
+    ctx.lineJoin = "miter";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
   }
+  return n;
 }
 
-// Raio proporcional ao quanto a vela destoa, do corte ate a maior do momento.
-// Area proporcional (dai a raiz): dobrar o volume dobra a mancha, nao o raio.
-// Piso de 13px porque abaixo disso o valor nao cabe dentro e a bolha vira um
-// ponto mudo; teto de 24px porque acima disso ela come o candle — que e
-// justamente o defeito da referencia.
-function raioBolhaVela(notional, corte, maior){
-  if(notional < corte) return 0;
-  const teto = Math.max(maior || 0, corte * 1.2);
-  const f = Math.min(1, Math.sqrt((notional - corte) / (teto - corte)));
-  return 13 + f * 11;
+// Monta os alvos direto de uma lista de velas que ja carrega compra/venda —
+// e o caminho dos mini-graficos, que nao tem fluxoPorVela proprio.
+function alvosDeVelas(velas){
+  const totais = [];
+  velas.forEach(c => {
+    const t = (c.compra||0) + (c.venda||0);
+    if(t > 0) totais.push(t);
+  });
+  if(totais.length < 6) return null;
+  totais.sort((a,b) => a-b);
+  const corte = totais[Math.min(totais.length-1, Math.floor(totais.length*0.90))];
+  const alvos = [];
+  velas.forEach(vela => {
+    const compra = vela.compra||0, venda = vela.venda||0;
+    const total = compra + venda;
+    if(total <= 0) return;
+    alvos.push({vela, notional:total, compra, venda,
+      comprador: compra >= venda,
+      equilibrio: Math.abs(compra-venda)/total < 0.10,
+      destaque: total >= corte});
+  });
+  return {corte, alvos};
 }
+
+function desenhaBolhas(){
+  if(!bolhasLigadas || !dCtx || !chart || !candleSeries) return;
+  if(!candles || !candles.length) return;
+
+  // Cache so pela versao do fluxo: a lista e a mesma em qualquer zoom, o que
+  // muda e quem esta na tela — e isso o t2x resolve por vela.
+  if(!bolhasCache || bolhasCache.versao !== fluxoVersao){
+    bolhasCache = montaAlvosBolha();
+    if(bolhasCache) bolhasCache.versao = fluxoVersao;
+  }
+  if(!bolhasCache || !bolhasCache.alvos.length) return;
+
+  // clientWidth, nao width: o buffer e multiplicado pelo dpr e o t2x devolve
+  // pixel de CSS — comparar com o buffer nunca cortava nada numa tela retina
+  const larguraTela = (dCanvas && dCanvas.clientWidth) || 4000;
+  pintaBolhas(dCtx, larguraTela, bolhasCache.alvos, bolhasCache.corte, candles, t2x, p2y);
+}
+
 
 // Mais curto ainda, pro rotulo de dentro da bolha: sem casa decimal acima de
 // 10 unidades. "250M" no lugar de "249.7M" — a casa perdida nao muda decisao
@@ -4423,6 +4547,8 @@ window.desenhaBolhas = desenhaBolhas;
 
 function toggleBolhas(){
   bolhasLigadas = !bolhasLigadas;
+  // os quatro do Multi obedecem ao mesmo botao
+  try{ Object.keys(multiCharts||{}).forEach(s=>desenhaBolhasMulti(s)); }catch(e){}
   const b = document.getElementById('btn-bolhas');
   if(b) b.classList.toggle('on', bolhasLigadas);
   if(typeof redrawDrawings === 'function') redrawDrawings();
@@ -4458,6 +4584,49 @@ function forcaDoFluxo(nVelas){
   };
 }
 window.forcaDoFluxo = forcaDoFluxo;
+
+// ALARME DE DIVERGENCIA PRECO x FLUXO
+// A leitura do relatorio ja detecta e descreve isto — "o preco sobe enquanto
+// quem tem pressa esta vendendo" —, mas so quando voce abre o relatorio. E
+// justamente a situacao que voce quer saber NA HORA, porque ela aparece antes
+// do preco virar, nao depois.
+//
+// Toca uma vez por virada, nao uma por vela: guardo o estado anterior e so
+// aviso quando ele muda. Sem isso um mercado divergente por vinte velas daria
+// vinte alarmes.
+const DIVERG_PRESSAO = 18;      // abaixo disso e ruido, nao divergencia
+const DIVERG_ESPERA_MS = 10*60*1000;
+let divergAnterior = null, divergUltimo = 0;
+
+function verificaDivergenciaFluxo(){
+  if(!alertsOn){ divergAnterior = null; return; }
+  let f = null;
+  try{ f = forcaDoFluxo(20); }catch(e){ return; }
+  if(!f || (f.compra + f.venda) === 0) return;
+  const dir = (typeof direcaoAngles!=="undefined" && direcaoAngles && typeof classifyDirecao==="function")
+    ? classifyDirecao(direcaoAngles) : null;
+  if(!dir || dir.isFlat) { divergAnterior = null; return; }
+
+  const preco = dir.direcao === "alta" ? "alta" : "baixa";
+  let estado = null;
+  if(preco === "alta"  && f.pressao <= -DIVERG_PRESSAO) estado = "alta-sem-comprador";
+  if(preco === "baixa" && f.pressao >=  DIVERG_PRESSAO) estado = "baixa-com-comprador";
+
+  if(estado === divergAnterior) return;   // ja avisei desta
+  divergAnterior = estado;
+  if(!estado) return;                     // saiu da divergencia: so guarda
+
+  const agora = Date.now();
+  if(agora - divergUltimo < DIVERG_ESPERA_MS) return;
+  divergUltimo = agora;
+
+  const txt = estado === "alta-sem-comprador"
+    ? "preco subindo com agressao vendedora ("+f.pressao.toFixed(0)+"%) — alta sem comprador convicto"
+    : "preco caindo com agressao compradora (+"+f.pressao.toFixed(0)+"%) — alguem absorvendo a queda";
+  if(typeof showInfoToast==="function") showInfoToast("DIVERGENCIA", txt);
+  else if(typeof beep==="function") beep();
+}
+window.verificaDivergenciaFluxo = verificaDivergenciaFluxo;
 
 function renderForca(){
   const box = document.getElementById('forca-box'), cnt = document.getElementById('forca-count');
@@ -4700,6 +4869,58 @@ function retratoDoAtivo(){
   return r;
 }
 
+// O retrato inteiro pesa 6,8 KB, e o teto de 200 e POR ATIVO: 1,36 MB cada,
+// e o navegador da uns 5 MB no total. Com quatro ativos acompanhados isso
+// estoura, e ai a observacao que voce acabou de escrever nao e gravada.
+//
+// Quase todo o peso esta em tres listas que ninguem rele numa observacao
+// antiga: os 29 niveis do fibo, a escada inteira do RSI e os ultimos sinais.
+// O que se rele e o estado do mercado naquele instante — direcao, fluxo, o
+// que pesava contra, o preco. Guardo isso, e do fibo guardo so o alvo, que e
+// a unica linha que a observacao costuma citar.
+function retratoEnxuto(r){
+  if(!r) return r;
+  const e = Object.assign({}, r);
+  if(e.fibo){
+    e.fibo = {ancora:e.fibo.ancora, alvo:e.fibo.alvo,
+              atingidos:e.fibo.atingidos, total_niveis:e.fibo.total_niveis};
+  }
+  if(e.rsi) e.rsi = {atual:e.rsi.atual};       // a escada se recalcula, o valor nao
+  delete e.ultimos_sinais;                     // estao no log de sinais
+  delete e.liberados;
+  delete e.correlacao;                         // e do painel Multi, nao do ativo
+  if(e.fibo_historico) e.fibo_historico = {total:e.fibo_historico.total};
+  return e;
+}
+window.retratoEnxuto = retratoEnxuto;
+
+// ALARME NO ALVO DO FIBO
+// O relatorio ja escreve "nao ha alarme nesse nivel — chegar ate ali depende
+// de voce estar olhando". Faltava o botao que resolve isso na hora: um clique
+// e o alvo vira alarme de preco, no mesmo caminho dos alarmes manuais, entao
+// toca igual e some da lista igual.
+function alarmeNoAlvoFibo(){
+  const r = retratoDoAtivo();
+  const alvo = r.fibo && r.fibo.alvo;
+  if(!alvo){
+    if(typeof showInfoToast==="function")
+      showInfoToast("ALARMES","sem ancora de fibo tracada — nao ha alvo pra marcar");
+    return;
+  }
+  const preco = +Number(alvo.preco).toFixed(8);
+  if(alarmesManuais.some(a=>a.preco===preco)){
+    if(typeof showInfoToast==="function") showInfoToast("ALARMES","ja existe alarme em "+preco);
+    return;
+  }
+  alarmesManuais.push({preco, criado:Date.now(), origem:"alvo fib "+alvo.nivel});
+  alarmesManuais.sort((a,b)=>b.preco-a.preco);
+  salvaAlarmesManuais();
+  if(typeof showInfoToast==="function")
+    showInfoToast("ALARMES","alarme no alvo "+alvo.nivel+" ("+preco+"), "
+      +Math.abs(alvo.distancia_pct).toFixed(2)+"% "+alvo.sentido);
+}
+window.alarmeNoAlvoFibo = alarmeNoAlvoFibo;
+
 function salvaObservacao(){
   const el=document.getElementById("rel-obs");
   const txt=(el&&el.value||"").trim();
@@ -4707,7 +4928,7 @@ function salvaObservacao(){
     if(typeof showInfoToast==="function") showInfoToast("RELATORIO","escreva a observacao antes de guardar");
     return;
   }
-  observacoes.push({observacao:txt, retrato:retratoDoAtivo()});
+  observacoes.push({observacao:txt, retrato:retratoEnxuto(retratoDoAtivo())});
   if(observacoes.length>200) observacoes.shift();
   try{ localStorage.setItem(chaveObs(),JSON.stringify(observacoes)); }
   catch(e){
@@ -6197,6 +6418,7 @@ async function changeSym(sym){
   currentSym=sym;candles=[];resetLive();
   // negocio do ativo anterior nao vale aqui
   fluxoNegocios=[]; fluxoPorVela={}; fluxoCorte=0; bolhasCache=null; estatFluxo=null;
+  avisouFluxoSemFonte=false; divergAnterior=null;
   resetaAlarmes();
   // alarmes e niveis de fibo sao guardados por simbolo
   carregaAlarmesManuais(); carregaFibNiveis(); carregaFontesAlarme(); carregaObservacoes();
@@ -7424,6 +7646,19 @@ function goldUpdateQuote(sym,bid,ask){
   const mid=(bid+ask)/2;
   a.prevMid=mid;a.bid=bid;a.ask=ask;a.spread=Math.abs(ask-bid);
 
+  // Ouro e prata no grafico principal andam por aqui. Passa pelo mesmo
+  // forceChartTick da Binance, entao ganham de graca a vela em formacao, os
+  // alarmes, o Multi-TF e o resto — nao e so o numero do topo mudando.
+  if(fxAtivo && sym===fxAtivo){
+    try{
+      updatePriceUI(mid);
+      forceChartTick(mid, Date.now());
+      const dot=document.getElementById('ws-dot'), st=document.getElementById('ws-st');
+      if(dot) dot.className='dot grn blink';
+      if(st && st.textContent!=='LIVE (SimpleFX)') st.textContent='LIVE (SimpleFX)';
+    }catch(e){}
+  }
+
   if(!GOLD_BINANCE_FUTURES_MAP[sym]&&!GOLD_BINANCE_SPOT_MAP[sym]){
     const buf=goldPriceBuffers[sym];
     buf.push(mid);
@@ -8133,12 +8368,13 @@ window.toggleMtfView = toggleMtfView;
 // A sobrescrita que existia aqui foi fundida na definicao la de cima — era
 // ela que de fato rodava, e por isso a versao com os 4 ativos nao aparecia.
 
-window.togglePotential = function() {
-  const el = document.getElementById('potential-card');
-  if(!el) return;
-  const isHidden = el.style.display === 'none' || el.style.display === '';
-  el.style.display = isHidden ? 'flex' : 'none';
-};
+// Havia uma TERCEIRA sobrescrita de togglePotential aqui — a que de fato
+// rodava, porque era a ultima. Ela abria o card e parava por ai, sem chamar
+// updatePotential(), entao o Potencial abria com os campos em branco ate algo
+// mais no app resolver atualiza-lo. Fica so a definicao la de cima, que
+// preenche ao abrir. Mesma armadilha que ja tinha comido a toggleTerminalTab e
+// a toggleBussolaModal: neste arquivo, quem reatribui window.X por ultimo
+// ganha, e o "por ultimo" fica mil linhas longe da definicao.
 
 // Havia uma SEGUNDA definicao de toggleTerminalTab aqui, sobrescrevendo a de
 // cima: ela nao mexia no terminalOpen, escondia so o .chart-wrap e nao fechava
@@ -8146,38 +8382,6 @@ window.togglePotential = function() {
 // anterior na tela. Fica so a de cima, que passa pelo painelExclusivo.
 
 
-function updateBussolaUI() {
-    const el = document.getElementById('bussola-modal');
-    if(!el || el.style.display === 'none') return;
-    
-    const svg = document.getElementById('direcao-compass');
-    const readout = document.getElementById('direcao-readout');
-    const pointer = document.getElementById('direcao-force-pointer');
-    const badge = document.getElementById('direcao-state-badge');
-    const hist = document.getElementById('direcao-history-list');
-    
-    if(!svg || typeof mtfGlobalBussolaScore === 'undefined') return;
-    
-    const score = mtfGlobalBussolaScore || 0;
-    
-    if(pointer) {
-        // map -100 to 100 into 100% to 0% (top to bottom)
-        let pct = 50 - (score / 2);
-        if(pct < 0) pct = 0;
-        if(pct > 100) pct = 100;
-        pointer.style.top = pct + '%';
-    }
-    
-    if(badge) {
-        if(score > 33) { badge.textContent = 'BULLISH'; badge.className = 'sp-sec-val pot-green'; }
-        else if(score < -33) { badge.textContent = 'BEARISH'; badge.className = 'sp-sec-val pot-red'; }
-        else { badge.textContent = 'FLAT'; badge.className = 'sp-sec-val pot-gold'; }
-    }
-    
-    if(readout) {
-        readout.innerHTML = `<div>Forca Relativa: ${score.toFixed(1)}</div>`;
-    }
-}
 
 window.updatePotential = updatePotential;
 
