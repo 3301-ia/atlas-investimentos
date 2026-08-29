@@ -1044,6 +1044,11 @@
                 <button class="btn" onclick="baixaRelatorio()" style="padding:3px 6px;font-size:10px;" title="Baixa o .json cru, pros agentes de analise">json</button>
                 <button class="btn" onclick="copiaRelatorio()" style="padding:3px 8px;font-size:10px;" title="Copia o relatorio pra colar num agente de analise">copiar</button>
               </div>
+              <div style="display:flex;gap:4px;margin-top:4px;">
+                <!-- O relatorio reclama quando o alvo do fibo esta sem alarme.
+                     Este botao e a resposta: marca o alvo em um clique. -->
+                <button class="btn" onclick="alarmeNoAlvoFibo()" style="flex:1;padding:3px 6px;font-size:10px;" title="Cria um alarme de preco no proximo alvo do Fibonacci">alarme no alvo do fibo</button>
+              </div>
             </div>
             <div class="sig-list" id="rel-list" style="max-height:110px;flex:none;"><div style="padding:5px 9px;font-size:9px;color:var(--t3);">Nenhuma observacao guardada.</div></div>
 

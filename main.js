@@ -2251,6 +2251,9 @@ function openWS(){
         // Ribbon Phi + bordas de TODAS as velas — refeito a cada fechamento,
         // pra nunca ficar mais desatualizado que uma vela de atraso.
         try{ refreshPhiRibbonAndBorders(); }catch(e){}
+        // divergencia preco x fluxo: no fechamento, que e quando as duas
+        // pontas (angulo das medias e pressao das 20 velas) estao fechadas
+        try{ verificaDivergenciaFluxo(); }catch(e){}
       }
     }catch(err){}
   };
@@ -4480,6 +4483,49 @@ function forcaDoFluxo(nVelas){
 }
 window.forcaDoFluxo = forcaDoFluxo;
 
+// ALARME DE DIVERGENCIA PRECO x FLUXO
+// A leitura do relatorio ja detecta e descreve isto — "o preco sobe enquanto
+// quem tem pressa esta vendendo" —, mas so quando voce abre o relatorio. E
+// justamente a situacao que voce quer saber NA HORA, porque ela aparece antes
+// do preco virar, nao depois.
+//
+// Toca uma vez por virada, nao uma por vela: guardo o estado anterior e so
+// aviso quando ele muda. Sem isso um mercado divergente por vinte velas daria
+// vinte alarmes.
+const DIVERG_PRESSAO = 18;      // abaixo disso e ruido, nao divergencia
+const DIVERG_ESPERA_MS = 10*60*1000;
+let divergAnterior = null, divergUltimo = 0;
+
+function verificaDivergenciaFluxo(){
+  if(!alertsOn){ divergAnterior = null; return; }
+  let f = null;
+  try{ f = forcaDoFluxo(20); }catch(e){ return; }
+  if(!f || (f.compra + f.venda) === 0) return;
+  const dir = (typeof direcaoAngles!=="undefined" && direcaoAngles && typeof classifyDirecao==="function")
+    ? classifyDirecao(direcaoAngles) : null;
+  if(!dir || dir.isFlat) { divergAnterior = null; return; }
+
+  const preco = dir.direcao === "alta" ? "alta" : "baixa";
+  let estado = null;
+  if(preco === "alta"  && f.pressao <= -DIVERG_PRESSAO) estado = "alta-sem-comprador";
+  if(preco === "baixa" && f.pressao >=  DIVERG_PRESSAO) estado = "baixa-com-comprador";
+
+  if(estado === divergAnterior) return;   // ja avisei desta
+  divergAnterior = estado;
+  if(!estado) return;                     // saiu da divergencia: so guarda
+
+  const agora = Date.now();
+  if(agora - divergUltimo < DIVERG_ESPERA_MS) return;
+  divergUltimo = agora;
+
+  const txt = estado === "alta-sem-comprador"
+    ? "preco subindo com agressao vendedora ("+f.pressao.toFixed(0)+"%) — alta sem comprador convicto"
+    : "preco caindo com agressao compradora (+"+f.pressao.toFixed(0)+"%) — alguem absorvendo a queda";
+  if(typeof showInfoToast==="function") showInfoToast("DIVERGENCIA", txt);
+  else if(typeof beep==="function") beep();
+}
+window.verificaDivergenciaFluxo = verificaDivergenciaFluxo;
+
 function renderForca(){
   const box = document.getElementById('forca-box'), cnt = document.getElementById('forca-count');
   if(!box) return;
@@ -4745,6 +4791,33 @@ function retratoEnxuto(r){
   return e;
 }
 window.retratoEnxuto = retratoEnxuto;
+
+// ALARME NO ALVO DO FIBO
+// O relatorio ja escreve "nao ha alarme nesse nivel — chegar ate ali depende
+// de voce estar olhando". Faltava o botao que resolve isso na hora: um clique
+// e o alvo vira alarme de preco, no mesmo caminho dos alarmes manuais, entao
+// toca igual e some da lista igual.
+function alarmeNoAlvoFibo(){
+  const r = retratoDoAtivo();
+  const alvo = r.fibo && r.fibo.alvo;
+  if(!alvo){
+    if(typeof showInfoToast==="function")
+      showInfoToast("ALARMES","sem ancora de fibo tracada — nao ha alvo pra marcar");
+    return;
+  }
+  const preco = +Number(alvo.preco).toFixed(8);
+  if(alarmesManuais.some(a=>a.preco===preco)){
+    if(typeof showInfoToast==="function") showInfoToast("ALARMES","ja existe alarme em "+preco);
+    return;
+  }
+  alarmesManuais.push({preco, criado:Date.now(), origem:"alvo fib "+alvo.nivel});
+  alarmesManuais.sort((a,b)=>b.preco-a.preco);
+  salvaAlarmesManuais();
+  if(typeof showInfoToast==="function")
+    showInfoToast("ALARMES","alarme no alvo "+alvo.nivel+" ("+preco+"), "
+      +Math.abs(alvo.distancia_pct).toFixed(2)+"% "+alvo.sentido);
+}
+window.alarmeNoAlvoFibo = alarmeNoAlvoFibo;
 
 function salvaObservacao(){
   const el=document.getElementById("rel-obs");
@@ -6243,7 +6316,7 @@ async function changeSym(sym){
   currentSym=sym;candles=[];resetLive();
   // negocio do ativo anterior nao vale aqui
   fluxoNegocios=[]; fluxoPorVela={}; fluxoCorte=0; bolhasCache=null; estatFluxo=null;
-  avisouFluxoSemFonte=false;
+  avisouFluxoSemFonte=false; divergAnterior=null;
   resetaAlarmes();
   // alarmes e niveis de fibo sao guardados por simbolo
   carregaAlarmesManuais(); carregaFibNiveis(); carregaFontesAlarme(); carregaObservacoes();
