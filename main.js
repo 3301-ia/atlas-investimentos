@@ -1056,6 +1056,182 @@ const BORDER_BULL='#089981', BORDER_BEAR='#f23645';
 // carregamento completo (applySeriesData) quanto A CADA FECHAMENTO DE VELA
 // em tempo real (antes so rodava no load, ficando desatualizado durante o
 // dia inteiro de mercado aberto).
+// ══════════════════════════════════════════════════════
+// CVD — DELTA DE VOLUME ACUMULADO
+// ══════════════════════════════════════════════════════
+// A forca do fluxo diz quem esta agredindo AGORA. O CVD soma isso desde o
+// comeco do historico: e a linha de quem venceu a queda de braco ate aqui.
+//
+// O valor absoluto nao diz nada (depende de quanto historico foi carregado).
+// O que diz e a INCLINACAO e, principalmente, a DIVERGENCIA contra o preco:
+// preco fazendo topo mais alto com CVD fazendo topo mais baixo e o preco
+// subindo sem dinheiro novo comprando — quem estava dentro esta distribuindo.
+function serieCVD(velas){
+  let acc = 0;
+  return velas.map(c => {
+    const compra = c.compra||0, venda = c.venda||0;
+    if(compra || venda) acc += compra - venda;
+    return acc;
+  });
+}
+
+// Divergencia entre o preco e o CVD nas ultimas N velas. Comparo a metade
+// recente contra a metade anterior, em vez de procurar topos exatos: topo
+// exato depende de como voce define topo, e a leitura fica fragil.
+function divergenciaCVD(velas, nVelas){
+  const n = nVelas || 60;
+  if(!velas || velas.length < n + 5) return null;
+  const cvd = serieCVD(velas);
+  const corte = velas.length - n;
+  const meio = corte + Math.floor(n/2);
+  const fatia = (arr, de, ate) => arr.slice(de, ate);
+  const maxP1 = Math.max(...fatia(velas, corte, meio).map(c=>c.high));
+  const maxP2 = Math.max(...fatia(velas, meio, velas.length).map(c=>c.high));
+  const minP1 = Math.min(...fatia(velas, corte, meio).map(c=>c.low));
+  const minP2 = Math.min(...fatia(velas, meio, velas.length).map(c=>c.low));
+  const maxC1 = Math.max(...fatia(cvd, corte, meio));
+  const maxC2 = Math.max(...fatia(cvd, meio, cvd.length));
+  const minC1 = Math.min(...fatia(cvd, corte, meio));
+  const minC2 = Math.min(...fatia(cvd, meio, cvd.length));
+
+  const cvdAtual = cvd[cvd.length-1], cvdAntes = cvd[corte];
+  const inclinacao = cvdAtual - cvdAntes;
+
+  let tipo = null;
+  if(maxP2 > maxP1 && maxC2 < maxC1) tipo = "baixista";   // topo mais alto, CVD mais baixo
+  if(minP2 < minP1 && minC2 > minC1) tipo = "altista";    // fundo mais baixo, CVD mais alto
+  return {velas:n, tipo, inclinacao,
+          subindo: inclinacao > 0,
+          cvd_atual: cvdAtual};
+}
+window.serieCVD = serieCVD;
+window.divergenciaCVD = divergenciaCVD;
+
+// ══════════════════════════════════════════════════════
+// MARCOS DE VOLUME — a maior vela do dia, da semana e do mes
+// ══════════════════════════════════════════════════════
+// A bolha diz quanto foi o volume de cada vela. Isto aqui diz outra coisa:
+// QUAL vela mandou no periodo. Sao poucas por tela, e cada uma marca um ponto
+// que o mercado inteiro viu.
+//
+//   dourado    -> maior volume do DIA
+//   prateado   -> maior volume da SEMANA
+//   roxo neon  -> maior volume do MES
+//
+// O mais forte manda: a maior do mes tambem e a maior da semana e do dia dela,
+// e sai como roxo, nao como tres marcas empilhadas.
+//
+// SO MARCO PERIODO MAIOR QUE O TEMPO GRAFICO. Num grafico mensal nao existe
+// "maior vela do dia" — cada vela JA e um mes. Sem essa guarda toda vela do 1M
+// viraria marco dos tres de uma vez.
+const MARCO_CORES = {
+  dia:    {corpo:'#E8A317', halo:'255,196,60',  nome:'dia'},
+  semana: {corpo:'#9AA4B0', halo:'220,228,238', nome:'semana'},
+  mes:    {corpo:'#A855F7', halo:'190,120,255', nome:'mes'},
+};
+const MARCO_ORDEM = {dia:1, semana:2, mes:3};
+
+function chaveDoPeriodo(timeSeg, periodo){
+  const d = new Date(timeSeg*1000);
+  const ano = d.getUTCFullYear();
+  if(periodo === 'mes')    return ano+'-'+d.getUTCMonth();
+  if(periodo === 'semana'){
+    // semana ISO simplificada: o domingo que abre a semana daquela data
+    const dom = Math.floor((timeSeg - (d.getUTCDay()*86400)) / 86400);
+    return 'w'+dom;
+  }
+  return ano+'-'+d.getUTCMonth()+'-'+d.getUTCDate();
+}
+
+function volumeDaVela(c){
+  const notional = (c.compra||0) + (c.venda||0);
+  if(notional > 0) return notional;
+  // fonte sem o corte agressor: o volume em moeda ainda serve pra ranquear
+  return (c.volume||0) * (c.close||1);
+}
+
+// Marca a maior vela de cada dia/semana/mes do historico carregado.
+function calculaMarcosVolume(velas, tfSeg){
+  const marcas = {};   // indice da vela -> 'dia' | 'semana' | 'mes'
+  if(!velas || velas.length < 3) return marcas;
+  const periodos = [];
+  if(tfSeg < 86400)   periodos.push('dia');
+  if(tfSeg < 604800)  periodos.push('semana');
+  if(tfSeg < 2592000) periodos.push('mes');
+  if(!periodos.length) return marcas;
+
+  periodos.forEach(periodo => {
+    const melhorPorChave = {};
+    velas.forEach((c,i) => {
+      const v = volumeDaVela(c);
+      if(!(v > 0)) return;
+      const k = chaveDoPeriodo(c.time, periodo);
+      const atual = melhorPorChave[k];
+      if(!atual || v > atual.v) melhorPorChave[k] = {i, v};
+    });
+    Object.values(melhorPorChave).forEach(({i}) => {
+      // o periodo maior manda: a maior do mes nao vira "maior do dia"
+      if(!marcas[i] || MARCO_ORDEM[periodo] > MARCO_ORDEM[marcas[i]]) marcas[i] = periodo;
+    });
+  });
+  return marcas;
+}
+
+// O MARCO QUE INTERESSA E O FRIO COM RSI VIRANDO.
+// Volume alto no meio de uma tendencia quente e continuacao — normal, nao
+// avisa nada. Volume alto quando o ribbon esta indeciso E o RSI acabou de
+// cruzar a agua e outra coisa: e o dinheiro entrando ANTES do preco decidir.
+// E esse que ganha brilho forte; os demais ficam so marcados.
+const MARCO_JANELA_RSI = 3;   // velas de folga entre o volume e o cruzamento
+
+function marcoQualificado(idx, score, rsiArr){
+  if(score == null || Math.abs(score) > 0.25) return false;   // nao esta frio
+  if(!rsiArr) return false;
+  // "acompanhando o RSI cruzando" nao quer dizer na mesma vela exata: o volume
+  // costuma vir um pouco antes ou um pouco depois do cruzamento. Exigir a vela
+  // exata derrubava praticamente todos — em mil velas, zero.
+  for(let i = Math.max(1, idx-MARCO_JANELA_RSI); i <= Math.min(rsiArr.length-1, idx+MARCO_JANELA_RSI); i++){
+    const a = rsiArr[i-1], b = rsiArr[i];
+    if(a == null || b == null) continue;
+    const cruzou = nv => (a < nv && b >= nv) || (a > nv && b <= nv);
+    if(cruzou(50) || cruzou(30) || cruzou(70)) return true;
+  }
+  return false;
+}
+
+// O brilho vai no canvas de TRAS, entao ele aparece em volta da vela sem
+// cobri-la — o mesmo motivo pelo qual as bolhas foram pra la.
+function pintaHalosMarcos(ctx, larguraCss, velas, marcas, qualificados, t2xFn, p2yFn){
+  if(!ctx || !marcas) return 0;
+  let n = 0;
+  Object.keys(marcas).forEach(k => {
+    const i = +k, vela = velas[i];
+    if(!vela) return;
+    const x = t2xFn(vela.time);
+    if(x == null || x < -60 || x > larguraCss + 60) return;
+    const yA = p2yFn(vela.high), yB = p2yFn(vela.low);
+    if(yA == null || yB == null) return;
+    const cfg = MARCO_CORES[marcas[i]];
+    const forte = qualificados && qualificados[i];
+    const cy = (yA + yB) / 2;
+    // O halo acompanha o tamanho da vela mas tem piso proprio: numa vela
+    // pequena ele ainda precisa ser visto, senao o marco vira so uma vela de
+    // cor diferente e o "aceso" se perde.
+    const raio = Math.max(forte ? 34 : 24, Math.abs(yB - yA)/2 + (forte ? 38 : 24));
+    const g = ctx.createRadialGradient(x, cy, 0, x, cy, raio);
+    g.addColorStop(0,    "rgba("+cfg.halo+","+(forte ? 0.85 : 0.5)+")");
+    g.addColorStop(0.35, "rgba("+cfg.halo+","+(forte ? 0.45 : 0.24)+")");
+    g.addColorStop(0.7,  "rgba("+cfg.halo+","+(forte ? 0.16 : 0.08)+")");
+    g.addColorStop(1,    "rgba("+cfg.halo+",0)");
+    ctx.beginPath();
+    ctx.arc(x, cy, raio, 0, Math.PI*2);
+    ctx.fillStyle = g;
+    ctx.fill();
+    n++;
+  });
+  return n;
+}
+
 // O voto binario (bull/bear) da um degrau seco: vermelho, cinza, verde. O que
 // se quer ver e a TEMPERATURA — o ribbon vermelho esfria, a vela clareia, e so
 // entao esverdeia. Entao guardo a proporcao do voto, nao o vencedor.
@@ -1109,12 +1285,28 @@ function refreshPhiRibbonAndBorders(){
   const alignmentPerBar=computePhiAlignmentSeries(phiArrs);
   const scorePerBar=computePhiScoreSeries(phiArrs);
   renderPhiRibbonSegments(candles,phiArrs,alignmentPerBar);
+
+  // marcos de volume: a maior vela do dia, da semana e do mes
+  const rsiArr = rsiCalc(candles.map(c=>c.close), 14);
+  marcosVolume = calculaMarcosVolume(candles, tfToSeconds(currentTF));
+  marcosFortes = {};
+  Object.keys(marcosVolume).forEach(k=>{
+    if(marcoQualificado(+k, scorePerBar[+k], rsiArr)) marcosFortes[k]=true;
+  });
+
   // O CORPO leva a temperatura do ribbon; a BORDA guarda se a vela fechou em
   // alta ou em baixa. Antes era o contrario — corpo na cor real e borda no
   // ribbon — e a passagem de vermelho pra verde nao aparecia, porque so um
   // fiozinho de borda mudava de cor.
   candleSeries.setData(candles.map((c,i)=>{
     const s=scorePerBar[i];
+    // o marco pinta por cima da temperatura: ali o que importa nao e o humor
+    // do ribbon, e que ESTA vela foi a maior do periodo
+    const m=marcosVolume[i];
+    if(m){
+      const cfg=MARCO_CORES[m];
+      return {...c, color:cfg.corpo, wickColor:cfg.corpo, borderColor:cfg.corpo};
+    }
     if(s==null) return c;
     const cor=corTemperaturaVela(s);
     return {...c, color:cor, wickColor:cor,
@@ -1641,12 +1833,22 @@ let serverTimeOffset = 0; // Sincronização de relógio atômico com a Binance
 let lastTradeAt = 0;      // ultimo aggTrade recebido (decide se o fallback REST roda)
 let lastTitleAt = 0;      // throttle da atualizacao do titulo da aba
 
+// O 'M' de mes vinha antes do 'm' de minuto na conta, e includes() distingue
+// maiusculas: '1M'.includes('m') e false, entao o mensal caia no return 60 e
+// virava UM MINUTO. Isso nao e cosmetico — esta funcao define o balde da vela
+// no tick ao vivo e no fluxo, entao no grafico mensal a vela em formacao era
+// agrupada em minutos.
+//
+// O mes vale 30 dias por convencao: e um agrupamento pra decidir de que vela um
+// tick faz parte, nao um calendario.
 function tfToSeconds(tf) {
-  const v = parseInt(tf);
-  if(tf.includes('m')) return v * 60;
-  if(tf.includes('h')) return v * 3600;
-  if(tf.includes('w')) return v * 604800;
-  if(tf.includes('d')) return v * 86400;
+  const v = parseInt(tf) || 1;
+  const s = String(tf);
+  if(s.includes('M')) return v * 2592000;   // mes ANTES do minuto, e case-sensitive
+  if(s.includes('w')) return v * 604800;
+  if(s.includes('d') || s.includes('D')) return v * 86400;
+  if(s.includes('h') || s.includes('H')) return v * 3600;
+  if(s.includes('m')) return v * 60;
   return 60;
 }
 
@@ -4610,6 +4812,15 @@ function desenhaBolhas(){
   if(!bolhasLigadas) return;
   if(!candles || !candles.length) return;
 
+  // clientWidth, nao width: o buffer e multiplicado pelo dpr e o t2x devolve
+  // pixel de CSS — comparar com o buffer nunca cortava nada numa tela retina
+  const larguraTela = (bCanvas && bCanvas.clientWidth) || 4000;
+
+  // O BRILHO VEM PRIMEIRO, e antes de qualquer saida por falta de fluxo: o
+  // marco de volume sai do volume da propria vela, entao ele existe mesmo numa
+  // fonte que nao publica o lado agressor — e ali as bolhas nem aparecem.
+  try{ pintaHalosMarcos(bCtx, larguraTela, candles, marcosVolume, marcosFortes, t2x, p2y); }catch(e){}
+
   // Cache so pela versao do fluxo: a lista e a mesma em qualquer zoom, o que
   // muda e quem esta na tela — e isso o t2x resolve por vela.
   if(!bolhasCache || bolhasCache.versao !== fluxoVersao){
@@ -4618,9 +4829,6 @@ function desenhaBolhas(){
   }
   if(!bolhasCache || !bolhasCache.alvos.length) return;
 
-  // clientWidth, nao width: o buffer e multiplicado pelo dpr e o t2x devolve
-  // pixel de CSS — comparar com o buffer nunca cortava nada numa tela retina
-  const larguraTela = (bCanvas && bCanvas.clientWidth) || 4000;
   pintaBolhas(bCtx, larguraTela, bolhasCache.alvos, bolhasCache.corte, candles, t2x, p2y);
 }
 
@@ -4752,7 +4960,33 @@ function renderForca(){
     + '<span>compra <span style="color:#00C853;font-family:var(--mono);">'+fmtNotional(f.compra)+'</span></span>'
     + '<span>venda <span style="color:#FF3B30;font-family:var(--mono);">'+fmtNotional(f.venda)+'</span></span></div>'
     + '<div style="font-size:8px;color:var(--t3);margin-top:3px;">delta '
-    + (f.delta>=0?"+":"") + fmtNotional(f.delta) + ' · ' + fluxoNegocios.length + ' negocios em memoria</div>';
+    + (f.delta>=0?"+":"") + fmtNotional(f.delta) + ' · ' + fluxoNegocios.length + ' negocios em memoria</div>'
+    + blocoCVD();
+}
+
+// O CVD entra debaixo da forca porque responde a mesma coisa em outra escala:
+// a forca e agora, o CVD e o acumulado. O numero absoluto nao vale nada (varia
+// com quanto historico carregou) — o que vale e a inclinacao e a divergencia.
+function blocoCVD(){
+  let dv = null;
+  try{ dv = divergenciaCVD(candles, 60); }catch(e){}
+  if(!dv) return '';
+  const seta = dv.subindo ? '&uarr;' : '&darr;';
+  const cor = dv.subindo ? '#00C853' : '#FF3B30';
+  let s = '<div style="border-top:1px solid var(--bd2);margin-top:6px;padding-top:5px;">'
+    + '<div style="font-size:9px;color:var(--t3);">CVD nas ultimas '+dv.velas+' velas '
+    + '<span style="color:'+cor+';font-family:var(--mono);">'+seta+' '
+    + (dv.inclinacao>=0?"+":"-") + fmtNotional(Math.abs(dv.inclinacao)) + '</span></div>';
+  if(dv.tipo){
+    const c = dv.tipo === 'baixista' ? '#FF3B30' : '#00C853';
+    s += '<div style="font-size:8.5px;color:'+c+';margin-top:3px;line-height:1.4;"><b>divergencia '
+      + dv.tipo + '</b>: '
+      + (dv.tipo === 'baixista'
+          ? 'topo mais alto no preco com topo mais baixo no CVD — sobe sem dinheiro novo comprando'
+          : 'fundo mais baixo no preco com fundo mais alto no CVD — cai com alguem absorvendo')
+      + '</div>';
+  }
+  return s + '</div>';
 }
 window.renderForca = renderForca;
 
@@ -4809,6 +5043,28 @@ function retratoDoAtivo(){
       r.direcao.estado=cls.isFlat?"lateral":(cls.direcao==="alta"?"alta":"baixa");
     }
     if(typeof estadoLiberacao==="function") r.direcao.liberacao=estadoLiberacao(null);
+  }catch(e){}
+
+  // ── CVD E MARCOS DE VOLUME
+  try{
+    const dv = divergenciaCVD(candles, 60);
+    if(dv) r.cvd = {velas:dv.velas, inclinacao:Math.round(dv.inclinacao),
+                    subindo:dv.subindo, divergencia:dv.tipo};
+  }catch(e){}
+  try{
+    const idx = Object.keys(marcosVolume||{}).map(Number).sort((a,b)=>b-a);
+    if(idx.length){
+      const ult = idx[0], vela = candles[ult];
+      r.marco_volume = {
+        periodo: marcosVolume[ult],
+        quando: vela ? new Date(vela.time*1000).toISOString() : null,
+        velas_atras: candles.length-1-ult,
+        preco: vela ? vela.close : null,
+        em_momento_frio_com_rsi: !!(marcosFortes||{})[ult],
+        total_na_tela: {dia:0, semana:0, mes:0}
+      };
+      Object.values(marcosVolume).forEach(p=>{ r.marco_volume.total_na_tela[p]++; });
+    }
   }catch(e){}
 
   // ── AS DUAS PONTAS: BINANCE E DERIV
@@ -5281,6 +5537,45 @@ function analiseDoMercado(r){
     if(v.vs_media_pct != null && v.vs_media_pct <= -40){
       t += " Movimento com volume bem abaixo da media costuma nao sustentar: falta gente do"
         + " outro lado pra continuar empurrando.";
+    }
+    p.push(t);
+  }
+
+  // 3b2) CVD — o acumulado, nao o instante
+  if(r.cvd){
+    let t = "O volume acumulado (CVD) das ultimas "+r.cvd.velas+" velas esta <b>"
+          + (r.cvd.subindo ? "subindo" : "descendo")+"</b>, "
+          + (r.cvd.inclinacao>=0?"+":"-")+fmtNotional(Math.abs(r.cvd.inclinacao))+" no periodo.";
+    if(r.cvd.divergencia === "baixista"){
+      t += " E ha <b>divergencia baixista</b>: o preco fez topo mais alto e o CVD fez topo mais"
+        + " baixo. Isso quer dizer que a alta aconteceu sem dinheiro novo comprando — quem estava"
+        + " dentro aproveitou pra distribuir. E a objecao mais dificil de enxergar no grafico,"
+        + " porque o preco parece otimo justamente enquanto ela se forma.";
+    }else if(r.cvd.divergencia === "altista"){
+      t += " E ha <b>divergencia altista</b>: o preco fez fundo mais baixo e o CVD fez fundo mais"
+        + " alto — alguem esta absorvendo a queda em vez de acompanha-la.";
+    }else{
+      t += " Preco e CVD estao andando juntos, sem divergencia no recorte.";
+    }
+    p.push(t);
+  }
+
+  // 3b3) MARCO DE VOLUME — qual vela mandou no periodo
+  if(r.marco_volume){
+    const m = r.marco_volume;
+    const nomes = {dia:"do dia", semana:"da semana", mes:"do mes"};
+    let t = "A maior vela "+nomes[m.periodo]+" foi ha <b>"+m.velas_atras+" velas</b>, em "
+          + num(m.preco)+".";
+    const tot = m.total_na_tela;
+    t += " No historico carregado ha "+tot.mes+" marco(s) de mes, "+tot.semana+" de semana e "
+      + tot.dia+" de dia.";
+    if(m.em_momento_frio_com_rsi){
+      t += " <b>Essa caiu em momento frio, com o RSI cruzando</b> — volume grande enquanto as"
+        + " medias estavam indecisas e o RSI virava. E o caso que interessa: dinheiro entrando"
+        + " ANTES do preco decidir, e nao no meio de uma tendencia ja formada.";
+    }else{
+      t += " Nenhum marco recente caiu em momento frio com o RSI cruzando; os que ha sao volume"
+        + " de continuacao, dentro de tendencia ja definida.";
     }
     p.push(t);
   }
@@ -5777,6 +6072,17 @@ function contraArgumentos(){
   const i=closes.length-1, px=closes[i];
   const atrV=atrCalc(highs,lows,closes,P.atrLen), atr=atrV[i];
   const e200=ema(closes,200), e8=ema(closes,8), e16=ema(closes,16);
+
+  // 0. DIVERGENCIA DE CVD. O preco faz o topo, o dinheiro nao acompanha. E a
+  //    objecao mais dificil de ver no grafico, porque o preco parece otimo.
+  try{
+    const dv = divergenciaCVD(candles, 60);
+    if(dv && dv.tipo === "baixista"){
+      itens.push({peso:2,
+        txt:"divergencia de CVD: topo mais alto no preco, topo mais baixo no volume acumulado",
+        det:"o preco sobe sem dinheiro novo comprando — quem estava dentro esta distribuindo na alta"});
+    }
+  }catch(e){}
 
   // 1. PRECO ESTICADO. Longe demais da media longa, a reversao a media joga
   //    contra: o movimento pode continuar, mas o preco de entrada e ruim.
@@ -6871,6 +7177,9 @@ let dCanvas, dCtx;
 // canvas proprio das bolhas, atras do grafico. Antes elas dividiam o canvas de
 // desenho, que fica NA FRENTE — e por isso tingiam a vela por cima.
 let bCanvas, bCtx;
+// indice da vela -> 'dia'|'semana'|'mes', e quais deles cairam em momento frio
+// com o RSI cruzando (esses ganham brilho forte)
+let marcosVolume = {}, marcosFortes = {};
 let activeTool = 'cursor';
 let drawColor = '#FFEB3B';
 let magnetOn = false;
