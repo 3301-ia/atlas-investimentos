@@ -4195,8 +4195,19 @@ function semeiaFluxoDoHistorico(){
     achou++;
   });
   if(achou) fluxoVersao++;
+  // So a Binance publica o lado agressor por vela (indices 7 e 10 do kline).
+  // Bybit, OKX, Kraken e Coinbase nao — e o fallback entra justamente quando a
+  // Binance esta fora. Sem aviso, a pessoa ficava olhando um grafico sem bolha
+  // sem saber por que.
+  if(!achou && candles.length > 50 && typeof lastDataSource!=="undefined"
+     && lastDataSource && lastDataSource!=="binance" && !avisouFluxoSemFonte){
+    avisouFluxoSemFonte = true;
+    if(typeof showInfoToast==="function")
+      showInfoToast("FLUXO", "sem bolhas: a "+lastDataSource+" nao publica o lado agressor por vela");
+  }
   return achou;
 }
+let avisouFluxoSemFonte = false;
 window.semeiaFluxoDoHistorico = semeiaFluxoDoHistorico;
 
 function registraNegocio(preco, qtd, comprador, ts, velaTime){
@@ -4710,6 +4721,31 @@ function retratoDoAtivo(){
   return r;
 }
 
+// O retrato inteiro pesa 6,8 KB, e o teto de 200 e POR ATIVO: 1,36 MB cada,
+// e o navegador da uns 5 MB no total. Com quatro ativos acompanhados isso
+// estoura, e ai a observacao que voce acabou de escrever nao e gravada.
+//
+// Quase todo o peso esta em tres listas que ninguem rele numa observacao
+// antiga: os 29 niveis do fibo, a escada inteira do RSI e os ultimos sinais.
+// O que se rele e o estado do mercado naquele instante — direcao, fluxo, o
+// que pesava contra, o preco. Guardo isso, e do fibo guardo so o alvo, que e
+// a unica linha que a observacao costuma citar.
+function retratoEnxuto(r){
+  if(!r) return r;
+  const e = Object.assign({}, r);
+  if(e.fibo){
+    e.fibo = {ancora:e.fibo.ancora, alvo:e.fibo.alvo,
+              atingidos:e.fibo.atingidos, total_niveis:e.fibo.total_niveis};
+  }
+  if(e.rsi) e.rsi = {atual:e.rsi.atual};       // a escada se recalcula, o valor nao
+  delete e.ultimos_sinais;                     // estao no log de sinais
+  delete e.liberados;
+  delete e.correlacao;                         // e do painel Multi, nao do ativo
+  if(e.fibo_historico) e.fibo_historico = {total:e.fibo_historico.total};
+  return e;
+}
+window.retratoEnxuto = retratoEnxuto;
+
 function salvaObservacao(){
   const el=document.getElementById("rel-obs");
   const txt=(el&&el.value||"").trim();
@@ -4717,7 +4753,7 @@ function salvaObservacao(){
     if(typeof showInfoToast==="function") showInfoToast("RELATORIO","escreva a observacao antes de guardar");
     return;
   }
-  observacoes.push({observacao:txt, retrato:retratoDoAtivo()});
+  observacoes.push({observacao:txt, retrato:retratoEnxuto(retratoDoAtivo())});
   if(observacoes.length>200) observacoes.shift();
   try{ localStorage.setItem(chaveObs(),JSON.stringify(observacoes)); }
   catch(e){
@@ -6207,6 +6243,7 @@ async function changeSym(sym){
   currentSym=sym;candles=[];resetLive();
   // negocio do ativo anterior nao vale aqui
   fluxoNegocios=[]; fluxoPorVela={}; fluxoCorte=0; bolhasCache=null; estatFluxo=null;
+  avisouFluxoSemFonte=false;
   resetaAlarmes();
   // alarmes e niveis de fibo sao guardados por simbolo
   carregaAlarmesManuais(); carregaFibNiveis(); carregaFontesAlarme(); carregaObservacoes();
