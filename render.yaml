@@ -9,3 +9,33 @@ services:
     # nenhum JavaScript, que era o que ia pro ar.
     buildCommand: echo "site estatico, sem etapa de build"
     staticPublishPath: ./
+
+    # index.html, style.css e main.js sao pedidos sempre pela mesma URL e mudam
+    # a cada deploy. Sem isto o navegador guarda a copia antiga e nem volta a
+    # perguntar: foi por isso que deploy novo continuou entregando o main.js
+    # velho, com o ?v= parado no mesmo numero por doze commits. "no-cache" nao
+    # desliga o cache — obriga a revalidar, e quando o arquivo nao mudou a
+    # resposta e um 304 vazio.
+    headers:
+      - path: /
+        name: Cache-Control
+        value: no-cache
+      - path: /index.html
+        name: Cache-Control
+        value: no-cache
+      - path: /main.js
+        name: Cache-Control
+        value: no-cache
+      - path: /style.css
+        name: Cache-Control
+        value: no-cache
+      # a midia nao muda; essa pode ficar guardada por uma semana
+      - path: /*.mp4
+        name: Cache-Control
+        value: public, max-age=604800
+      - path: /*.jpg
+        name: Cache-Control
+        value: public, max-age=604800
+      - path: /*.png
+        name: Cache-Control
+        value: public, max-age=604800
