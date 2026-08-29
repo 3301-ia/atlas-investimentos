@@ -2143,6 +2143,17 @@ function openWS(){
       if(stream.includes('@aggTrade')){
         const p=parseFloat(d.p);
         lastTradeAt=Date.now();
+        // quantidade e lado vinham e eram descartados; sao eles que dao as
+        // bolhas e o medidor de forca
+        try{
+          const q=parseFloat(d.q);
+          if(isFinite(q)&&q>0){
+            const ts=d.T||Date.now();
+            const tfSec=tfToSeconds(currentTF);
+            const nowSec=Math.floor(ts/1000);
+            registraNegocio(p,q,!d.m,ts,nowSec-(nowSec%tfSec));
+          }
+        }catch(e){}
         updatePriceUI(p);
         forceChartTick(p,d.T||Date.now()); // coalescido por frame
         return;
@@ -2904,6 +2915,14 @@ async function recarregaMulti(){
     if(ws&&ws.readyState>1){ try{ws.close();}catch(e){} multiWSs[sym]=null; }
   });
   if(multiViewOpen) openMultiWS();
+}
+
+// A forca vem de negocio ao vivo, entao ela precisa de um relogio proprio: os
+// outros paineis so redesenham quando o motor reprocessa o historico.
+let forcaTimer=null;
+function iniciaForca(){
+  if(forcaTimer) clearInterval(forcaTimer);
+  forcaTimer=setInterval(()=>{ try{ renderForca(); }catch(e){} },2000);
 }
 
 function startMultiTimers(){
@@ -4062,6 +4081,225 @@ function runBacktest(candlesArr,cfg){
 }
 
 // ══════════════════════════════════════════════════════
+// FLUXO AGRESSOR — bolhas de notional e medidor de forca
+// ══════════════════════════════════════════════════════
+// O WebSocket ja entregava cada negocio executado (@aggTrade) e o codigo lia
+// so o preco, jogando fora a quantidade e o lado. Com esses dois campos saem
+// duas coisas que faltavam:
+//
+//   as bolhas   — cada negocio grande no ponto exato de preco e tempo
+//   a forca     — quanto do volume veio de comprador agredindo contra vendedor
+//
+// Vale registrar a diferenca pro indicador do TradingView: la o Pine precisa
+// aproximar isso com request.security_lower_tf, olhando velas de um timeframe
+// menor, porque indicador nao recebe tick. Aqui sao os negocios de verdade.
+//
+// Em d.m a Binance diz "o comprador era o maker?". Se era, quem agrediu o
+// livro foi o VENDEDOR. Entao agressor comprador = !d.m — invertido do que a
+// leitura ingenua do campo sugere.
+
+const FLUXO_MAX_NEGOCIOS = 400;     // teto do que fica em memoria
+const FLUXO_MAX_DESENHO  = 60;      // teto do que vai pra tela, pra nao poluir
+let fluxoNegocios = [];             // {t, preco, notional, comprador}
+let fluxoPorVela = {};              // time da vela -> {compra, venda}
+let bolhasLigadas = true;
+
+// Minimo pra um negocio virar bolha. Nao pode ser fixo: 500 USD e enorme numa
+// altcoin e invisivel no BTC. Uso a mediana do notional recente como base.
+let fluxoCorte = 0;
+function recalculaCorteFluxo(){
+  if(fluxoNegocios.length < 30) return;
+  const v = fluxoNegocios.map(n=>n.notional).sort((a,b)=>a-b);
+  const mediana = v[Math.floor(v.length/2)];
+  // 8x a mediana: pega o negocio que destoa, nao o fluxo normal
+  fluxoCorte = mediana * 8;
+}
+
+function registraNegocio(preco, qtd, comprador, ts, velaTime){
+  const notional = preco * qtd;
+  if(!isFinite(notional) || notional <= 0) return;
+  fluxoNegocios.push({t: ts, preco, notional, comprador});
+  if(fluxoNegocios.length > FLUXO_MAX_NEGOCIOS) fluxoNegocios.shift();
+  if(fluxoNegocios.length % 25 === 0) recalculaCorteFluxo();
+
+  if(velaTime != null){
+    const v = fluxoPorVela[velaTime] || (fluxoPorVela[velaTime] = {compra:0, venda:0});
+    if(comprador) v.compra += notional; else v.venda += notional;
+    // guarda so as ultimas 200 velas, senao isto cresce sem parar
+    const chaves = Object.keys(fluxoPorVela);
+    if(chaves.length > 200){
+      chaves.sort((a,b)=>a-b).slice(0, chaves.length-200).forEach(k=>{ delete fluxoPorVela[k]; });
+    }
+  }
+}
+window.registraNegocio = registraNegocio;
+
+// ── AS BOLHAS ────────────────────────────────────────────────────────────
+// Desenhadas no mesmo canvas dos desenhos, entao herdam de graca a sincronia
+// de zoom e rolagem que o redrawDrawings ja faz a cada quadro.
+//
+// O tamanho e o ponto que voce levantou: bolha grande cobre o candle e briga
+// com o resto. Raio entre 3 e 9px, por faixa, e sem texto — o numero aparece
+// so no negocio muito grande, e mesmo assim pequeno e deslocado.
+function raioBolha(notional){
+  if(!fluxoCorte) return 0;
+  const r = notional / fluxoCorte;
+  if(r < 1)  return 0;
+  if(r < 2)  return 3;
+  if(r < 4)  return 4.5;
+  if(r < 8)  return 6;
+  if(r < 16) return 7.5;
+  return 9;
+}
+
+function fmtNotional(v){
+  const a = Math.abs(v);
+  if(a >= 1e9) return (v/1e9).toFixed(2)+"B";
+  if(a >= 1e6) return (v/1e6).toFixed(2)+"M";
+  if(a >= 1e3) return (v/1e3).toFixed(1)+"k";
+  return v.toFixed(0);
+}
+
+function desenhaBolhas(){
+  if(!bolhasLigadas || !dCtx || !chart || !candleSeries) return;
+  if(!fluxoNegocios.length || !fluxoCorte) return;
+
+  // AGRUPA POR PIXEL. Varios negocios grandes no mesmo instante e preco caem
+  // no mesmo ponto da tela e viravam circulos empilhados com os numeros um por
+  // cima do outro. Somando o notional dos que caem na mesma celula, uma rajada
+  // de compras vira UMA bolha maior, que e o que ela e de verdade.
+  const CELULA = 6;   // px
+  const celulas = {};
+  fluxoNegocios.forEach(n => {
+    if(n.notional < fluxoCorte) return;
+    const x = t2x(Math.floor(n.t/1000));
+    const y = p2y(n.preco);
+    if(x == null || y == null) return;
+    const k = Math.round(x/CELULA) + ":" + Math.round(y/CELULA);
+    const c = celulas[k] || (celulas[k] = {x:0, y:0, notional:0, compra:0, venda:0, n:0});
+    c.x += x; c.y += y; c.n++;
+    c.notional += n.notional;
+    if(n.comprador) c.compra += n.notional; else c.venda += n.notional;
+  });
+
+  // do maior pro menor, e so os N maiores: em mercado agitado a tela viraria
+  // uma nuvem de circulos
+  const grupos = Object.values(celulas)
+    .map(c => ({x:c.x/c.n, y:c.y/c.n, notional:c.notional,
+                comprador:c.compra >= c.venda, n:c.n}))
+    .sort((a,b) => b.notional - a.notional)
+    .slice(0, FLUXO_MAX_DESENHO);
+
+  // Rotulos so nos maiores, e so onde nao esbarram num ja desenhado. O
+  // indicador do TradingView resolve isso separando o texto da bolha; aqui da
+  // pra simplesmente nao desenhar o que ia ficar ilegivel.
+  const rotulos = [];
+  const cabe = (x, y, larg) => !rotulos.some(r =>
+    x < r.x + r.larg + 4 && x + larg + 4 > r.x && Math.abs(y - r.y) < 11);
+
+  grupos.forEach(g => {
+    const raio = raioBolha(g.notional);
+    if(!raio) return;
+    const cor = g.comprador ? "0,200,83" : "255,59,48";
+
+    dCtx.beginPath();
+    dCtx.arc(g.x, g.y, raio, 0, Math.PI*2);
+    dCtx.fillStyle = "rgba("+cor+",0.22)";
+    dCtx.fill();
+    dCtx.lineWidth = 1;
+    dCtx.strokeStyle = "rgba("+cor+",0.75)";
+    dCtx.stroke();
+
+    if(raio >= 7.5){
+      const txt = fmtNotional(g.notional) + (g.n > 1 ? " ("+g.n+")" : "");
+      dCtx.font = "9px ui-monospace, monospace";
+      const larg = dCtx.measureText(txt).width;
+      const tx = g.x + raio + 3, ty = g.y + 3;
+      if(cabe(tx, ty, larg)){
+        rotulos.push({x:tx, y:ty, larg});
+        dCtx.fillStyle = "rgba("+cor+",0.95)";
+        dCtx.textAlign = "left";
+        dCtx.fillText(txt, tx, ty);
+      }
+    }
+  });
+}
+window.desenhaBolhas = desenhaBolhas;
+
+function toggleBolhas(){
+  bolhasLigadas = !bolhasLigadas;
+  const b = document.getElementById('btn-bolhas');
+  if(b) b.classList.toggle('on', bolhasLigadas);
+  if(typeof redrawDrawings === 'function') redrawDrawings();
+  if(typeof showInfoToast === 'function'){
+    showInfoToast("FLUXO", bolhasLigadas ? "bolhas ligadas" : "bolhas desligadas");
+  }
+}
+window.toggleBolhas = toggleBolhas;
+
+// ── A FORCA ──────────────────────────────────────────────────────────────
+// Delta = notional agressor comprador menos vendedor. O RSI e o StochRSI
+// medem o PRECO; isto mede quem esta pagando pra entrar, que e outra coisa.
+// Preco subindo com delta negativo e alta sem comprador convicto.
+function forcaDoFluxo(nVelas){
+  const chaves = Object.keys(fluxoPorVela).map(Number).sort((a,b)=>a-b);
+  if(!chaves.length) return null;
+  const usadas = chaves.slice(-(nVelas || 20));
+  let compra = 0, venda = 0;
+  usadas.forEach(k => { compra += fluxoPorVela[k].compra; venda += fluxoPorVela[k].venda; });
+  const total = compra + venda;
+  const atualK = chaves[chaves.length-1];
+  const atual = fluxoPorVela[atualK] || {compra:0, venda:0};
+  const deltaAtual = atual.compra - atual.venda;
+  const totalAtual = atual.compra + atual.venda;
+  return {
+    velas: usadas.length,
+    compra, venda,
+    delta: compra - venda,
+    // -100 a +100: quanto do volume do periodo foi agressao compradora liquida
+    pressao: total > 0 ? ((compra - venda) / total * 100) : 0,
+    delta_vela: deltaAtual,
+    pressao_vela: totalAtual > 0 ? (deltaAtual / totalAtual * 100) : 0
+  };
+}
+window.forcaDoFluxo = forcaDoFluxo;
+
+function renderForca(){
+  const box = document.getElementById('forca-box'), cnt = document.getElementById('forca-count');
+  if(!box) return;
+  const f = forcaDoFluxo(20);
+  if(!f || (f.compra + f.venda) === 0){
+    if(cnt) cnt.textContent = "--";
+    box.innerHTML = '<div style="padding:5px 9px;font-size:9px;color:var(--t3);">Aguardando negocios ao vivo...</div>';
+    return;
+  }
+  const cor = p => p >= 15 ? "#00C853" : (p <= -15 ? "#FF3B30" : "#F5A623");
+  if(cnt){
+    cnt.textContent = (f.pressao >= 0 ? "+" : "") + f.pressao.toFixed(0) + "%";
+    cnt.style.color = cor(f.pressao);
+  }
+  // a barra e centrada em zero: o olho le de que lado esta a pressao sem ler o numero
+  const barra = (p, rot) => {
+    const larg = Math.min(50, Math.abs(p)/2);
+    const esq = p >= 0 ? 50 : 50 - larg;
+    return '<div style="font-size:9px;color:var(--t3);margin-bottom:2px;">'+rot
+      +' <span style="color:'+cor(p)+';font-family:var(--mono);">'+(p>=0?"+":"")+p.toFixed(1)+'%</span></div>'
+      +'<div style="position:relative;height:7px;background:var(--bg4);border-radius:3px;margin-bottom:6px;">'
+      +'<span style="position:absolute;left:50%;top:-1px;width:1px;height:9px;background:var(--bd3);"></span>'
+      +'<span style="position:absolute;left:'+esq+'%;width:'+larg+'%;height:100%;background:'+cor(p)+';border-radius:3px;"></span>'
+      +'</div>';
+  };
+  box.innerHTML = barra(f.pressao_vela, "vela atual")
+    + barra(f.pressao, "ultimas " + f.velas + " velas")
+    + '<div style="display:flex;justify-content:space-between;font-size:9px;color:var(--t3);">'
+    + '<span>compra <span style="color:#00C853;font-family:var(--mono);">'+fmtNotional(f.compra)+'</span></span>'
+    + '<span>venda <span style="color:#FF3B30;font-family:var(--mono);">'+fmtNotional(f.venda)+'</span></span></div>'
+    + '<div style="font-size:8px;color:var(--t3);margin-top:3px;">delta '
+    + (f.delta>=0?"+":"") + fmtNotional(f.delta) + ' · ' + fluxoNegocios.length + ' negocios em memoria</div>';
+}
+window.renderForca = renderForca;
+
+// ══════════════════════════════════════════════════════
 // RELATORIO PARA OS AGENTES DE ANALISE
 // ══════════════════════════════════════════════════════
 // O painel calcula muita coisa e tudo morre na tela. Aqui esse estado vira
@@ -5069,9 +5307,12 @@ function resetLive(){
 }
 async function changeSym(sym){
   currentSym=sym;candles=[];resetLive();
+  // negocio do ativo anterior nao vale aqui
+  fluxoNegocios=[]; fluxoPorVela={}; fluxoCorte=0;
   resetaAlarmes();
   // alarmes e niveis de fibo sao guardados por simbolo
   carregaAlarmesManuais(); carregaFibNiveis(); carregaFontesAlarme(); carregaObservacoes();
+  if(typeof iniciaForca==="function") iniciaForca();
   const sel=document.getElementById('sym-select');
   if(sel&&sel.value!==sym)sel.value=sym;
   await loadAll();
@@ -5452,6 +5693,8 @@ function redrawDrawings(){
   arr.forEach(d=>{
     try{paint(d,false);}catch(e){console.warn('[draw] falha ao desenhar um item, seguindo:',e);}
   });
+  // as bolhas por ultimo, por cima dos desenhos
+  try{ desenhaBolhas(); }catch(e){}
   if(isDragging&&dragDraw){
     try{paint(dragDraw,true);}catch(e){}
   }
@@ -5633,6 +5876,7 @@ let catF='all';
 function initApp(){
   initTheme();
   carregaAlarmesManuais(); carregaFibNiveis(); carregaFontesAlarme(); carregaObservacoes();
+  if(typeof iniciaForca==="function") iniciaForca();
   const cb=document.getElementById('cat-bar');
   if(cb && !cb.children.length){
     const catBtn=document.createElement('button');catBtn.className='cp active';catBtn.textContent='TODOS';catBtn.setAttribute('data-cat','all');catBtn.onclick=function(){setCat(this);};cb.appendChild(catBtn);
