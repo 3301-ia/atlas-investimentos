@@ -4120,11 +4120,10 @@ function runBacktest(candlesArr,cfg){
 // leitura ingenua do campo sugere.
 
 const FLUXO_MAX_NEGOCIOS = 400;     // teto do que fica em memoria
-const FLUXO_MAX_DESENHO  = 14;      // teto do que vai pra tela, pra nao poluir.
-                                    // Com o historico semeado sempre ha
-                                    // candidata de sobra: 60 cobria o grafico
-                                    // inteiro e escondia justamente o candle
-                                    // que a bolha deveria estar apontando.
+// Sem teto de quantidade e sem descarte por sobreposicao: os dois dependiam do
+// layout, entao mudar o zoom mudava quais bolhas sobreviviam e a bolha parecia
+// trocar de lugar. Quem controla a densidade agora e so o corte (percentil 95),
+// que e do dado e nao da tela.
 let fluxoNegocios = [];             // {t, preco, notional, comprador}
 let fluxoPorVela = {};              // time da vela -> {compra, venda}
 let bolhasLigadas = true;
@@ -4226,8 +4225,10 @@ function fmtNotional(v){
 // fixo, aproximar so espalha as mesmas bolhas, e um trecho calmo fica sem
 // nenhuma, que e a informacao correta: ali nada destoou.
 //
-// Percentil 88 em vez da mediana vezes 1,6: a distribuicao de volume tem cauda
-// longa e a mediana deixava passar quase um terco das velas.
+// Percentil 95, nao a mediana: a distribuicao de volume tem cauda longa e a
+// mediana deixava passar quase um terco das velas. Como nao ha mais teto de
+// quantidade nem descarte por sobreposicao, e o corte sozinho que decide a
+// raridade — 5% dos lados de vela, uma a cada vinte.
 function estatisticaFluxo(){
   if(estatFluxo && estatFluxo.versao === fluxoVersao) return estatFluxo;
   const somas = [];
@@ -4239,91 +4240,90 @@ function estatisticaFluxo(){
   if(somas.length < 6){ estatFluxo = null; return null; }
   somas.sort((a,b) => a-b);
   estatFluxo = {versao: fluxoVersao,
-    corte: somas[Math.min(somas.length-1, Math.floor(somas.length*0.88))],
+    corte: somas[Math.min(somas.length-1, Math.floor(somas.length*0.95))],
     maior: somas[somas.length-1]};
   return estatFluxo;
 }
 
+// A lista NAO olha a janela visivel. Vela com bolha e vela com bolha, ponto —
+// o recorte de tela e do desenhaBolhas, que descarta o que caiu fora do
+// canvas. Enquanto a janela entrava aqui, o zoom mudava quem sobrevivia e a
+// bolha parecia pular de lugar.
 function montaAlvosBolha(){
   const est = estatisticaFluxo();
   if(!est) return null;
-
-  let de = -Infinity, ate = Infinity;
-  try{
-    const r = chart.timeScale().getVisibleRange();
-    if(r && r.from != null && r.to != null){ de = +r.from; ate = +r.to; }
-  }catch(e){}
 
   // indice das velas por tempo, pra achar a maxima e a minima de cada uma
   const porTempo = {};
   candles.forEach(c => { porTempo[c.time] = c; });
 
-  // so a janela visivel entra no desenho — mas medida contra o corte de
-  // sempre, entao o numero de cada bolha e o mesmo em qualquer zoom
   const alvos = [];
   Object.keys(fluxoPorVela).forEach(k => {
-    const t = +k;
-    if(t < de || t > ate) return;
-    const vela = porTempo[t]; if(!vela) return;
+    const vela = porTempo[+k]; if(!vela) return;
     const v = fluxoPorVela[k];
     if(v.compra >= est.corte) alvos.push({vela, notional:v.compra, comprador:true});
     if(v.venda  >= est.corte) alvos.push({vela, notional:v.venda,  comprador:false});
   });
-  // maior primeiro: quem tem direito ao lugar na tela e o fluxo que interessa
-  alvos.sort((a,b) => b.notional - a.notional);
-  return {corte:est.corte, maior:est.maior, alvos, de, ate};
+  // maior por ultimo: sem descarte por sobreposicao, quem desenha depois fica
+  // por cima, e quem deve ficar por cima e a maior
+  alvos.sort((a,b) => a.notional - b.notional);
+  return {corte:est.corte, maior:est.maior, alvos};
 }
 
 function desenhaBolhas(){
   if(!bolhasLigadas || !dCtx || !chart || !candleSeries) return;
   if(!candles || !candles.length) return;
-  // Com o historico semeado sao ate mil velas: refazer mediana e ordenacao a
-  // cada quadro custaria caro a 60fps. O resultado so muda quando o fluxo
-  // muda, entao guarda por versao — na pratica recalcula uma vez por tick do
-  // kline, nao 60 vezes por segundo.
-  let janela = "";
-  try{ const r = chart.timeScale().getVisibleRange(); if(r) janela = r.from+"|"+r.to; }catch(e){}
-  const chave = fluxoVersao+"@"+janela;
-  if(!bolhasCache || bolhasCache.chave !== chave){
+
+  // Cache so pela versao do fluxo. A janela visivel saiu da chave: ela nao
+  // decide mais nada sobre QUAIS velas tem bolha, so sobre quais estao na
+  // tela pra desenhar — e isso o proprio t2x resolve.
+  if(!bolhasCache || bolhasCache.versao !== fluxoVersao){
     bolhasCache = montaAlvosBolha();
-    if(bolhasCache) bolhasCache.chave = chave;
+    if(bolhasCache) bolhasCache.versao = fluxoVersao;
   }
   if(!bolhasCache || !bolhasCache.alvos.length) return;
   const corte = bolhasCache.corte, maior = bolhasCache.maior, alvos = bolhasCache.alvos;
 
-  // A referencia empilhava bolha sobre bolha ate nao dar pra ler nenhuma nem
-  // enxergar o candle embaixo. Aqui a maior desenha primeiro e a menor que
-  // cairia por cima dela e descartada — fica o mesmo desenho, legivel.
-  const postas = [];
-  const livre = (x, y, r) => !postas.some(b =>
-    Math.hypot(x-b.x, y-b.y) < (r + b.r) * 0.85);
-
   // clientWidth, nao width: o buffer e multiplicado pelo dpr e o t2x devolve
   // pixel de CSS — comparar com o buffer nunca cortava nada numa tela retina
   const larguraTela = (dCanvas && dCanvas.clientWidth) || 4000;
-  let desenhadas = 0;
+
+  // QUAIS velas tem bolha nao muda com o zoom. O TAMANHO muda, e so ele:
+  // afastado ao maximo sao mil velas em mil pixels, uma por pixel, e bolha de
+  // 26px de raio ali vira um cobertor que esconde o grafico. Entao o raio
+  // tambem respeita o espaco entre velas. E o mesmo que o proprio grafico faz
+  // com o candle — some a espessura, nao o candle.
+  let espacamento = 12;
+  try{
+    const n = candles.length;
+    if(n > 1){
+      const x1 = t2x(candles[n-1].time), x0 = t2x(candles[n-2].time);
+      if(x1 != null && x0 != null && x1 > x0) espacamento = x1 - x0;
+    }
+  }catch(e){}
+  const raioTeto = Math.max(2.5, Math.min(26, espacamento * 8));
 
   for(const a of alvos){
-    if(desenhadas >= FLUXO_MAX_DESENHO) break;
     const x = t2x(a.vela.time);
     const y = p2y(a.comprador ? a.vela.high : a.vela.low);
     if(x == null || y == null) continue;
-    if(x < -30 || x > larguraTela + 30) continue;
+    if(x < -40 || x > larguraTela + 40) continue;   // so recorte de tela
 
     let raio = raioBolhaVela(a.notional, corte, maior);
     if(!raio) continue;
-    // o numero manda no tamanho minimo: a bolha cresce ate ele caber dentro,
-    // em vez de ficar muda ou de deixar o texto vazar pra fora
     const txt = fmtBolha(a.notional);
     const fonte = raio >= 19 ? 10 : raio >= 16 ? 9 : 8;
     dCtx.font = fonte+"px ui-monospace, monospace";
+    // o numero manda no tamanho minimo: a bolha cresce ate ele caber dentro,
+    // em vez de deixar o texto vazar pra fora
     raio = Math.min(26, Math.max(raio, dCtx.measureText(txt).width/2 + 5));
+    raio = Math.min(raio, raioTeto);
+    // afastado demais o numero nao cabe; a bolha continua ali, so sem rotulo —
+    // ela nao some nem troca de vela, que era a queixa
+    const cabeRotulo = raio >= dCtx.measureText(txt).width/2 + 4;
     // compra sobe da maxima, venda desce da minima; afastada do pavio uns
     // pixels pra nao encostar no candle
     const yy = a.comprador ? y - raio - 3 : y + raio + 3;
-    if(!livre(x, yy, raio)) continue;
-    postas.push({x, y:yy, r:raio});
-    desenhadas++;
 
     const cor = a.comprador ? "0,200,83" : "255,59,48";
     dCtx.beginPath();
@@ -4338,18 +4338,20 @@ function desenhaBolhas(){
     // porque o mesmo branco tem que ser legivel no tema claro e no escuro,
     // sobre verde ou sobre vermelho; lineJoin redondo senao o vertice do "M"
     // cospe duas farpas pra cima.
-    dCtx.textAlign = "center";
-    dCtx.textBaseline = "middle";
-    dCtx.lineWidth = 2.2;
-    dCtx.lineJoin = "round";
-    dCtx.miterLimit = 2;
-    dCtx.strokeStyle = "rgba(0,0,0,0.55)";
-    dCtx.strokeText(txt, x, yy);
-    dCtx.fillStyle = "#fff";
-    dCtx.fillText(txt, x, yy);
-    dCtx.lineJoin = "miter";
-    dCtx.textAlign = "left";
-    dCtx.textBaseline = "alphabetic";
+    if(cabeRotulo){
+      dCtx.textAlign = "center";
+      dCtx.textBaseline = "middle";
+      dCtx.lineWidth = 2.2;
+      dCtx.lineJoin = "round";
+      dCtx.miterLimit = 2;
+      dCtx.strokeStyle = "rgba(0,0,0,0.55)";
+      dCtx.strokeText(txt, x, yy);
+      dCtx.fillStyle = "#fff";
+      dCtx.fillText(txt, x, yy);
+      dCtx.lineJoin = "miter";
+      dCtx.textAlign = "left";
+      dCtx.textBaseline = "alphabetic";
+    }
   }
 }
 
