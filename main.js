@@ -1125,7 +1125,18 @@ window.divergenciaCVD = divergenciaCVD;
 // Pivo = topo com K velas mais baixas de cada lado (e o espelho pro fundo).
 // K=4 e o meio-termo: menos que isso pega ruido, mais que isso so confirma a
 // virada tarde demais pra servir.
-const CHOCH_K = 4;
+// K=8, nao 4. Com 4, um topo local de nove velas ja virava pivo estrutural, e
+// num mercado picotado a estrutura "mudava" toda hora. A marca tem que ser rara
+// e definitiva — com 8, o pivo precisa dominar dezessete velas pra existir.
+const CHOCH_K = 8;
+// Romper de raspao nao e romper: exijo que o fechamento passe do pivo por pelo
+// menos um quarto do ATR. Sem isso, um tique acima do topo ja marcava.
+const CHOCH_MARGEM_ATR = 0.25;
+// Volume no percentil 70 das ultimas 100, nao na mediana: a mediana deixa
+// passar metade das velas, o que nao filtra quase nada.
+const CHOCH_PERCENTIL = 0.70;
+// Duas marcas coladas nao sao duas viradas, sao ruido em cima da mesma virada.
+const CHOCH_ESPACO = 20;
 
 function achaPivos(velas, k){
   const K = k || CHOCH_K;
@@ -1161,12 +1172,17 @@ function calculaMudancaCarater(velas){
   // mediana do volume das ultimas 100 velas ate i — o que conta como "com
   // volume" muda ao longo do historico, entao a referencia anda junto
   const vols = velas.map(volumeDaVela);
-  const mediana = (i) => {
+  const corteVol = (i) => {
     const de = Math.max(0, i-99);
     const fatia = vols.slice(de, i+1).filter(v=>v>0).sort((a,b)=>a-b);
     if(!fatia.length) return 0;
-    return fatia[Math.floor(fatia.length/2)];
+    return fatia[Math.min(fatia.length-1, Math.floor(fatia.length*CHOCH_PERCENTIL))];
   };
+  // ATR pra medir a margem do rompimento na escala do proprio ativo
+  const atr = (typeof atrCalc==="function")
+    ? atrCalc(velas.map(c=>c.high), velas.map(c=>c.low), velas.map(c=>c.close), 14)
+    : [];
+  let ultimaMarca = -1e9;
 
   let topo = null, fundo = null;          // indices dos ultimos pivos confirmados
   let topoAnt = null, fundoAnt = null;    // os anteriores, pra saber a direcao
@@ -1201,16 +1217,24 @@ function calculaMudancaCarater(velas){
     // que muda e que ele so vale quando marca a virada. Romper um topo com
     // volume de vela morta nao e mudanca de carater, e um espirro: o preco
     // passou por ali porque nao havia ninguem, e volta pelo mesmo motivo.
-    const rompeuAlta  = direcao === "baixa" && topo!=null  && velas[i].close > velas[topo].high;
-    const rompeuBaixa = direcao === "alta"  && fundo!=null && velas[i].close < velas[fundo].low;
+    const margem = (atr[i] || 0) * CHOCH_MARGEM_ATR;
+    const rompeuAlta  = direcao === "baixa" && topo!=null  && velas[i].close > velas[topo].high + margem;
+    const rompeuBaixa = direcao === "alta"  && fundo!=null && velas[i].close < velas[fundo].low  - margem;
     if(rompeuAlta || rompeuBaixa){
-      if(volumeDaVela(velas[i]) < mediana(i)){
+      // marca recente demais: a estrutura segue na conta, mas nao vira dourado
+      if(i - ultimaMarca < CHOCH_ESPACO){
+        if(rompeuAlta){ direcao="alta"; topoAnt=topo; topo=null; }
+        else { direcao="baixa"; fundoAnt=fundo; fundo=null; }
+        continue;
+      }
+      if(volumeDaVela(velas[i]) < corteVol(i)){
         // rompeu sem volume: a estrutura muda na conta, mas nao vira dourado
         if(rompeuAlta){ direcao="alta"; topoAnt=topo; topo=null; }
         else { direcao="baixa"; fundoAnt=fundo; fundo=null; }
         continue;
       }
       marcas[i] = rompeuAlta ? "alta" : "baixa";
+      ultimaMarca = i;
       if(rompeuAlta){ direcao="alta"; topoAnt=topo; topo=null; }
       else { direcao="baixa"; fundoAnt=fundo; fundo=null; }
     }
