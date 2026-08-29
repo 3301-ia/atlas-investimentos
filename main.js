@@ -378,15 +378,6 @@ async function fetchMaRibbon(sym){
   return out;
 }
 
-function computeMaRibbonSeries(ribbonData){
-  return MA_RIBBON_TFS.map(tf=>{
-    const d=ribbonData[tf.key];
-    if(!d||d.length<89)return [];
-    const closes=d.map(c=>c.close);
-    const ma=sma(closes,89);
-    return d.map((c,i)=>({time:c.time,value:ma[i]})).filter(pt=>pt.value!=null);
-  });
-}
 
 function sma(d,p){const r=new Array(d.length).fill(null);for(let i=p-1;i<d.length;i++){let s=0;for(let j=0;j<p;j++)s+=d[i-j];r[i]=s/p;}return r;}
 function rsiCalc(c,p){const r=new Array(c.length).fill(null);if(c.length<p+1)return r;let ag=0,al=0;for(let i=1;i<=p;i++){const d=c[i]-c[i-1];d>0?ag+=d:al-=d;}ag/=p;al/=p;r[p]=al===0?100:100-100/(1+ag/al);for(let i=p+1;i<c.length;i++){const d=c[i]-c[i-1];ag=(ag*(p-1)+Math.max(d,0))/p;al=(al*(p-1)+Math.max(-d,0))/p;r[i]=al===0?100:100-100/(1+ag/al);}return r;}
@@ -4185,23 +4176,6 @@ function registraNegocio(preco, qtd, comprador, ts, velaTime){
 }
 window.registraNegocio = registraNegocio;
 
-// ── AS BOLHAS ────────────────────────────────────────────────────────────
-// Desenhadas no mesmo canvas dos desenhos, entao herdam de graca a sincronia
-// de zoom e rolagem que o redrawDrawings ja faz a cada quadro.
-//
-// O tamanho e o ponto que voce levantou: bolha grande cobre o candle e briga
-// com o resto. Raio entre 3 e 9px, por faixa, e sem texto — o numero aparece
-// so no negocio muito grande, e mesmo assim pequeno e deslocado.
-function raioBolha(notional){
-  if(!fluxoCorte) return 0;
-  const r = notional / fluxoCorte;
-  if(r < 1)  return 0;
-  if(r < 2)  return 3;
-  if(r < 4)  return 4.5;
-  if(r < 8)  return 6;
-  if(r < 16) return 7.5;
-  return 9;
-}
 
 function fmtNotional(v){
   const a = Math.abs(v);
@@ -4396,17 +4370,6 @@ function desenhaBolhas(){
   }
 }
 
-// Raio proporcional ao quanto a vela destoa, do corte ate a maior do momento.
-// Area proporcional (dai a raiz): dobrar o volume dobra a mancha, nao o raio.
-// Piso de 13px porque abaixo disso o valor nao cabe dentro e a bolha vira um
-// ponto mudo; teto de 24px porque acima disso ela come o candle — que e
-// justamente o defeito da referencia.
-function raioBolhaVela(notional, corte, maior){
-  if(notional < corte) return 0;
-  const teto = Math.max(maior || 0, corte * 1.2);
-  const f = Math.min(1, Math.sqrt((notional - corte) / (teto - corte)));
-  return 13 + f * 11;
-}
 
 // Mais curto ainda, pro rotulo de dentro da bolha: sem casa decimal acima de
 // 10 unidades. "250M" no lugar de "249.7M" — a casa perdida nao muda decisao
@@ -8133,12 +8096,13 @@ window.toggleMtfView = toggleMtfView;
 // A sobrescrita que existia aqui foi fundida na definicao la de cima — era
 // ela que de fato rodava, e por isso a versao com os 4 ativos nao aparecia.
 
-window.togglePotential = function() {
-  const el = document.getElementById('potential-card');
-  if(!el) return;
-  const isHidden = el.style.display === 'none' || el.style.display === '';
-  el.style.display = isHidden ? 'flex' : 'none';
-};
+// Havia uma TERCEIRA sobrescrita de togglePotential aqui — a que de fato
+// rodava, porque era a ultima. Ela abria o card e parava por ai, sem chamar
+// updatePotential(), entao o Potencial abria com os campos em branco ate algo
+// mais no app resolver atualiza-lo. Fica so a definicao la de cima, que
+// preenche ao abrir. Mesma armadilha que ja tinha comido a toggleTerminalTab e
+// a toggleBussolaModal: neste arquivo, quem reatribui window.X por ultimo
+// ganha, e o "por ultimo" fica mil linhas longe da definicao.
 
 // Havia uma SEGUNDA definicao de toggleTerminalTab aqui, sobrescrevendo a de
 // cima: ela nao mexia no terminalOpen, escondia so o .chart-wrap e nao fechava
@@ -8146,38 +8110,6 @@ window.togglePotential = function() {
 // anterior na tela. Fica so a de cima, que passa pelo painelExclusivo.
 
 
-function updateBussolaUI() {
-    const el = document.getElementById('bussola-modal');
-    if(!el || el.style.display === 'none') return;
-    
-    const svg = document.getElementById('direcao-compass');
-    const readout = document.getElementById('direcao-readout');
-    const pointer = document.getElementById('direcao-force-pointer');
-    const badge = document.getElementById('direcao-state-badge');
-    const hist = document.getElementById('direcao-history-list');
-    
-    if(!svg || typeof mtfGlobalBussolaScore === 'undefined') return;
-    
-    const score = mtfGlobalBussolaScore || 0;
-    
-    if(pointer) {
-        // map -100 to 100 into 100% to 0% (top to bottom)
-        let pct = 50 - (score / 2);
-        if(pct < 0) pct = 0;
-        if(pct > 100) pct = 100;
-        pointer.style.top = pct + '%';
-    }
-    
-    if(badge) {
-        if(score > 33) { badge.textContent = 'BULLISH'; badge.className = 'sp-sec-val pot-green'; }
-        else if(score < -33) { badge.textContent = 'BEARISH'; badge.className = 'sp-sec-val pot-red'; }
-        else { badge.textContent = 'FLAT'; badge.className = 'sp-sec-val pot-gold'; }
-    }
-    
-    if(readout) {
-        readout.innerHTML = `<div>Forca Relativa: ${score.toFixed(1)}</div>`;
-    }
-}
 
 window.updatePotential = updatePotential;
 
