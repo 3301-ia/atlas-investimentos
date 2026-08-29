@@ -4473,6 +4473,16 @@ function carregaObservacoes(){
 
 // O retrato completo do que o painel sabe agora. Cada bloco em seu try: uma
 // parte indisponivel nao pode derrubar o relatorio inteiro.
+// "312 velas" nao diz nada sozinho num grafico de 15m. Converte pra tempo de
+// relogio, que e como a pergunta e feita: ha quanto tempo esta acima?
+function duracaoHumana(seg){
+  if(seg == null || !isFinite(seg) || seg <= 0) return "--";
+  const dias = Math.floor(seg/86400), h = Math.floor((seg%86400)/3600), m = Math.floor((seg%3600)/60);
+  if(dias >= 1) return dias+"d"+(h?" "+h+"h":"");
+  if(h >= 1)    return h+"h"+(m?" "+m+"min":"");
+  return m+"min";
+}
+
 function retratoDoAtivo(){
   const r={};
   r.ativo = typeof currentSym!=="undefined"?currentSym:null;
@@ -4493,6 +4503,63 @@ function retratoDoAtivo(){
       r.direcao.estado=cls.isFlat?"lateral":(cls.direcao==="alta"?"alta":"baixa");
     }
     if(typeof estadoLiberacao==="function") r.direcao.liberacao=estadoLiberacao(null);
+  }catch(e){}
+
+  // ── QUANTO TEMPO DO MESMO LADO DA EMA200
+  // Nao e so "esta acima": ha diferenca entre estar acima ha tres velas e ha
+  // trezentas. A segunda e tendencia estabelecida, a primeira e um repique
+  // que ainda nao provou nada.
+  //
+  // A ema() e semeada com o primeiro preco, entao as ~200 primeiras velas do
+  // array sao aquecimento e nao valem como leitura. Se a sequencia chega la,
+  // devolvo como "pelo menos", nunca como numero exato.
+  try{
+    const e200 = (typeof serieMedias!=="undefined") && serieMedias && serieMedias.ema200;
+    const n = candles.length;
+    if(e200 && e200.length === n && n > 210){
+      const piso = 200;                       // antes disso a media nao convergiu
+      const acima = candles[n-1].close > e200[n-1];
+      let i = n-1, velas = 0;
+      while(i >= piso && (candles[i].close > e200[i]) === acima){ velas++; i--; }
+      const seg = tfToSeconds(currentTF) * velas;
+      r.ema200_lado = {
+        lado: acima ? "acima" : "abaixo",
+        velas,
+        truncado: i < piso,                   // encostou no aquecimento da media
+        segundos: seg,
+        duracao: duracaoHumana(seg),
+        desde: new Date(candles[n-velas].time*1000).toISOString(),
+        distancia_pct: +(((candles[n-1].close - e200[n-1]) / e200[n-1]) * 100).toFixed(2)
+      };
+    }
+  }catch(e){}
+
+  // ── O VALOR DO VOLUME
+  // Em dolar, nao em moeda: e o numero que a bolha mostra. Sozinho nao diz
+  // nada, entao vai junto com a media das ultimas 30 velas e com o corte que
+  // faz uma vela virar bolha.
+  try{
+    const n = candles.length, atual = candles[n-1];
+    const v = fluxoPorVela[atual.time];
+    if(v){
+      const totais = [];
+      for(let i = Math.max(0, n-30); i < n; i++){
+        const x = fluxoPorVela[candles[i].time];
+        if(x) totais.push((x.compra||0) + (x.venda||0));
+      }
+      const media = totais.length ? totais.reduce((s,x)=>s+x,0)/totais.length : null;
+      const total = (v.compra||0) + (v.venda||0);
+      const est = (typeof estatisticaFluxo==="function") ? estatisticaFluxo() : null;
+      r.volume = {
+        vela_atual_usd: Math.round(total),
+        compra_usd: Math.round(v.compra||0),
+        venda_usd: Math.round(v.venda||0),
+        media_30_usd: media==null?null:Math.round(media),
+        vs_media_pct: (media && media>0) ? +(((total/media)-1)*100).toFixed(1) : null,
+        corte_bolha_usd: est ? Math.round(est.corte) : null,
+        vira_bolha: !!(est && (v.compra >= est.corte || v.venda >= est.corte))
+      };
+    }
   }catch(e){}
 
   try{
@@ -4519,6 +4586,26 @@ function retratoDoAtivo(){
             atingido:(r.preco!=null)&&(diff>0?r.preco>=preco:r.preco<=preco),
             alarme:(typeof fibMarcado==="function")&&fibMarcado(lv)};
         })};
+      // O ALVO e o primeiro nivel ainda NAO atingido no sentido da ancora —
+      // e pra ele que a extensao aponta. Sem isso o relatorio listava doze
+      // niveis e deixava a pergunta "e o alvo, qual e?" sem resposta.
+      // Nivel a menos de 0,1% do preco nao e alvo: o preco esta EM CIMA dele.
+      // Sem esse filtro o relatorio anunciava "alvo a 0,00% do preco", que nao
+      // responde nada — o alvo tem que ser o proximo lugar aonde ir.
+      const LONGE=0.001;
+      const naoAtingidos=r.fibo.niveis.filter(n=>!n.atingido
+        && Math.abs(n.preco-r.preco)/r.preco > LONGE);
+      const alvo=naoAtingidos.length
+        ? naoAtingidos.reduce((a,b)=>Math.abs(b.preco-r.preco)<Math.abs(a.preco-r.preco)?b:a)
+        : null;
+      if(alvo){
+        r.fibo.alvo={nivel:alvo.nivel, preco:alvo.preco, alarme:alvo.alarme,
+          distancia_pct:+(((alvo.preco-r.preco)/r.preco)*100).toFixed(2),
+          sentido: alvo.preco>r.preco ? "acima" : "abaixo"};
+        // quantos ja ficaram pra tras diz o quanto do movimento ja andou
+        r.fibo.atingidos=r.fibo.niveis.filter(n=>n.atingido).length;
+        r.fibo.total_niveis=r.fibo.niveis.length;
+      }
     }
   }catch(e){}
 
@@ -4783,6 +4870,70 @@ function analiseDoMercado(r){
     }
   }catch(e){}
 
+  // 3b) O VALOR DO VOLUME — o numero que a bolha mostra, com contexto
+  if(r.volume && r.volume.vela_atual_usd != null){
+    const v = r.volume;
+    let t = "A vela em curso negociou <b>"+fmtNotional(v.vela_atual_usd)+"</b> ("
+          + fmtNotional(v.compra_usd)+" comprando contra "+fmtNotional(v.venda_usd)+" vendendo)";
+    if(v.media_30_usd) t += ", contra uma media de "+fmtNotional(v.media_30_usd)
+      + " nas ultimas 30 velas — <b>"+sin(v.vs_media_pct)+"%</b>";
+    t += ".";
+    if(v.vira_bolha){
+      t += " Passa do corte de "+fmtNotional(v.corte_bolha_usd)+" e por isso aparece como"
+        + " bolha no grafico: e volume que destoa, nao volume de rotina.";
+    }else if(v.corte_bolha_usd){
+      t += " Fica abaixo do corte de "+fmtNotional(v.corte_bolha_usd)+" que faz uma vela virar"
+        + " bolha — volume dentro do normal deste ativo.";
+    }
+    if(v.vs_media_pct != null && v.vs_media_pct <= -40){
+      t += " Movimento com volume bem abaixo da media costuma nao sustentar: falta gente do"
+        + " outro lado pra continuar empurrando.";
+    }
+    p.push(t);
+  }
+
+  // 3c) HA QUANTO TEMPO DO MESMO LADO DA EMA200 — persistencia, nao posicao
+  if(r.ema200_lado){
+    const e = r.ema200_lado;
+    let t = "O preco esta <b>"+e.lado+" da EMA200 ha "+(e.truncado?"pelo menos ":"")
+          + "<b>"+e.duracao+"</b></b> ("+e.velas+" velas de "+pdfEsc(r.timeframe)
+          + "), hoje a "+num(Math.abs(e.distancia_pct))+"% dela.";
+    if(e.truncado){
+      t += " A sequencia vai alem do historico carregado, entao o numero e um piso:"
+        + " e mais tempo do que isso, nao menos.";
+    }else if(e.velas <= 5){
+      t += " Sao poucas velas — cruzou agora. Cruzamento recente da EMA200 e o momento em que"
+        + " ela mais devolve: ainda nao provou que virou lado.";
+    }else if(e.velas >= 100){
+      t += " E uma permanencia longa. Tendencia que se sustenta desse tempo raramente inverte"
+        + " sem antes perder a media, entao o proprio cruzamento vira o aviso a esperar.";
+    }
+    if(Math.abs(e.distancia_pct) >= 12){
+      t += " A distancia de "+num(Math.abs(e.distancia_pct))+"% e grande: entrar aqui e"
+        + " comprar longe do chao, com a media longe pra servir de stop.";
+    }
+    p.push(t);
+  }
+
+  // 3d) O ALVO DO FIBO — a pergunta "pra onde isso vai" respondida com nivel
+  if(r.fibo && r.fibo.alvo){
+    const al = r.fibo.alvo;
+    let t = "O proximo alvo do Fibonacci e o <b>"+al.nivel+"</b> em <b>"+num(al.preco)
+          + "</b>, "+num(Math.abs(al.distancia_pct))+"% "+al.sentido+" do preco de agora";
+    if(r.fibo.atingidos != null){
+      t += ", com "+r.fibo.atingidos+" dos "+r.fibo.total_niveis+" niveis da ancora ja para tras";
+    }
+    t += ".";
+    t += al.alarme
+      ? " Voce ja tem alarme nesse nivel — ele avisa sozinho quando o preco encostar."
+      : " <b>Nao ha alarme nesse nivel.</b> Sem ele, chegar ate ali depende de voce estar olhando.";
+    p.push(t);
+  }else if(r.preco != null){
+    p.push("<b>Nao ha ancora de Fibonacci ativa</b> neste ativo, entao o relatorio nao tem alvo"
+      + " para apontar. Enquanto nao houver uma tracada, a leitura fica sem o unico numero que"
+      + " diria ate onde o movimento costuma ir.");
+  }
+
   // 4) O QUE PESA CONTRA — o painel ja levanta as objecoes, aqui elas entram
   //    na conta com peso
   const ca = r.contra_argumentos || [];
@@ -4900,6 +5051,32 @@ function montaHtmlPdf(){
     }
   }catch(e){}
 
+  // ── os tres numeros que se pergunta primeiro, em destaque
+  const cartoes = [];
+  if(r.volume && r.volume.vela_atual_usd != null){
+    cartoes.push({rot:"volume da vela", val:fmtNotional(r.volume.vela_atual_usd),
+      pe:(r.volume.vs_media_pct==null ? "" : pdfSinal(r.volume.vs_media_pct)+"% vs media de 30")
+         + (r.volume.vira_bolha ? " &middot; vira bolha" : "")});
+  }
+  if(r.fibo && r.fibo.alvo){
+    cartoes.push({rot:"alvo no fibo", val:pdfFmt(r.fibo.alvo.preco),
+      pe:"nivel "+r.fibo.alvo.nivel+" &middot; "+pdfFmt(Math.abs(r.fibo.alvo.distancia_pct),2)+"% "
+         +r.fibo.alvo.sentido+(r.fibo.alvo.alarme?" &middot; com alarme":" &middot; sem alarme")});
+  }else{
+    cartoes.push({rot:"alvo no fibo", val:"--", pe:"nenhuma ancora tracada"});
+  }
+  if(r.ema200_lado){
+    cartoes.push({rot:r.ema200_lado.lado+" da EMA200",
+      val:(r.ema200_lado.truncado?"&ge; ":"")+r.ema200_lado.duracao,
+      pe:r.ema200_lado.velas+" velas &middot; "+pdfFmt(Math.abs(r.ema200_lado.distancia_pct),2)+"% da media"});
+  }
+  const cartoesHtml = cartoes.length
+    ? '<div class="cartoes">'+cartoes.map(c =>
+        '<div class="cartao"><div class="c-rot">'+c.rot+'</div>'
+        + '<div class="c-val">'+c.val+'</div><div class="c-pe">'+c.pe+'</div></div>').join("")
+      + '</div>'
+    : "";
+
   // ── a leitura: os numeros cruzados, em texto
   let leitura = "";
   try{
@@ -5005,6 +5182,15 @@ function montaHtmlPdf(){
   .capa-data{position:absolute;left:0;right:0;bottom:20mm;text-align:center;
     font-size:9px;color:#6b7280;letter-spacing:2px;}
 
+  /* Os tres numeros que se pergunta primeiro, antes de qualquer tabela. */
+  .cartoes{display:flex;gap:8px;margin:0 0 14px;}
+  .cartao{flex:1;border:1px solid #e3e6ea;border-radius:5px;padding:8px 10px;background:#fafbfc;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  .c-rot{font-size:8px;text-transform:uppercase;letter-spacing:1.2px;color:#6b7280;}
+  .c-val{font-size:17px;font-weight:800;font-family:ui-monospace,monospace;margin:3px 0 1px;
+    letter-spacing:-.4px;}
+  .c-pe{font-size:8.5px;color:#6b7280;}
+
   /* A leitura e o unico bloco de texto corrido do documento, entao ganha
      entrelinha maior e uma barra na lateral pra se separar das tabelas. */
   .leitura{border-left:3px solid #F5A623;padding-left:11px;margin-bottom:16px;
@@ -5074,6 +5260,7 @@ function montaHtmlPdf(){
 <h1>${pdfEsc(ativo)} &middot; ${pdfEsc(r.timeframe)}</h1>
 <p class="sub">${dataLonga} as ${hora} &middot; ${r.velas_carregadas} velas &middot; fonte ${pdfEsc(r.fonte||"--")}</p>
 
+${cartoesHtml}
 ${leitura ? '<section class="leitura"><h2>A leitura</h2>'+leitura
   + '<p class="nota">Cada frase acima sai de um numero deste mesmo documento. Onde o dado nao'
   + ' existe, a frase nao foi escrita.</p></section>' : ''}
