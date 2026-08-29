@@ -4160,70 +4160,130 @@ function fmtNotional(v){
   return v.toFixed(0);
 }
 
+// Desenhadas na MAXIMA e na MINIMA da vela, nao no preco do negocio: dentro do
+// corpo do candle a bolha fica enterrada e nao da pra ver. Na ponta do pavio
+// ela sobra na tela e ainda diz onde a agressao aconteceu — compra empurrando
+// pra maxima, venda pressionando a minima.
+//
+// Uma bolha por vela e por lado, com o volume somado. Antes era uma por
+// negocio, o que empilhava dezenas no mesmo ponto.
 function desenhaBolhas(){
   if(!bolhasLigadas || !dCtx || !chart || !candleSeries) return;
-  if(!fluxoNegocios.length || !fluxoCorte) return;
+  if(!candles || !candles.length) return;
+  const chaves = Object.keys(fluxoPorVela);
+  if(!chaves.length) return;
 
-  // AGRUPA POR PIXEL. Varios negocios grandes no mesmo instante e preco caem
-  // no mesmo ponto da tela e viravam circulos empilhados com os numeros um por
-  // cima do outro. Somando o notional dos que caem na mesma celula, uma rajada
-  // de compras vira UMA bolha maior, que e o que ela e de verdade.
-  const CELULA = 6;   // px
-  const celulas = {};
-  fluxoNegocios.forEach(n => {
-    if(n.notional < fluxoCorte) return;
-    const x = t2x(Math.floor(n.t/1000));
-    const y = p2y(n.preco);
-    if(x == null || y == null) return;
-    const k = Math.round(x/CELULA) + ":" + Math.round(y/CELULA);
-    const c = celulas[k] || (celulas[k] = {x:0, y:0, notional:0, compra:0, venda:0, n:0});
-    c.x += x; c.y += y; c.n++;
-    c.notional += n.notional;
-    if(n.comprador) c.compra += n.notional; else c.venda += n.notional;
+  // O corte e sobre o volume SOMADO da vela, nao sobre o negocio avulso. Uso a
+  // mediana das velas com fluxo: vela normal nao vira bolha, so a que destoa.
+  // Sem isso toda vela ganharia duas bolhas e viraria poluicao.
+  const somas = [];
+  chaves.forEach(k => {
+    const v = fluxoPorVela[k];
+    if(v.compra > 0) somas.push(v.compra);
+    if(v.venda  > 0) somas.push(v.venda);
   });
+  if(somas.length < 4) return;
+  somas.sort((a,b) => a-b);
+  const corte = somas[Math.floor(somas.length/2)] * 1.6;
+  const maior = somas[somas.length-1];
 
-  // do maior pro menor, e so os N maiores: em mercado agitado a tela viraria
-  // uma nuvem de circulos
-  const grupos = Object.values(celulas)
-    .map(c => ({x:c.x/c.n, y:c.y/c.n, notional:c.notional,
-                comprador:c.compra >= c.venda, n:c.n}))
-    .sort((a,b) => b.notional - a.notional)
-    .slice(0, FLUXO_MAX_DESENHO);
+  // indice das velas por tempo, pra achar a maxima e a minima de cada uma
+  const porTempo = {};
+  candles.forEach(c => { porTempo[c.time] = c; });
 
-  // Rotulos so nos maiores, e so onde nao esbarram num ja desenhado. O
-  // indicador do TradingView resolve isso separando o texto da bolha; aqui da
-  // pra simplesmente nao desenhar o que ia ficar ilegivel.
-  const rotulos = [];
-  const cabe = (x, y, larg) => !rotulos.some(r =>
-    x < r.x + r.larg + 4 && x + larg + 4 > r.x && Math.abs(y - r.y) < 11);
+  const alvos = [];
+  chaves.forEach(k => {
+    const vela = porTempo[+k];
+    if(!vela) return;
+    const v = fluxoPorVela[k];
+    if(v.compra >= corte) alvos.push({vela, notional:v.compra, comprador:true});
+    if(v.venda  >= corte) alvos.push({vela, notional:v.venda,  comprador:false});
+  });
+  // maior primeiro: quem tem direito ao lugar na tela e o fluxo que interessa
+  alvos.sort((a,b) => b.notional - a.notional);
 
-  grupos.forEach(g => {
-    const raio = raioBolha(g.notional);
-    if(!raio) return;
-    const cor = g.comprador ? "0,200,83" : "255,59,48";
+  // A referencia empilhava bolha sobre bolha ate nao dar pra ler nenhuma nem
+  // enxergar o candle embaixo. Aqui a maior desenha primeiro e a menor que
+  // cairia por cima dela e descartada — fica o mesmo desenho, legivel.
+  const postas = [];
+  const livre = (x, y, r) => !postas.some(b =>
+    Math.hypot(x-b.x, y-b.y) < (r + b.r) * 0.85);
 
+  const larguraTela = dCanvas ? dCanvas.width : 4000;
+  let desenhadas = 0;
+
+  for(const a of alvos){
+    if(desenhadas >= FLUXO_MAX_DESENHO) break;
+    const x = t2x(a.vela.time);
+    const y = p2y(a.comprador ? a.vela.high : a.vela.low);
+    if(x == null || y == null) continue;
+    if(x < -30 || x > larguraTela + 30) continue;
+
+    let raio = raioBolhaVela(a.notional, corte, maior);
+    if(!raio) continue;
+    // o numero manda no tamanho minimo: a bolha cresce ate ele caber dentro,
+    // em vez de ficar muda ou de deixar o texto vazar pra fora
+    const txt = fmtBolha(a.notional);
+    const fonte = raio >= 19 ? 10 : raio >= 16 ? 9 : 8;
+    dCtx.font = fonte+"px ui-monospace, monospace";
+    raio = Math.min(26, Math.max(raio, dCtx.measureText(txt).width/2 + 5));
+    // compra sobe da maxima, venda desce da minima; afastada do pavio uns
+    // pixels pra nao encostar no candle
+    const yy = a.comprador ? y - raio - 3 : y + raio + 3;
+    if(!livre(x, yy, raio)) continue;
+    postas.push({x, y:yy, r:raio});
+    desenhadas++;
+
+    const cor = a.comprador ? "0,200,83" : "255,59,48";
     dCtx.beginPath();
-    dCtx.arc(g.x, g.y, raio, 0, Math.PI*2);
-    dCtx.fillStyle = "rgba("+cor+",0.22)";
+    dCtx.arc(x, yy, raio, 0, Math.PI*2);
+    dCtx.fillStyle = "rgba("+cor+",0.34)";
     dCtx.fill();
-    dCtx.lineWidth = 1;
-    dCtx.strokeStyle = "rgba("+cor+",0.75)";
+    dCtx.lineWidth = 1.2;
+    dCtx.strokeStyle = "rgba("+cor+",0.9)";
     dCtx.stroke();
 
-    if(raio >= 7.5){
-      const txt = fmtNotional(g.notional) + (g.n > 1 ? " ("+g.n+")" : "");
-      dCtx.font = "9px ui-monospace, monospace";
-      const larg = dCtx.measureText(txt).width;
-      const tx = g.x + raio + 3, ty = g.y + 3;
-      if(cabe(tx, ty, larg)){
-        rotulos.push({x:tx, y:ty, larg});
-        dCtx.fillStyle = "rgba("+cor+",0.95)";
-        dCtx.textAlign = "left";
-        dCtx.fillText(txt, tx, ty);
-      }
-    }
-  });
+    // o volume vai DENTRO da bolha, como na referencia. O contorno escuro e
+    // porque o mesmo branco tem que ser legivel no tema claro e no escuro,
+    // sobre verde ou sobre vermelho; lineJoin redondo senao o vertice do "M"
+    // cospe duas farpas pra cima.
+    dCtx.textAlign = "center";
+    dCtx.textBaseline = "middle";
+    dCtx.lineWidth = 2.2;
+    dCtx.lineJoin = "round";
+    dCtx.miterLimit = 2;
+    dCtx.strokeStyle = "rgba(0,0,0,0.55)";
+    dCtx.strokeText(txt, x, yy);
+    dCtx.fillStyle = "#fff";
+    dCtx.fillText(txt, x, yy);
+    dCtx.lineJoin = "miter";
+    dCtx.textAlign = "left";
+    dCtx.textBaseline = "alphabetic";
+  }
 }
+
+// Raio proporcional ao quanto a vela destoa, do corte ate a maior do momento.
+// Area proporcional (dai a raiz): dobrar o volume dobra a mancha, nao o raio.
+// Piso de 13px porque abaixo disso o valor nao cabe dentro e a bolha vira um
+// ponto mudo; teto de 24px porque acima disso ela come o candle — que e
+// justamente o defeito da referencia.
+function raioBolhaVela(notional, corte, maior){
+  if(notional < corte) return 0;
+  const teto = Math.max(maior || 0, corte * 1.2);
+  const f = Math.min(1, Math.sqrt((notional - corte) / (teto - corte)));
+  return 13 + f * 11;
+}
+
+// Versao curta pro rotulo de dentro: uma casa decimal em vez de duas. "24.6M"
+// cabe numa bolha onde "24.57M" ja nao cabia.
+function fmtBolha(v){
+  const a = Math.abs(v);
+  if(a >= 1e9) return (v/1e9).toFixed(1)+"B";
+  if(a >= 1e6) return (v/1e6).toFixed(1)+"M";
+  if(a >= 1e3) return (v/1e3).toFixed(0)+"k";
+  return v.toFixed(0);
+}
+
 window.desenhaBolhas = desenhaBolhas;
 
 function toggleBolhas(){
@@ -4479,6 +4539,291 @@ function montaRelatorio(){
     }
   };
 }
+
+// ══════════════════════════════════════════════════════
+// RELATORIO EM PDF
+// ══════════════════════════════════════════════════════
+// Sem biblioteca. Monto o documento numa janela propria e chamo o print do
+// navegador, que oferece "Salvar como PDF" — dependencia zero, e o desenho
+// fica sob controle total do CSS, o que uma lib de PDF nao daria de graca.
+//
+// O JSON continua existindo pro agente de analise ler. O PDF e pra pessoa: a
+// capa, a leitura de mercado, o que pesa contra e as suas observacoes.
+
+function pdfFmt(v, casas){
+  if(v == null || !isFinite(v)) return "--";
+  return (v >= 0 ? "" : "") + Number(v).toFixed(casas == null ? 2 : casas);
+}
+function pdfSinal(v, casas){
+  if(v == null || !isFinite(v)) return "--";
+  return (v >= 0 ? "+" : "") + Number(v).toFixed(casas == null ? 1 : casas);
+}
+function pdfEsc(t){
+  return String(t == null ? "" : t)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+// Barra horizontal centrada em zero, pra leitura de forca e pressao sem
+// precisar interpretar o numero.
+function pdfBarra(pct, cor){
+  const p = Math.max(-100, Math.min(100, pct || 0));
+  const larg = Math.abs(p) / 2;
+  const esq = p >= 0 ? 50 : 50 - larg;
+  return '<div class="barra"><span class="zero"></span>'
+    + '<span class="preenche" style="left:'+esq+'%;width:'+larg+'%;background:'+cor+'"></span></div>';
+}
+
+function montaHtmlPdf(){
+  const r = retratoDoAtivo();
+  const d = new Date();
+  const dataLonga = d.toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"});
+  const hora = d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
+  const ativo = (r.ativo||"").replace("USDT","");
+  const dir = r.direcao || {};
+  const corEstado = dir.estado === "alta" ? "#00A85A" : dir.estado === "baixa" ? "#D93025" : "#B7791F";
+
+  // ── direcao: uma linha por media
+  const medias = Object.keys(dir.angulos||{}).map(k => {
+    const v = dir.angulos[k];
+    const cor = v == null ? "#8a8a8a" : (v >= 0 ? "#00A85A" : "#D93025");
+    return '<tr><td class="k">'+k.toUpperCase()+'</td>'
+      + '<td class="v" style="color:'+cor+'">'+pdfSinal(v,1)+'&deg;</td></tr>';
+  }).join("");
+
+  // ── forca do fluxo
+  let forcaBloco = '<p class="vazio">Sem negocios ao vivo capturados nesta sessao.</p>';
+  try{
+    const f = forcaDoFluxo(20);
+    if(f && (f.compra + f.venda) > 0){
+      const c = p => p >= 15 ? "#00A85A" : (p <= -15 ? "#D93025" : "#B7791F");
+      forcaBloco =
+        '<div class="rot">vela atual <b style="color:'+c(f.pressao_vela)+'">'+pdfSinal(f.pressao_vela)+'%</b></div>'
+        + pdfBarra(f.pressao_vela, c(f.pressao_vela))
+        + '<div class="rot">ultimas '+f.velas+' velas <b style="color:'+c(f.pressao)+'">'+pdfSinal(f.pressao)+'%</b></div>'
+        + pdfBarra(f.pressao, c(f.pressao))
+        + '<p class="nota">Agressao compradora contra vendedora. Mede quem esta pagando '
+        + 'para entrar, e nao o preco — preco subindo com pressao negativa e alta sem comprador convicto.</p>';
+    }
+  }catch(e){}
+
+  // ── placar
+  const placar = (r.placar||[]).length
+    ? '<table class="tab"><thead><tr><th>sinal</th><th>vezes</th><th>acerto</th><th>PF</th><th>media</th></tr></thead><tbody>'
+      + r.placar.map(p => '<tr><td>'+pdfEsc(p.sinal)+'</td><td>'+p.ocorrencias+'</td>'
+        + '<td>'+pdfFmt(p.acerto_pct,0)+'%</td><td>'+(p.profit_factor==null?"--":pdfFmt(p.profit_factor,2))+'</td>'
+        + '<td style="color:'+(p.media_R>=0?"#00A85A":"#D93025")+'"><b>'+pdfSinal(p.media_R,2)+'R</b></td></tr>').join("")
+      + '</tbody></table><p class="nota">'+pdfEsc(r.placar_regua)
+      + '. A media em R decide, nao o acerto: muito ganho pequeno pago por poucas perdas grandes tambem da acerto alto.</p>'
+    : '<p class="vazio">Sem sinais suficientes no historico carregado.</p>';
+
+  // ── contra-argumento
+  const contra = (r.contra_argumentos||[]).length
+    ? '<ul class="contra">' + r.contra_argumentos.map(x =>
+        '<li class="'+(x.peso>=2?"forte":"leve")+'"><b>'+pdfEsc(x.argumento)+'</b>'
+        + '<span>'+pdfEsc(x.porque)+'</span></li>').join("") + '</ul>'
+    : '<p class="ok">Nada pesando contra no momento.</p>';
+
+  // ── fibo: so os niveis relevantes, nao os 29
+  let fibo = '<p class="vazio">Nenhum fibo desenhado.</p>';
+  if(r.fibo && r.fibo.niveis){
+    const uteis = r.fibo.niveis.filter(n => n.nivel >= 0 && n.nivel <= 4.7);
+    fibo = '<table class="tab"><thead><tr><th>nivel</th><th>preco</th><th>estado</th></tr></thead><tbody>'
+      + uteis.map(n => '<tr><td>'+n.nivel+'</td><td>'+pdfFmt(n.preco)+'</td>'
+        + '<td>'+(n.atingido?'<span class="tag ok">atingido</span>':'<span class="tag">aguarda</span>')
+        + (n.alarme?' <span class="tag alarme">alarme</span>':'')+'</td></tr>').join("")
+      + '</tbody></table>';
+  }
+
+  // ── ate onde o fibo costuma ir
+  let fibHist = "";
+  if(r.fibo_historico && r.fibo_historico.total){
+    const h = r.fibo_historico;
+    const linhas = h.niveis.filter(n => n.alcancaram > 0).slice(0,6);
+    if(linhas.length){
+      fibHist = '<h2>Ate onde o fibo costuma ir</h2><table class="tab">'
+        + '<thead><tr><th>alvo</th><th>alcancaram</th><th></th></tr></thead><tbody>'
+        + linhas.map(n => '<tr><td>'+n.nivel+'</td><td>'+n.pct+'% ('+n.alcancaram+' de '+h.total+')</td>'
+          + '<td><div class="minibar"><span style="width:'+Math.max(2,n.pct)+'%"></span></div></td></tr>').join("")
+        + '</tbody></table><p class="nota">De '+h.total+' ancoras arquivadas. '
+        + 'Perseguir o alvo distante so vale se o historico mostrar que ele costuma ser alcancado.</p>';
+    }
+  }
+
+  // ── escada do RSI
+  const rsi = r.rsi
+    ? '<table class="tab"><thead><tr><th>RSI</th><th>preco necessario</th></tr></thead><tbody>'
+      + r.rsi.escada.map(e => '<tr'+(e.nivel===50?' class="agua"':'')+'><td>'+e.nivel
+        + (e.nivel===30?' (OS)':e.nivel===70?' (OB)':e.nivel===50?' (agua)':'')+'</td>'
+        + '<td>'+(e.preco_necessario==null?"--":pdfFmt(e.preco_necessario))+'</td></tr>').join("")
+      + '</tbody></table><p class="nota">RSI atual '+pdfFmt(r.rsi.atual,1)+'. O preco que leva o RSI(14) a cada nivel.</p>'
+    : '<p class="vazio">Sem dados de RSI.</p>';
+
+  // ── observacoes
+  const obs = (observacoes||[]).length
+    ? observacoes.slice().reverse().map(o => {
+        const q = new Date(o.retrato.momento).toLocaleString("pt-BR",
+          {day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
+        const e = (o.retrato.direcao && o.retrato.direcao.estado) || "--";
+        return '<div class="obs"><div class="obs-cab">'+q
+          + ' &middot; '+pdfEsc(e)+' &middot; '+pdfFmt(o.retrato.preco)+'</div>'
+          + '<div class="obs-txt">'+pdfEsc(o.observacao)+'</div></div>';
+      }).join("")
+    : '<p class="vazio">Nenhuma observacao guardada para este ativo.</p>';
+
+  const multi = (r.multi_tf||[]).length
+    ? '<table class="tab"><thead><tr><th>tempo</th><th>soma</th><th>estado</th></tr></thead><tbody>'
+      + r.multi_tf.map(m => '<tr><td>'+pdfEsc(m.tempo).toUpperCase()+'</td>'
+        + '<td style="color:'+(m.soma>=0?"#00A85A":"#D93025")+'"><b>'+pdfSinal(m.soma)+'&deg;</b></td>'
+        + '<td>'+pdfEsc(m.estado)+'</td></tr>').join("") + '</tbody></table>'
+    : "";
+
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<title>Vectra — ${pdfEsc(ativo)} ${pdfEsc(r.timeframe)}</title>
+<style>
+  @page { size: A4; margin: 16mm 14mm; }
+  *{box-sizing:border-box;}
+  body{margin:0;font:11px/1.5 "Segoe UI",system-ui,-apple-system,sans-serif;color:#1a1d23;}
+
+  /* CAPA — pagina inteira, fundo escuro. O print do Chrome so pinta fundo com
+     print-color-adjust:exact, senao a capa sai branca. */
+  .capa{position:relative;height:calc(100vh - 32mm);min-height:245mm;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;text-align:center;
+    background:#0b0e13;color:#fff;margin:-16mm -14mm 0;padding:16mm 14mm;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact;page-break-after:always;}
+  .capa img{width:150px;height:150px;border-radius:50%;object-fit:cover;
+    box-shadow:0 0 0 2px rgba(245,166,35,.55),0 0 60px rgba(245,166,35,.28);margin-bottom:26px;}
+  .marca{font-size:34px;font-weight:800;letter-spacing:9px;color:#F5A623;margin:0;}
+  .marca-sub{font-size:9px;letter-spacing:5px;color:#8a93a3;margin:6px 0 40px;text-transform:uppercase;}
+  .capa-ativo{font-size:44px;font-weight:800;letter-spacing:2px;margin:0;}
+  .capa-tf{font-size:13px;color:#8a93a3;letter-spacing:3px;margin:6px 0 34px;text-transform:uppercase;}
+  .capa-preco{font-size:20px;font-family:ui-monospace,monospace;color:#F5A623;}
+  .capa-estado{display:inline-block;margin-top:18px;padding:6px 20px;border-radius:20px;
+    font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;}
+  /* sem o position:relative na capa esta data ancorava no body e vazava por
+     cima do corpo do documento */
+  .capa-data{position:absolute;left:0;right:0;bottom:20mm;text-align:center;
+    font-size:9px;color:#6b7280;letter-spacing:2px;}
+
+  h1{font-size:15px;margin:0 0 2px;letter-spacing:.5px;}
+  .sub{font-size:9px;color:#6b7280;margin:0 0 16px;letter-spacing:1px;text-transform:uppercase;}
+  h2{font-size:11px;text-transform:uppercase;letter-spacing:1.6px;color:#6b7280;
+    margin:20px 0 7px;padding-bottom:4px;border-bottom:1px solid #e3e6ea;}
+  section{page-break-inside:avoid;}
+
+  .tab{width:100%;border-collapse:collapse;font-size:10px;}
+  .tab th{text-align:left;font-weight:600;color:#6b7280;font-size:8.5px;
+    text-transform:uppercase;letter-spacing:.8px;padding:3px 6px;border-bottom:1px solid #e3e6ea;}
+  .tab td{padding:3px 6px;border-bottom:1px solid #f1f3f5;}
+  .tab tr.agua td{background:#fafbfc;font-weight:600;}
+  td.k{color:#6b7280;} td.v{font-family:ui-monospace,monospace;font-weight:700;text-align:right;}
+
+  .duas{display:flex;gap:22px;} .duas>*{flex:1;min-width:0;}
+
+  .barra{position:relative;height:9px;background:#eef0f2;border-radius:5px;margin:3px 0 10px;}
+  .barra .zero{position:absolute;left:50%;top:-2px;width:1px;height:13px;background:#c9ced6;}
+  .barra .preenche{position:absolute;height:100%;border-radius:5px;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  .rot{font-size:9px;color:#6b7280;}
+  .minibar{height:6px;background:#eef0f2;border-radius:3px;overflow:hidden;}
+  .minibar span{display:block;height:100%;background:#377cfc;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact;}
+
+  .contra{list-style:none;padding:0;margin:0;}
+  .contra li{padding:6px 9px;margin-bottom:5px;border-left:3px solid #B7791F;background:#fcfbf7;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  .contra li.forte{border-left-color:#D93025;background:#fdf7f6;}
+  .contra li b{display:block;font-size:10px;}
+  .contra li span{display:block;font-size:8.5px;color:#6b7280;margin-top:2px;}
+  .ok{color:#00A85A;font-size:10px;}
+  .vazio{color:#9aa1ab;font-size:9.5px;font-style:italic;}
+  .nota{font-size:8.5px;color:#6b7280;margin:5px 0 0;line-height:1.45;}
+
+  .tag{font-size:8px;padding:1px 6px;border-radius:9px;background:#eef0f2;color:#6b7280;}
+  .tag.ok{background:#e6f6ed;color:#00A85A;} .tag.alarme{background:#fdf3e3;color:#B7791F;}
+
+  .obs{border-left:2px solid #F5A623;padding:5px 10px;margin-bottom:8px;background:#fdfcfa;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact;page-break-inside:avoid;}
+  .obs-cab{font-size:8px;color:#9aa1ab;letter-spacing:.5px;text-transform:uppercase;}
+  .obs-txt{font-size:10.5px;margin-top:2px;}
+
+  .rodape{margin-top:26px;padding-top:8px;border-top:1px solid #e3e6ea;
+    font-size:8px;color:#9aa1ab;line-height:1.6;}
+</style></head><body>
+
+<div class="capa">
+  <img src="${location.origin}${location.pathname.replace(/[^/]*$/,'')}vectra-icon.png" alt="">
+  <p class="marca">VECTRA</p>
+  <p class="marca-sub">Global Data Intelligence</p>
+  <p class="capa-ativo">${pdfEsc(ativo)}</p>
+  <p class="capa-tf">${pdfEsc(r.timeframe)} &middot; leitura de mercado</p>
+  <p class="capa-preco">${pdfFmt(r.preco)}</p>
+  <div><span class="capa-estado" style="background:${corEstado};color:#fff;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact;">
+    ${pdfEsc(dir.estado||"sem leitura")}</span></div>
+  <p class="capa-data">${dataLonga} &middot; ${hora}</p>
+</div>
+
+<h1>${pdfEsc(ativo)} &middot; ${pdfEsc(r.timeframe)}</h1>
+<p class="sub">${dataLonga} as ${hora} &middot; ${r.velas_carregadas} velas &middot; fonte ${pdfEsc(r.fonte||"--")}</p>
+
+<div class="duas">
+  <section>
+    <h2>Direcao</h2>
+    <table class="tab"><tbody>${medias}
+      <tr><td class="k"><b>soma</b></td>
+        <td class="v" style="color:${corEstado}"><b>${pdfSinal(dir.soma)}&deg;</b></td></tr>
+      <tr><td class="k">liberacao</td><td class="v">${pdfEsc(dir.liberacao||"nao liberado")}</td></tr>
+    </tbody></table>
+    <p class="nota">Liberado quando EMA8 e EMA16 estao as duas do mesmo lado da MA89 e da EMA200.</p>
+  </section>
+  <section>
+    <h2>Forca do fluxo</h2>
+    ${forcaBloco}
+  </section>
+</div>
+
+<section><h2>O que pesa contra</h2>${contra}</section>
+<section><h2>Placar dos sinais</h2>${placar}</section>
+${multi ? '<section><h2>Multi-timeframe</h2>'+multi+'</section>' : ''}
+<section>${fibHist}</section>
+<div class="duas">
+  <section><h2>Fibonacci</h2>${fibo}</section>
+  <section><h2>Escada do RSI</h2>${rsi}</section>
+</div>
+<section><h2>Observacoes</h2>${obs}</section>
+
+<div class="rodape">
+  Gerado pelo Atlas Dashboard em ${dataLonga} as ${hora}.
+  Os numeros sao do historico carregado no momento da geracao e nao constituem
+  recomendacao de investimento &mdash; sao leitura de dados para apoiar a sua decisao.
+</div>
+</body></html>`;
+}
+
+function geraPdf(){
+  const w = window.open("", "_blank");
+  if(!w){
+    if(typeof showInfoToast === "function") showInfoToast("PDF","o navegador bloqueou a janela — libere o pop-up");
+    return;
+  }
+  w.document.write(montaHtmlPdf());
+  w.document.close();
+  // espera a imagem da capa carregar, senao o print sai sem ela
+  const imprimir = () => { try{ w.focus(); w.print(); }catch(e){} };
+  const img = w.document.querySelector(".capa img");
+  if(img && !img.complete){
+    img.onload = imprimir;
+    img.onerror = imprimir;
+    setTimeout(imprimir, 2500);   // nao deixa preso se a imagem nunca resolver
+  }else{
+    setTimeout(imprimir, 300);
+  }
+  if(typeof showInfoToast === "function"){
+    showInfoToast("PDF","escolha 'Salvar como PDF' no destino da impressao");
+  }
+}
+window.geraPdf = geraPdf;
+window.montaHtmlPdf = montaHtmlPdf;
 
 function baixaRelatorio(){
   const dados=JSON.stringify(montaRelatorio(),null,2);
