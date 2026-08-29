@@ -115,9 +115,26 @@
   var TETO_MS=13000;    // teto absoluto: 8s de video + respiro + fechamento
                         // dao ~9,7s, entao 13s ja e folga. Acima disso o que
                         // o usuario ve e so uma tela preta.
-  var tempoOk=false, appOk=false;
+  var PISO_MS=3200;     // chao da abertura quando o video nao toca. O canvas
+                        // so solta os raios em 0,95s e o ribbon em 2,35s: sem
+                        // esse piso, quem cai numa saida de emergencia
+                        // (autoplay barrado, mp4 que nao chega) via a abertura
+                        // cortada em 0,7s. Medido num iPhone emulado com o
+                        // autoplay bloqueado: o splash comecava a fechar aos
+                        // 735ms. E o que faz a abertura do celular sair
+                        // diferente da do computador.
+  var tempoOk=false, appOk=false, agendado=false;
+  var inicioAbertura=performance.now();
   function sair(){if(tempoOk&&appOk)dismiss();}
-  function liberarTempo(){if(!tempoOk){tempoOk=true;sair();}}
+  // Toda saida de emergencia passa por aqui, entao o piso vale pra todas de
+  // uma vez. O caminho normal (video inteiro, ~8s) chega bem depois do piso e
+  // nao espera nada.
+  function liberarTempo(){
+    if(tempoOk||agendado)return;
+    var falta=PISO_MS-(performance.now()-inicioAbertura);
+    if(falta>16){agendado=true;setTimeout(function(){tempoOk=true;sair();},falta);return;}
+    tempoOk=true;sair();
+  }
 
   // Medido: com "load" o splash so podia sair depois do ULTIMO recurso da
   // pagina — o script do unpkg e o proprio mp4 inclusos. Numa rede lenta isso
@@ -207,9 +224,21 @@
     // ao contrario do clientWidth, nunca devolve uma caixa parcial durante o
     // layout inicial. Medir pela caixa fazia um quadro sair com metade da
     // largura e a explosao aparecia com duas origens.
+    // Mede pela caixa do proprio canvas quando ela ja existe, e so cai na
+    // viewport enquanto ela ainda e zero (o primeiro quadro pode chegar antes
+    // do layout — foi por isso que um dia se mediu a janela). No iOS os dois
+    // numeros nao batem: o elemento e fixed inset:0, entao a altura em CSS e a
+    // da janela com a barra de endereco recolhida, enquanto innerHeight e a
+    // altura visivel AGORA, com a barra na tela. Desenhar no segundo dentro de
+    // uma caixa do primeiro estica a abertura na vertical e sobe o centro — a
+    // explosao saindo de um ponto que nao e o do totem.
     function medir(){
-      var nl2=window.innerWidth, na=window.innerHeight;
+      var nl2=cv.clientWidth||window.innerWidth, na=cv.clientHeight||window.innerHeight;
       if(nl2===L&&na===A) return;
+      // no iOS a barra de endereco recolhe na rolagem e dispara resize por uns
+      // 60-90px de altura; refazer o buffer por isso limpa o canvas e a
+      // abertura pisca no meio
+      if(nl2===L&&A&&Math.abs(na-A)<120) return;
       L=nl2; A=na;
       dpr=Math.min(window.devicePixelRatio||1,1.5); // acima de 1.5 o ganho e nulo
       cv.width=Math.round(L*dpr); cv.height=Math.round(A*dpr);
