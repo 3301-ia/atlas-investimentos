@@ -1108,6 +1108,118 @@ window.serieCVD = serieCVD;
 window.divergenciaCVD = divergenciaCVD;
 
 // ══════════════════════════════════════════════════════
+// MUDANCA DE CARATER (CHoCH) — o dourado
+// ══════════════════════════════════════════════════════
+// O dourado deixou de ser "maior volume do dia" e passou a marcar o ponto em
+// que o mercado TROCA DE COMPORTAMENTO: depois de uma sequencia de topos e
+// fundos descendentes, o preco fecha acima do ultimo topo confirmado — ali a
+// baixa parou de fazer o que estava fazendo. E vice-versa.
+//
+// Isso e diferente de "volume grande". Volume grande acontece o tempo todo
+// dentro de uma tendencia. A mudanca de carater acontece uma vez, na virada, e
+// e o unico ponto do grafico onde a estrutura muda de fato.
+//
+// Prata (semana) e roxo (mes) continuam sendo recorde de volume: aqueles sao
+// registros, este e um evento.
+
+// Pivo = topo com K velas mais baixas de cada lado (e o espelho pro fundo).
+// K=4 e o meio-termo: menos que isso pega ruido, mais que isso so confirma a
+// virada tarde demais pra servir.
+const CHOCH_K = 4;
+
+function achaPivos(velas, k){
+  const K = k || CHOCH_K;
+  const altos = [], baixos = [];
+  for(let i=K;i<velas.length-K;i++){
+    let ehAlto = true, ehBaixo = true;
+    for(let j=i-K;j<=i+K;j++){
+      if(j===i) continue;
+      if(velas[j].high >= velas[i].high) ehAlto = false;
+      if(velas[j].low  <= velas[i].low)  ehBaixo = false;
+      if(!ehAlto && !ehBaixo) break;
+    }
+    if(ehAlto)  altos.push(i);
+    if(ehBaixo) baixos.push(i);
+  }
+  return {altos, baixos};
+}
+
+// Percorre o historico guardando o ultimo topo e o ultimo fundo JA CONFIRMADOS
+// (um pivo so existe K velas depois dele, entao nada aqui olha pro futuro) e a
+// direcao vigente. A troca sai quando o preco fecha do outro lado do pivo que
+// contraria a direcao.
+function calculaMudancaCarater(velas){
+  const marcas = {};   // indice -> 'alta' | 'baixa'
+  if(!velas || velas.length < CHOCH_K*4) return marcas;
+  const {altos, baixos} = achaPivos(velas, CHOCH_K);
+
+  // pivo -> a partir de que vela ele pode ser usado (ele so se confirma depois)
+  const confirmaAlto = {}, confirmaBaixo = {};
+  altos.forEach(i => { confirmaAlto[i+CHOCH_K] = i; });
+  baixos.forEach(i => { confirmaBaixo[i+CHOCH_K] = i; });
+
+  // mediana do volume das ultimas 100 velas ate i — o que conta como "com
+  // volume" muda ao longo do historico, entao a referencia anda junto
+  const vols = velas.map(volumeDaVela);
+  const mediana = (i) => {
+    const de = Math.max(0, i-99);
+    const fatia = vols.slice(de, i+1).filter(v=>v>0).sort((a,b)=>a-b);
+    if(!fatia.length) return 0;
+    return fatia[Math.floor(fatia.length/2)];
+  };
+
+  let topo = null, fundo = null;          // indices dos ultimos pivos confirmados
+  let topoAnt = null, fundoAnt = null;    // os anteriores, pra saber a direcao
+  let direcao = null;
+
+  // a ultima vela fica de fora ate fechar: o rompimento so vale com o fechamento
+  // dela, e o teste e sobre o volume dela, que ainda esta crescendo
+  const ultima = velas.length - 1;
+  for(let i=0;i<velas.length;i++){
+    if(i === ultima) break;
+    if(confirmaAlto[i]!=null){ topoAnt = topo; topo = confirmaAlto[i]; }
+    if(confirmaBaixo[i]!=null){ fundoAnt = fundo; fundo = confirmaBaixo[i]; }
+
+    // Direcao pela sequencia dos pivos. Exigir os QUATRO (dois topos e dois
+    // fundos) antes de ter direcao era estrito demais: num trecho com poucos
+    // pivos a direcao nunca chegava a existir, e sem direcao nao ha o que
+    // mudar. Agora basta um par do mesmo tipo; com os dois pares, eles
+    // precisam concordar, e quando discordam a direcao anterior continua
+    // valendo — que e o certo, porque discordancia e indefinicao, nao virada.
+    let dirTopo = null, dirFundo = null;
+    if(topo!=null && topoAnt!=null)   dirTopo  = velas[topo].high > velas[topoAnt].high ? 1 : -1;
+    if(fundo!=null && fundoAnt!=null) dirFundo = velas[fundo].low  > velas[fundoAnt].low  ? 1 : -1;
+    if(dirTopo!=null && dirFundo!=null){
+      if(dirTopo === dirFundo) direcao = dirTopo > 0 ? "alta" : "baixa";
+    }else if(dirTopo!=null)  direcao = dirTopo  > 0 ? "alta" : "baixa";
+    else if(dirFundo!=null)  direcao = dirFundo > 0 ? "alta" : "baixa";
+    if(!direcao) continue;
+
+    // A TROCA: fechar do outro lado do pivo que contraria a direcao vigente.
+    //
+    // E COM VOLUME ATRAS. O volume continua sendo a substancia do dourado — o
+    // que muda e que ele so vale quando marca a virada. Romper um topo com
+    // volume de vela morta nao e mudanca de carater, e um espirro: o preco
+    // passou por ali porque nao havia ninguem, e volta pelo mesmo motivo.
+    const rompeuAlta  = direcao === "baixa" && topo!=null  && velas[i].close > velas[topo].high;
+    const rompeuBaixa = direcao === "alta"  && fundo!=null && velas[i].close < velas[fundo].low;
+    if(rompeuAlta || rompeuBaixa){
+      if(volumeDaVela(velas[i]) < mediana(i)){
+        // rompeu sem volume: a estrutura muda na conta, mas nao vira dourado
+        if(rompeuAlta){ direcao="alta"; topoAnt=topo; topo=null; }
+        else { direcao="baixa"; fundoAnt=fundo; fundo=null; }
+        continue;
+      }
+      marcas[i] = rompeuAlta ? "alta" : "baixa";
+      if(rompeuAlta){ direcao="alta"; topoAnt=topo; topo=null; }
+      else { direcao="baixa"; fundoAnt=fundo; fundo=null; }
+    }
+  }
+  return marcas;
+}
+window.calculaMudancaCarater = calculaMudancaCarater;
+
+// ══════════════════════════════════════════════════════
 // MARCOS DE VOLUME — a maior vela do dia, da semana e do mes
 // ══════════════════════════════════════════════════════
 // A bolha diz quanto foi o volume de cada vela. Isto aqui diz outra coisa:
@@ -1125,11 +1237,15 @@ window.divergenciaCVD = divergenciaCVD;
 // "maior vela do dia" — cada vela JA e um mes. Sem essa guarda toda vela do 1M
 // viraria marco dos tres de uma vez.
 const MARCO_CORES = {
-  dia:    {corpo:'#E8A317', halo:'255,196,60',  nome:'dia'},
-  semana: {corpo:'#9AA4B0', halo:'220,228,238', nome:'semana'},
-  mes:    {corpo:'#A855F7', halo:'190,120,255', nome:'mes'},
+  carater: {corpo:'#E8A317', halo:'255,196,60',  nome:'mudanca de carater'},
+  semana:  {corpo:'#9AA4B0', halo:'220,228,238', nome:'maior volume da semana'},
+  mes:     {corpo:'#A855F7', halo:'190,120,255', nome:'maior volume do mes'},
 };
-const MARCO_ORDEM = {dia:1, semana:2, mes:3};
+// O dourado vem por ultimo na ordem de precedencia: quando a mudanca de
+// carater cai na mesma vela que um recorde de volume, e ela que manda. O
+// recorde diz "muita gente negociou"; a mudanca diz "o mercado virou", e essa
+// e a informacao mais rara das duas.
+const MARCO_ORDEM = {semana:1, mes:2, carater:3};
 
 function chaveDoPeriodo(timeSeg, periodo){
   const d = new Date(timeSeg*1000);
@@ -1154,15 +1270,20 @@ function volumeDaVela(c){
 function calculaMarcosVolume(velas, tfSeg){
   const marcas = {};   // indice da vela -> 'dia' | 'semana' | 'mes'
   if(!velas || velas.length < 3) return marcas;
+  // 'dia' saiu: o dourado agora e a mudanca de carater, que e evento de
+  // estrutura e nao recorde de volume. Prata e roxo continuam sendo recorde.
   const periodos = [];
-  if(tfSeg < 86400)   periodos.push('dia');
   if(tfSeg < 604800)  periodos.push('semana');
   if(tfSeg < 2592000) periodos.push('mes');
   if(!periodos.length) return marcas;
 
   periodos.forEach(periodo => {
     const melhorPorChave = {};
+    const ultima = velas.length - 1;
     velas.forEach((c,i) => {
+      // a vela em formacao tem volume parcial: nao pode disputar recorde do
+      // periodo, senao ela ganha e perde o titulo enquanto se forma
+      if(i === ultima) return;
       const v = volumeDaVela(c);
       if(!(v > 0)) return;
       const k = chaveDoPeriodo(c.time, periodo);
@@ -1209,8 +1330,9 @@ function marcoQualificado(idx, score, rsiArr){
 // do metal. Como isto vai no canvas de tras, a vela de verdade e pintada por
 // cima e cobre o preenchimento: o que sobra visivel e so o borrao que escapa
 // pelas beiradas. O brilho fica colado no contorno, do tamanho da vela.
-function pintaBrilhoMarcos(ctx, larguraCss, velas, marcas, qualificados, t2xFn, p2yFn){
+function pintaBrilhoMarcos(ctx, larguraCss, velas, marcas, qualificados, t2xFn, p2yFn, alturaCss){
   if(!ctx || !marcas) return 0;
+  const alt = (alturaCss && alturaCss > 10) ? alturaCss : 1e6;
   const chaves = Object.keys(marcas);
   if(!chaves.length) return 0;
 
@@ -1235,6 +1357,8 @@ function pintaBrilhoMarcos(ctx, larguraCss, velas, marcas, qualificados, t2xFn, 
     const yH = p2yFn(vela.high), yL = p2yFn(vela.low);
     const yO = p2yFn(vela.open), yC = p2yFn(vela.close);
     if(yH == null || yL == null || yO == null || yC == null) return;
+    // fora da faixa de preco visivel: nao pinta (mesma razao do recorte das bolhas)
+    if(Math.max(yH,yL) < -40 || Math.min(yH,yL) > alt + 40) return;
 
     const cfg = MARCO_CORES[marcas[i]];
     const forte = qualificados && qualificados[i];
@@ -1377,9 +1501,18 @@ function refreshPhiRibbonAndBorders(){
   const e200Arr = ema(candles.map(c=>c.close), 200);
   const exaustao = serieExaustao(candles, rsiArr, e200Arr);
   marcosVolume = calculaMarcosVolume(candles, tfToSeconds(currentTF));
+
+  // a mudanca de carater entra por cima: ela ganha da semana e do mes
+  mudancasCarater = calculaMudancaCarater(candles);
+  Object.keys(mudancasCarater).forEach(k => { marcosVolume[k] = 'carater'; });
+
   marcosFortes = {};
   Object.keys(marcosVolume).forEach(k=>{
-    if(marcoQualificado(+k, scorePerBar[+k], rsiArr)) marcosFortes[k]=true;
+    // a mudanca de carater ja e o evento raro: brilha forte sempre. Os
+    // recordes de volume so brilham forte quando caem em momento frio com o
+    // RSI virando.
+    if(marcosVolume[k] === 'carater' || marcoQualificado(+k, scorePerBar[+k], rsiArr))
+      marcosFortes[k]=true;
   });
 
   // O CORPO leva a temperatura do ribbon; a BORDA guarda se a vela fechou em
@@ -1482,7 +1615,13 @@ async function fetchOlderBatch(){
     const d=await r.json();
     if(sym!==currentSym||tf!==currentTF)return false;
     if(!d.length){noMoreHistory=true;return false;}
-    const older=d.map(k=>({time:Math.floor(k[0]/1000),open:+k[1],high:+k[2],low:+k[3],close:+k[4],volume:+k[5]}))
+    // os indices 7 e 10 (volume em dolar e parte compradora) vinham na resposta
+    // e eram descartados aqui — so o carregamento inicial os lia. Resultado: ao
+    // rolar pra tras, as velas antigas entravam sem lado agressor e ficavam sem
+    // bolha nenhuma, e o corte do percentil passava a misturar velas com e sem
+    // o dado.
+    const older=d.map(k=>({time:Math.floor(k[0]/1000),open:+k[1],high:+k[2],low:+k[3],close:+k[4],volume:+k[5],
+        compra:+k[10]||0, venda:Math.max(0,(+k[7]||0)-(+k[10]||0))}))
       .filter(c=>c.time<oldest);
     if(!older.length){noMoreHistory=true;return false;}
 
@@ -3200,11 +3339,13 @@ function desenhaBolhasMulti(sym){
 
   // o brilho antes das bolhas, e antes da saida por falta de fluxo: o marco sai
   // do volume da propria vela e existe mesmo sem o corte agressor
-  try{ pintaBrilhoMarcos(mc.bctx, mc.el.clientWidth, mc.candles, mc.marcos||{}, null, t2, p2); }catch(e){}
+  let altMini = mc.el.clientHeight || 4000;
+  try{ altMini -= ts.height() || 0; }catch(e){}
+  try{ pintaBrilhoMarcos(mc.bctx, mc.el.clientWidth, mc.candles, mc.marcos||{}, null, t2, p2, altMini); }catch(e){}
 
   if(!bolhasLigadas) return;
   if(!mc.bolhas.alvos.length) return;
-  pintaBolhas(mc.bctx, mc.el.clientWidth, mc.bolhas.alvos, mc.bolhas.corte, mc.candles, t2, p2);
+  pintaBolhas(mc.bctx, mc.el.clientWidth, mc.bolhas.alvos, mc.bolhas.corte, mc.candles, t2, p2, altMini);
 }
 window.desenhaBolhasMulti = desenhaBolhasMulti;
 
@@ -4749,8 +4890,14 @@ function montaAlvosBolha(){
   const est = estatisticaFluxo();
   if(!est) return null;
 
+  // A VELA EM FORMACAO NAO ENTRA. O volume dela cresce ate o fechamento, entao
+  // a bolha mudaria de tamanho e de numero o tempo todo — e, pior, poderia
+  // ficar parada num valor parcial se o fluxo travasse. Volume so vira desenho
+  // quando a vela fecha e o numero para de mudar.
+  const ultimaVela = candles.length - 1;
   const alvos = [];
-  candles.forEach(vela => {
+  candles.forEach((vela, i) => {
+    if(i === ultimaVela) return;
     const v = fluxoPorVela[vela.time];
     if(!v) return;
     const compra = v.compra||0, venda = v.venda||0;
@@ -4773,8 +4920,13 @@ function montaAlvosBolha(){
 //
 // Recebe as funcoes de coordenada porque cada grafico tem a sua: no principal
 // sao t2x/p2y, no mini sao os metodos do proprio chart.
-function pintaBolhas(ctx, larguraCss, alvos, corte, velas, t2xFn, p2yFn){
+function pintaBolhas(ctx, larguraCss, alvos, corte, velas, t2xFn, p2yFn, alturaCss){
   if(!ctx || !alvos || !alvos.length || !velas || !velas.length) return 0;
+  // O priceToCoordinate EXTRAPOLA: pra um preco fora do range visivel ele
+  // devolve uma coordenada fora do painel, e nao null. Sem recorte em Y as
+  // bolhas das velas fora da escala eram pintadas por cima do eixo do tempo e
+  // do painel de baixo — foi assim que elas apareceram espalhadas no rodape.
+  const alt = (alturaCss && alturaCss > 10) ? alturaCss : 1e6;
 
   // Com uma bolha por vela, o espaco entre velas e o teto natural do raio:
   // metade dele e duas vizinhas encostam sem se cobrir. E o mesmo criterio que
@@ -4803,7 +4955,7 @@ function pintaBolhas(ctx, larguraCss, alvos, corte, velas, t2xFn, p2yFn){
     const x = t2xFn(a.vela.time);
     if(x == null || x < -40 || x > larguraCss + 40) continue;
     const y = p2yFn(a.comprador ? a.vela.high : a.vela.low);
-    if(y == null) continue;
+    if(y == null || y < -30 || y > alt + 30) continue;
 
     // Area proporcional ao volume (dai a raiz): dobrar o volume dobra a
     // mancha, nao o raio.
@@ -4887,8 +5039,10 @@ function pintaBolhas(ctx, larguraCss, alvos, corte, velas, t2xFn, p2yFn){
 // Monta os alvos direto de uma lista de velas que ja carrega compra/venda —
 // e o caminho dos mini-graficos, que nao tem fluxoPorVela proprio.
 function alvosDeVelas(velas){
+  const ultima = velas.length - 1;   // em formacao: fora, como no principal
   const totais = [];
-  velas.forEach(c => {
+  velas.forEach((c,i) => {
+    if(i === ultima) return;
     const t = (c.compra||0) + (c.venda||0);
     if(t > 0) totais.push(t);
   });
@@ -4896,7 +5050,8 @@ function alvosDeVelas(velas){
   totais.sort((a,b) => a-b);
   const corte = totais[Math.min(totais.length-1, Math.floor(totais.length*0.90))];
   const alvos = [];
-  velas.forEach(vela => {
+  velas.forEach((vela, i) => {
+    if(i === ultima) return;
     const compra = vela.compra||0, venda = vela.venda||0;
     const total = compra + venda;
     if(total <= 0) return;
@@ -4920,6 +5075,9 @@ function desenhaBolhas(){
   // clientWidth, nao width: o buffer e multiplicado pelo dpr e o t2x devolve
   // pixel de CSS — comparar com o buffer nunca cortava nada numa tela retina
   const larguraTela = (bCanvas && bCanvas.clientWidth) || 4000;
+  // altura util = o canvas menos a faixa do eixo do tempo, que fica embaixo
+  let alturaTela = (bCanvas && bCanvas.clientHeight) || 4000;
+  try{ alturaTela -= chart.timeScale().height() || 0; }catch(e){}
 
   // O BRILHO VEM PRIMEIRO, e NAO obedece ao botao de bolhas: a vela do marco ja
   // e pintada na cor do metal pelo refreshPhiRibbonAndBorders, que tambem
@@ -4927,7 +5085,7 @@ function desenhaBolhas(){
   // que nao e nem uma coisa nem outra. Tambem vem antes de qualquer saida por
   // falta de fluxo: o marco sai do volume da propria vela e existe ate numa
   // fonte que nao publica o lado agressor.
-  try{ pintaBrilhoMarcos(bCtx, larguraTela, candles, marcosVolume, marcosFortes, t2x, p2y); }catch(e){}
+  try{ pintaBrilhoMarcos(bCtx, larguraTela, candles, marcosVolume, marcosFortes, t2x, p2y, alturaTela); }catch(e){}
 
   if(!bolhasLigadas) return;
 
@@ -4939,7 +5097,7 @@ function desenhaBolhas(){
   }
   if(!bolhasCache || !bolhasCache.alvos.length) return;
 
-  pintaBolhas(bCtx, larguraTela, bolhasCache.alvos, bolhasCache.corte, candles, t2x, p2y);
+  pintaBolhas(bCtx, larguraTela, bolhasCache.alvos, bolhasCache.corte, candles, t2x, p2y, alturaTela);
 }
 
 
@@ -5168,6 +5326,21 @@ function retratoDoAtivo(){
     }
   }catch(e){}
 
+  // ── MUDANCA DE CARATER
+  try{
+    const idx = Object.keys(mudancasCarater||{}).map(Number).sort((a,b)=>b-a);
+    if(idx.length){
+      const ult = idx[0], vela = candles[ult];
+      r.mudanca_carater = {
+        lado: mudancasCarater[ult],
+        velas_atras: candles.length-1-ult,
+        preco: vela ? vela.close : null,
+        quando: vela ? new Date(vela.time*1000).toISOString() : null,
+        total_no_historico: idx.length
+      };
+    }
+  }catch(e){}
+
   // ── CVD E MARCOS DE VOLUME
   try{
     const dv = divergenciaCVD(candles, 60);
@@ -5184,7 +5357,7 @@ function retratoDoAtivo(){
         velas_atras: candles.length-1-ult,
         preco: vela ? vela.close : null,
         em_momento_frio_com_rsi: !!(marcosFortes||{})[ult],
-        total_na_tela: {dia:0, semana:0, mes:0}
+        total_na_tela: {carater:0, semana:0, mes:0}
       };
       Object.values(marcosVolume).forEach(p=>{ r.marco_volume.total_na_tela[p]++; });
     }
@@ -5698,15 +5871,34 @@ function analiseDoMercado(r){
     p.push(t);
   }
 
+  // 3b2b) MUDANCA DE CARATER — o dourado
+  if(r.mudanca_carater){
+    const mc = r.mudanca_carater;
+    let t = "A ultima <b>mudanca de carater</b> foi ha "+mc.velas_atras+" velas, em "+num(mc.preco)
+          + ", para <b>"+mc.lado+"</b>: depois de uma sequencia de topos e fundos "
+          + (mc.lado==="alta" ? "descendentes, o preco fechou acima do ultimo topo confirmado"
+                              : "ascendentes, o preco fechou abaixo do ultimo fundo confirmado")
+          + " — e fez isso com volume acima da mediana das ultimas 100 velas.";
+    t += " Isso e diferente de volume grande: volume grande acontece o tempo todo dentro de uma"
+      + " tendencia. A mudanca de carater acontece na virada, e e o unico ponto do grafico onde a"
+      + " estrutura muda de fato. No historico carregado houve "+mc.total_no_historico+".";
+    if(mc.velas_atras <= 5){
+      t += " <b>Foi agora</b> — ainda nao houve teste do nivel rompido, que e onde essa leitura"
+        + " costuma se confirmar ou falhar.";
+    }
+    p.push(t);
+  }
+
   // 3b3) MARCO DE VOLUME — qual vela mandou no periodo
   if(r.marco_volume){
     const m = r.marco_volume;
-    const nomes = {dia:"do dia", semana:"da semana", mes:"do mes"};
-    let t = "A maior vela "+nomes[m.periodo]+" foi ha <b>"+m.velas_atras+" velas</b>, em "
-          + num(m.preco)+".";
+    const nomes = {carater:"marcada", semana:"da semana", mes:"do mes"};
+    let t = m.periodo === "carater"
+      ? "A ultima marca foi uma <b>mudanca de carater</b> ha "+m.velas_atras+" velas, em "+num(m.preco)+"."
+      : "A maior vela "+nomes[m.periodo]+" foi ha <b>"+m.velas_atras+" velas</b>, em "+num(m.preco)+".";
     const tot = m.total_na_tela;
     t += " No historico carregado ha "+tot.mes+" marco(s) de mes, "+tot.semana+" de semana e "
-      + tot.dia+" de dia.";
+      + (tot.carater||0)+" mudanca(s) de carater.";
     if(m.em_momento_frio_com_rsi){
       t += " <b>Essa caiu em momento frio, com o RSI cruzando</b> — volume grande enquanto as"
         + " medias estavam indecisas e o RSI virava. E o caso que interessa: dinheiro entrando"
@@ -7319,6 +7511,7 @@ let bCanvas, bCtx;
 // com o RSI cruzando (esses ganham brilho forte)
 let marcosVolume = {}, marcosFortes = {};
 let ultimaExaustao = [];   // por vela: mercado seco (branco) ou nao
+let mudancasCarater = {};  // indice da vela -> 'alta' | 'baixa'
 let activeTool = 'cursor';
 let drawColor = '#FFEB3B';
 let magnetOn = false;
