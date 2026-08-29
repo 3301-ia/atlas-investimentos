@@ -1581,6 +1581,12 @@ function refreshPhiRibbonAndBorders(){
             borderColor: c.close>=c.open ? BORDER_BULL : BORDER_BEAR};
   }));
   ultimaExaustao = exaustao;
+  // As marcas acabaram de ser recalculadas — a de carater pode ter MIGRADO pra
+  // outra vela do mesmo periodo. A vela nova ja recebeu a cor no setData acima,
+  // mas o brilho vive no canvas de tras, que so e repintado quando a projecao
+  // muda. Com o preco parado no fechamento da vela, a projecao nao muda e o
+  // halo ficaria aceso na vela antiga. Repinto aqui, que e onde a marca mudou.
+  try{ desenhaBolhas(); }catch(e){}
   return {phiArrs,alignmentPerBar,scorePerBar,exaustao};
 }
 
