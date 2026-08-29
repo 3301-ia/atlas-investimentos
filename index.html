@@ -402,6 +402,12 @@
         </div>
 
         <button class="modal-connect-btn" id="deriv-connect-btn" onclick="onDerivConnectClick()">Conectar</button>
+        <!-- Dado de mercado na Deriv e publico: so o App ID, sem token. Quem
+             so quer o cruzamento Binance x Deriv entra por aqui. -->
+        <button class="modal-connect-btn" onclick="ligaDadosDeriv()"
+          style="margin-top:6px;background:transparent;border:1px solid var(--bd2);color:var(--t2);"
+          title="Usa so o App ID pra ler ticks do mercado. Nao envia ordem nem precisa de token.">
+          So dados de mercado (sem token)</button>
       </div>
     </div>
   </div>
@@ -833,6 +839,11 @@
             <span id="big-price" style="font-size:32px; font-weight:900; font-family:var(--mono); color:var(--green);">--</span>
             <span id="candle-timer" style="font-size:16px; font-weight:800; font-family:var(--mono); color:var(--t2);">00:00</span>
           </div>
+          <!-- As bolhas ficam ATRAS do grafico (z-index 1, contra o 2 do
+               #chart): centradas na maxima/minima, por cima elas tingiam a
+               vela e o gradiente do ribbon sumia debaixo delas. Atras, o
+               candle desenha por cima e continua inteiro. -->
+          <canvas id="bolha-canvas"></canvas>
           <div id="chart"></div>
           <canvas id="draw-canvas"></canvas>
           <div id="drawing-toolbar">
