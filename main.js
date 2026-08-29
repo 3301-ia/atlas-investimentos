@@ -3979,6 +3979,224 @@ function runBacktest(candlesArr,cfg){
 }
 
 // ══════════════════════════════════════════════════════
+// RELATORIO PARA OS AGENTES DE ANALISE
+// ══════════════════════════════════════════════════════
+// O painel calcula muita coisa e tudo morre na tela. Aqui esse estado vira
+// arquivo: um retrato do ativo no instante em que voce guarda a observacao —
+// preco, angulos das medias, liberacao, placar dos sinais, contra-argumentos,
+// fibo com os niveis atingidos, escada do RSI, alarmes montados e o Multi-TF.
+//
+// Guardo o retrato JUNTO da observacao, nao so o texto: reler "achei que ia
+// subir" tres dias depois nao diz nada; reler com os numeros que estavam na
+// tela naquele instante e o que deixa comparar o que voce achou com o que
+// aconteceu. E o que tira a emocao da conta.
+function chaveObs(){ return "obs:"+(typeof currentSym!=="undefined"?currentSym:"?"); }
+let observacoes=[];
+
+function carregaObservacoes(){
+  try{ observacoes=JSON.parse(localStorage.getItem(chaveObs())||"[]")||[]; }
+  catch(e){ observacoes=[]; }
+  renderObservacoes();
+}
+
+// O retrato completo do que o painel sabe agora. Cada bloco em seu try: uma
+// parte indisponivel nao pode derrubar o relatorio inteiro.
+function retratoDoAtivo(){
+  const r={};
+  r.ativo = typeof currentSym!=="undefined"?currentSym:null;
+  r.timeframe = typeof currentTF!=="undefined"?currentTF:null;
+  r.momento = new Date().toISOString();
+  r.preco = (typeof candles!=="undefined"&&candles.length)?candles[candles.length-1].close:null;
+  r.velas_carregadas = (typeof candles!=="undefined")?candles.length:0;
+  r.fonte = typeof lastDataSource!=="undefined"?lastDataSource:null;
+
+  try{
+    r.direcao={angulos:{},soma:null,estado:null,liberacao:null};
+    if(typeof direcaoAngles!=="undefined"&&direcaoAngles){
+      Object.keys(direcaoAngles).forEach(k=>{
+        r.direcao.angulos[k]=direcaoAngles[k]==null?null:+direcaoAngles[k].toFixed(2);
+      });
+      const cls=classifyDirecao(direcaoAngles);
+      r.direcao.soma=cls.sumAngle==null?null:+cls.sumAngle.toFixed(2);
+      r.direcao.estado=cls.isFlat?"lateral":(cls.direcao==="alta"?"alta":"baixa");
+    }
+    if(typeof estadoLiberacao==="function") r.direcao.liberacao=estadoLiberacao(null);
+  }catch(e){}
+
+  try{
+    r.placar=Object.values(placarSinais||{}).filter(g=>g.n>=3).map(g=>({
+      sinal:g.chave, ocorrencias:g.n, acerto_pct:+g.acerto.toFixed(1),
+      profit_factor:g.pf>=99?null:+g.pf.toFixed(2), media_R:+g.mediaR.toFixed(2)}));
+    r.placar_regua="stop 1 ATR, alvo 2 ATR, teto de 50 velas";
+  }catch(e){ r.placar=[]; }
+
+  try{
+    const ca=(typeof contraArgumentos==="function")?contraArgumentos():[];
+    r.contra_argumentos=ca.map(x=>({peso:x.peso,argumento:x.txt,porque:x.det}));
+    r.contra_peso_total=ca.reduce((s,x)=>s+x.peso,0);
+  }catch(e){ r.contra_argumentos=[]; }
+
+  try{
+    const f=[...drawings()].reverse().find(d=>d.type==="fibbo");
+    if(f&&f.p0&&f.p1){
+      const diff=f.p0.price-f.p1.price;
+      r.fibo={ancora:{p0:f.p0.price,p1:f.p1.price},
+        niveis:[...fibLevels,...fibBreakLevels].map(lv=>{
+          const preco=f.p1.price+diff*lv;
+          return {nivel:lv, preco:+preco.toFixed(6),
+            atingido:(r.preco!=null)&&(diff>0?r.preco>=preco:r.preco<=preco),
+            alarme:(typeof fibMarcado==="function")&&fibMarcado(lv)};
+        })};
+    }
+  }catch(e){}
+
+  try{
+    const st=rsiState(candles.map(c=>c.close),14);
+    if(st){
+      const base=st.al===0?100:(st.ag===0?0:100-(100/(1+st.ag/st.al)));
+      r.rsi={atual:+base.toFixed(1), escada:RSI_ESCADA.map(nv=>{
+        const p=precoParaRSI(st.ag,st.al,st.last,nv);
+        return {nivel:nv, preco_necessario:p==null?null:+p.toFixed(6)};
+      })};
+    }
+  }catch(e){}
+
+  try{
+    const mt=(typeof mtfEstado!=="undefined")?mtfEstado.filter(Boolean):[];
+    if(mt.length) r.multi_tf=mt.map(e=>({tempo:e.tf,
+      soma:+e.cls.sumAngle.toFixed(1),
+      estado:e.cls.isFlat?"lateral":(e.cls.direcao==="alta"?"alta":"baixa")}));
+  }catch(e){}
+
+  try{
+    if(typeof correlacaoMulti==="function"){
+      const c=correlacaoMulti();
+      if(c) r.correlacao={media:+c.media.toFixed(3),
+        pares:c.pares.map(p=>({a:p.a,b:p.b,valor:+p.c.toFixed(3)}))};
+    }
+  }catch(e){}
+
+  try{
+    r.alarmes={precos:(alarmesManuais||[]).map(a=>a.preco),
+      medias:(alarmesMedias||[]).map(m=>m.tipo==="cruze"?m.a+" x "+m.b:"preco x "+m.a),
+      fibo_marcados:(fibNiveisMarcados||[]).map(x=>x.lv)};
+  }catch(e){}
+
+  try{
+    r.ultimos_sinais=(signals||[]).slice(-12).map(x=>({tipo:x.type,lado:x.side,
+      preco:x.price,quando:new Date(x.time).toISOString(),liberado:!!x.liberado}));
+    r.liberados=(liberados||[]).slice(-12).map(x=>({tipo:x.type,lado:x.side,
+      preco:x.price,quando:new Date(x.time).toISOString()}));
+  }catch(e){}
+
+  return r;
+}
+
+function salvaObservacao(){
+  const el=document.getElementById("rel-obs");
+  const txt=(el&&el.value||"").trim();
+  if(!txt){
+    if(typeof showInfoToast==="function") showInfoToast("RELATORIO","escreva a observacao antes de guardar");
+    return;
+  }
+  observacoes.push({observacao:txt, retrato:retratoDoAtivo()});
+  if(observacoes.length>200) observacoes.shift();
+  try{ localStorage.setItem(chaveObs(),JSON.stringify(observacoes)); }
+  catch(e){
+    // o retrato e grande: se o armazenamento encher, aviso em vez de perder calado
+    if(typeof showInfoToast==="function") showInfoToast("RELATORIO","nao coube no armazenamento — baixe e limpe");
+  }
+  if(el) el.value="";
+  renderObservacoes();
+  if(typeof showInfoToast==="function") showInfoToast("RELATORIO","observacao guardada com o retrato do ativo");
+}
+
+function removeObservacao(i){
+  observacoes.splice(i,1);
+  try{ localStorage.setItem(chaveObs(),JSON.stringify(observacoes)); }catch(e){}
+  renderObservacoes();
+}
+
+function renderObservacoes(){
+  const box=document.getElementById("rel-list"), cnt=document.getElementById("rel-count");
+  if(cnt) cnt.textContent=observacoes.length?observacoes.length+" guardadas":"--";
+  if(!box) return;
+  if(!observacoes.length){
+    box.innerHTML='<div style="padding:5px 9px;font-size:9px;color:var(--t3);">Nenhuma observacao guardada.</div>';
+    return;
+  }
+  box.innerHTML=observacoes.slice().reverse().map((o,k)=>{
+    const i=observacoes.length-1-k;
+    const q=new Date(o.retrato.momento).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
+    const est=(o.retrato.direcao&&o.retrato.direcao.estado)||"--";
+    return '<div style="display:flex;gap:5px;align-items:flex-start;padding:4px 9px;border-bottom:1px solid var(--bd);">'
+      +'<span style="color:var(--t3);font-size:8px;white-space:nowrap;">'+q+'</span>'
+      +'<span style="font-size:9px;color:var(--t2);flex:1;line-height:1.4;">'+o.observacao
+      +' <span style="color:var(--t3);">('+est+' @ '+(o.retrato.preco==null?"--":o.retrato.preco)+')</span></span>'
+      +'<button class="toast-x" onclick="removeObservacao('+i+')">x</button></div>';
+  }).join("");
+}
+
+// JSON e nao texto: agente de analise le JSON melhor, e o campo legenda evita
+// que ele tenha que adivinhar o que cada numero significa.
+function montaRelatorio(){
+  return {
+    gerado_em:new Date().toISOString(),
+    origem:"Atlas Dashboard",
+    agora:retratoDoAtivo(),
+    observacoes:observacoes,
+    legenda:{
+      soma:"soma dos angulos das medias em graus; positivo = inclinacao de alta",
+      liberacao:"alta/baixa quando EMA8 e EMA16 estao as duas do mesmo lado da MA89 e da EMA200; null = embaralhadas",
+      media_R:"resultado medio em multiplos do risco, com stop a 1 ATR e alvo a 2 ATR",
+      contra_peso_total:"soma do peso das objecoes; 2 e um argumento forte, 4 ou mais sao varios"
+    }
+  };
+}
+
+function baixaRelatorio(){
+  const dados=JSON.stringify(montaRelatorio(),null,2);
+  const nome="atlas-"+(currentSym||"ativo")+"-"+(currentTF||"")+"-"
+    +new Date().toISOString().slice(0,16).replace(/[:T-]/g,"")+".json";
+  try{
+    const blob=new Blob([dados],{type:"application/json"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url; a.download=nome; document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+    if(typeof showInfoToast==="function") showInfoToast("RELATORIO",nome);
+  }catch(e){
+    if(typeof showInfoToast==="function") showInfoToast("RELATORIO","falha ao baixar: "+e.message);
+  }
+}
+
+function copiaRelatorio(){
+  const dados=JSON.stringify(montaRelatorio(),null,2);
+  const ok=()=>{ if(typeof showInfoToast==="function") showInfoToast("RELATORIO","copiado — cole no agente de analise"); };
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(dados).then(ok).catch(()=>copiaFallback(dados,ok));
+  }else copiaFallback(dados,ok);
+}
+// navigator.clipboard so existe em contexto seguro; no file:// ele nao esta la
+function copiaFallback(txt,ok){
+  try{
+    const ta=document.createElement("textarea");
+    ta.value=txt; ta.style.position="fixed"; ta.style.left="-9999px";
+    document.body.appendChild(ta); ta.select(); document.execCommand("copy");
+    document.body.removeChild(ta); ok();
+  }catch(e){
+    if(typeof showInfoToast==="function") showInfoToast("RELATORIO","nao consegui copiar; use o botao baixar");
+  }
+}
+window.salvaObservacao=salvaObservacao;
+window.removeObservacao=removeObservacao;
+window.baixaRelatorio=baixaRelatorio;
+window.copiaRelatorio=copiaRelatorio;
+window.retratoDoAtivo=retratoDoAtivo;
+window.montaRelatorio=montaRelatorio;
+
+// ══════════════════════════════════════════════════════
 // CONTRA-ARGUMENTO
 // ══════════════════════════════════════════════════════
 // Todo o resto do dashboard responde "por que entrar". Nada respondia "o que
@@ -4750,7 +4968,7 @@ async function changeSym(sym){
   currentSym=sym;candles=[];resetLive();
   resetaAlarmes();
   // alarmes e niveis de fibo sao guardados por simbolo
-  carregaAlarmesManuais(); carregaFibNiveis(); carregaFontesAlarme();
+  carregaAlarmesManuais(); carregaFibNiveis(); carregaFontesAlarme(); carregaObservacoes();
   const sel=document.getElementById('sym-select');
   if(sel&&sel.value!==sym)sel.value=sym;
   await loadAll();
@@ -5311,7 +5529,7 @@ let catF='all';
 
 function initApp(){
   initTheme();
-  carregaAlarmesManuais(); carregaFibNiveis(); carregaFontesAlarme();
+  carregaAlarmesManuais(); carregaFibNiveis(); carregaFontesAlarme(); carregaObservacoes();
   const cb=document.getElementById('cat-bar');
   if(cb && !cb.children.length){
     const catBtn=document.createElement('button');catBtn.className='cp active';catBtn.textContent='TODOS';catBtn.setAttribute('data-cat','all');catBtn.onclick=function(){setCat(this);};cb.appendChild(catBtn);

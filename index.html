@@ -988,6 +988,20 @@
             </div>
 
             <!-- FIBONACCI -->
+            <!-- RELATORIO: junta num arquivo tudo que o painel calculou, com a
+                 sua observacao, pra mandar pros agentes de analise. -->
+            <div class="sp-sec"><span>RELATORIO</span><span class="sp-sec-val" id="rel-count" style="color:var(--accent);">--</span></div>
+            <div style="padding:4px 9px;">
+              <textarea id="rel-obs" rows="2" placeholder="sua observacao sobre este ativo..."
+                style="width:100%;box-sizing:border-box;padding:4px 6px;font-size:10px;font-family:inherit;resize:vertical;"></textarea>
+              <div style="display:flex;gap:4px;margin-top:4px;">
+                <button class="btn" onclick="salvaObservacao()" style="flex:1;padding:3px 6px;font-size:10px;">guardar observacao</button>
+                <button class="btn" onclick="baixaRelatorio()" style="padding:3px 8px;font-size:10px;" title="Baixa um .json com tudo que o painel calculou + as observacoes guardadas">baixar</button>
+                <button class="btn" onclick="copiaRelatorio()" style="padding:3px 8px;font-size:10px;" title="Copia o relatorio pra colar num agente de analise">copiar</button>
+              </div>
+            </div>
+            <div class="sig-list" id="rel-list" style="max-height:110px;flex:none;"><div style="padding:5px 9px;font-size:9px;color:var(--t3);">Nenhuma observacao guardada.</div></div>
+
             <!-- CONTRA-ARGUMENTO: tudo aqui do lado diz por que entrar. Esta
                  secao diz o que pesa contra — e o que evita operacao ruim. -->
             <div class="sp-sec"><span>CONTRA-ARGUMENTO</span><span class="sp-sec-val" id="contra-count" style="color:var(--red);">--</span></div>
