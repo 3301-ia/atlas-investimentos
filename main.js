@@ -4173,9 +4173,9 @@ function desenhaBolhas(){
   const chaves = Object.keys(fluxoPorVela);
   if(!chaves.length) return;
 
-  // O corte agora e sobre o volume SOMADO da vela, nao sobre o negocio avulso.
-  // Uso a mediana das velas com fluxo: vela normal nao vira bolha, so a que
-  // destoa. Sem isso toda vela ganharia duas bolhas e viraria poluicao.
+  // O corte e sobre o volume SOMADO da vela, nao sobre o negocio avulso. Uso a
+  // mediana das velas com fluxo: vela normal nao vira bolha, so a que destoa.
+  // Sem isso toda vela ganharia duas bolhas e viraria poluicao.
   const somas = [];
   chaves.forEach(k => {
     const v = fluxoPorVela[k];
@@ -4185,49 +4185,12 @@ function desenhaBolhas(){
   if(somas.length < 4) return;
   somas.sort((a,b) => a-b);
   const corte = somas[Math.floor(somas.length/2)] * 1.6;
+  const maior = somas[somas.length-1];
 
   // indice das velas por tempo, pra achar a maxima e a minima de cada uma
   const porTempo = {};
   candles.forEach(c => { porTempo[c.time] = c; });
 
-  const rotulos = [];
-  const cabe = (x, y, larg) => !rotulos.some(r =>
-    x < r.x + r.larg + 4 && x + larg + 4 > r.x && Math.abs(y - r.y) < 11);
-
-  const desenha = (vela, notional, comprador) => {
-    if(notional < corte) return;
-    const x = t2x(vela.time);
-    // compra na maxima, venda na minima
-    const y = p2y(comprador ? vela.high : vela.low);
-    if(x == null || y == null) return;
-    const raio = raioBolhaVela(notional, corte);
-    if(!raio) return;
-    // afastada do pavio uns pixels pra nao encostar no candle
-    const yy = comprador ? y - raio - 2 : y + raio + 2;
-    const cor = comprador ? "0,200,83" : "255,59,48";
-
-    dCtx.beginPath();
-    dCtx.arc(x, yy, raio, 0, Math.PI*2);
-    dCtx.fillStyle = "rgba("+cor+",0.20)";
-    dCtx.fill();
-    dCtx.lineWidth = 1;
-    dCtx.strokeStyle = "rgba("+cor+",0.8)";
-    dCtx.stroke();
-
-    // o volume vai junto, que era o pedido; so nao desenho o que ia se sobrepor
-    const txt = fmtNotional(notional);
-    dCtx.font = "9px ui-monospace, monospace";
-    const larg = dCtx.measureText(txt).width;
-    const tx = x - larg/2, ty = comprador ? yy - raio - 3 : yy + raio + 9;
-    if(cabe(tx, ty, larg)){
-      rotulos.push({x:tx, y:ty, larg});
-      dCtx.fillStyle = "rgba("+cor+",0.95)";
-      dCtx.textAlign = "left";
-      dCtx.fillText(txt, tx, ty);
-    }
-  };
-
-  // das maiores pras menores, com teto: em mercado agitado sao centenas de velas
   const alvos = [];
   chaves.forEach(k => {
     const vela = porTempo[+k];
@@ -4236,22 +4199,91 @@ function desenhaBolhas(){
     if(v.compra >= corte) alvos.push({vela, notional:v.compra, comprador:true});
     if(v.venda  >= corte) alvos.push({vela, notional:v.venda,  comprador:false});
   });
-  alvos.sort((a,b) => b.notional - a.notional)
-       .slice(0, FLUXO_MAX_DESENHO)
-       .forEach(a => desenha(a.vela, a.notional, a.comprador));
+  // maior primeiro: quem tem direito ao lugar na tela e o fluxo que interessa
+  alvos.sort((a,b) => b.notional - a.notional);
+
+  // A referencia empilhava bolha sobre bolha ate nao dar pra ler nenhuma nem
+  // enxergar o candle embaixo. Aqui a maior desenha primeiro e a menor que
+  // cairia por cima dela e descartada — fica o mesmo desenho, legivel.
+  const postas = [];
+  const livre = (x, y, r) => !postas.some(b =>
+    Math.hypot(x-b.x, y-b.y) < (r + b.r) * 0.85);
+
+  const larguraTela = dCanvas ? dCanvas.width : 4000;
+  let desenhadas = 0;
+
+  for(const a of alvos){
+    if(desenhadas >= FLUXO_MAX_DESENHO) break;
+    const x = t2x(a.vela.time);
+    const y = p2y(a.comprador ? a.vela.high : a.vela.low);
+    if(x == null || y == null) continue;
+    if(x < -30 || x > larguraTela + 30) continue;
+
+    let raio = raioBolhaVela(a.notional, corte, maior);
+    if(!raio) continue;
+    // o numero manda no tamanho minimo: a bolha cresce ate ele caber dentro,
+    // em vez de ficar muda ou de deixar o texto vazar pra fora
+    const txt = fmtBolha(a.notional);
+    const fonte = raio >= 19 ? 10 : raio >= 16 ? 9 : 8;
+    dCtx.font = fonte+"px ui-monospace, monospace";
+    raio = Math.min(26, Math.max(raio, dCtx.measureText(txt).width/2 + 5));
+    // compra sobe da maxima, venda desce da minima; afastada do pavio uns
+    // pixels pra nao encostar no candle
+    const yy = a.comprador ? y - raio - 3 : y + raio + 3;
+    if(!livre(x, yy, raio)) continue;
+    postas.push({x, y:yy, r:raio});
+    desenhadas++;
+
+    const cor = a.comprador ? "0,200,83" : "255,59,48";
+    dCtx.beginPath();
+    dCtx.arc(x, yy, raio, 0, Math.PI*2);
+    dCtx.fillStyle = "rgba("+cor+",0.34)";
+    dCtx.fill();
+    dCtx.lineWidth = 1.2;
+    dCtx.strokeStyle = "rgba("+cor+",0.9)";
+    dCtx.stroke();
+
+    // o volume vai DENTRO da bolha, como na referencia. O contorno escuro e
+    // porque o mesmo branco tem que ser legivel no tema claro e no escuro,
+    // sobre verde ou sobre vermelho; lineJoin redondo senao o vertice do "M"
+    // cospe duas farpas pra cima.
+    dCtx.textAlign = "center";
+    dCtx.textBaseline = "middle";
+    dCtx.lineWidth = 2.2;
+    dCtx.lineJoin = "round";
+    dCtx.miterLimit = 2;
+    dCtx.strokeStyle = "rgba(0,0,0,0.55)";
+    dCtx.strokeText(txt, x, yy);
+    dCtx.fillStyle = "#fff";
+    dCtx.fillText(txt, x, yy);
+    dCtx.lineJoin = "miter";
+    dCtx.textAlign = "left";
+    dCtx.textBaseline = "alphabetic";
+  }
 }
 
-// Faixas sobre o corte da vela. Teto de 9px pelo mesmo motivo de antes: bolha
-// grande cobre o candle e briga com o resto do grafico.
-function raioBolhaVela(notional, corte){
-  const r = notional / corte;
-  if(r < 1)  return 0;
-  if(r < 1.5) return 3.5;
-  if(r < 2.5) return 5;
-  if(r < 4)   return 6.5;
-  if(r < 7)   return 8;
-  return 9;
+// Raio proporcional ao quanto a vela destoa, do corte ate a maior do momento.
+// Area proporcional (dai a raiz): dobrar o volume dobra a mancha, nao o raio.
+// Piso de 13px porque abaixo disso o valor nao cabe dentro e a bolha vira um
+// ponto mudo; teto de 24px porque acima disso ela come o candle — que e
+// justamente o defeito da referencia.
+function raioBolhaVela(notional, corte, maior){
+  if(notional < corte) return 0;
+  const teto = Math.max(maior || 0, corte * 1.2);
+  const f = Math.min(1, Math.sqrt((notional - corte) / (teto - corte)));
+  return 13 + f * 11;
 }
+
+// Versao curta pro rotulo de dentro: uma casa decimal em vez de duas. "24.6M"
+// cabe numa bolha onde "24.57M" ja nao cabia.
+function fmtBolha(v){
+  const a = Math.abs(v);
+  if(a >= 1e9) return (v/1e9).toFixed(1)+"B";
+  if(a >= 1e6) return (v/1e6).toFixed(1)+"M";
+  if(a >= 1e3) return (v/1e3).toFixed(0)+"k";
+  return v.toFixed(0);
+}
+
 window.desenhaBolhas = desenhaBolhas;
 
 function toggleBolhas(){
