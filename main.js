@@ -1132,11 +1132,10 @@ const CHOCH_K = 8;
 // Romper de raspao nao e romper: exijo que o fechamento passe do pivo por pelo
 // menos um quarto do ATR. Sem isso, um tique acima do topo ja marcava.
 const CHOCH_MARGEM_ATR = 0.25;
-// Volume no percentil 70 das ultimas 100, nao na mediana: a mediana deixa
-// passar metade das velas, o que nao filtra quase nada.
-const CHOCH_PERCENTIL = 0.70;
-// Duas marcas coladas nao sao duas viradas, sao ruido em cima da mesma virada.
-const CHOCH_ESPACO = 20;
+// Piso de sanidade: um rompimento em vela morta nao vira dourado nem sendo o
+// unico do periodo. Fica na mediana porque quem seleciona de verdade e a regra
+// do maior, logo abaixo.
+const CHOCH_PERCENTIL = 0.50;
 
 function achaPivos(velas, k){
   const K = k || CHOCH_K;
@@ -1159,7 +1158,7 @@ function achaPivos(velas, k){
 // (um pivo so existe K velas depois dele, entao nada aqui olha pro futuro) e a
 // direcao vigente. A troca sai quando o preco fecha do outro lado do pivo que
 // contraria a direcao.
-function calculaMudancaCarater(velas){
+function calculaMudancaCarater(velas, tfSeg){
   const marcas = {};   // indice -> 'alta' | 'baixa'
   if(!velas || velas.length < CHOCH_K*4) return marcas;
   const {altos, baixos} = achaPivos(velas, CHOCH_K);
@@ -1182,7 +1181,7 @@ function calculaMudancaCarater(velas){
   const atr = (typeof atrCalc==="function")
     ? atrCalc(velas.map(c=>c.high), velas.map(c=>c.low), velas.map(c=>c.close), 14)
     : [];
-  let ultimaMarca = -1e9;
+
 
   let topo = null, fundo = null;          // indices dos ultimos pivos confirmados
   let topoAnt = null, fundoAnt = null;    // os anteriores, pra saber a direcao
@@ -1221,12 +1220,6 @@ function calculaMudancaCarater(velas){
     const rompeuAlta  = direcao === "baixa" && topo!=null  && velas[i].close > velas[topo].high + margem;
     const rompeuBaixa = direcao === "alta"  && fundo!=null && velas[i].close < velas[fundo].low  - margem;
     if(rompeuAlta || rompeuBaixa){
-      // marca recente demais: a estrutura segue na conta, mas nao vira dourado
-      if(i - ultimaMarca < CHOCH_ESPACO){
-        if(rompeuAlta){ direcao="alta"; topoAnt=topo; topo=null; }
-        else { direcao="baixa"; fundoAnt=fundo; fundo=null; }
-        continue;
-      }
       if(volumeDaVela(velas[i]) < corteVol(i)){
         // rompeu sem volume: a estrutura muda na conta, mas nao vira dourado
         if(rompeuAlta){ direcao="alta"; topoAnt=topo; topo=null; }
@@ -1234,12 +1227,42 @@ function calculaMudancaCarater(velas){
         continue;
       }
       marcas[i] = rompeuAlta ? "alta" : "baixa";
-      ultimaMarca = i;
       if(rompeuAlta){ direcao="alta"; topoAnt=topo; topo=null; }
       else { direcao="baixa"; fundoAnt=fundo; fundo=null; }
     }
   }
-  return marcas;
+  return soAMaiorDoPeriodo(velas, marcas, tfSeg);
+}
+
+// A REGRA QUE SELECIONA: dentro do periodo, so a de MAIOR VOLUME.
+//
+// Antes eu usava distancia minima entre marcas — 20 velas — e isso e o
+// criterio errado. Distancia so diz que duas marcas nao estao coladas; nao diz
+// qual das duas importa. Se num dia houve tres rompimentos, o que vale e aquele
+// em que o dinheiro apareceu, nao o primeiro nem o mais espacado.
+//
+// O periodo acompanha o tempo grafico: num 15m e o DIA, e e por isso que numa
+// tela de dois dias saem duas marcas — uma por dia, a que mandou naquele dia.
+function periodoDoMarco(tfSeg){
+  if(tfSeg < 86400)   return 'dia';
+  if(tfSeg < 604800)  return 'semana';
+  return 'mes';
+}
+
+function soAMaiorDoPeriodo(velas, marcas, tfSeg){
+  const chaves = Object.keys(marcas);
+  if(chaves.length < 2) return marcas;
+  const periodo = periodoDoMarco(tfSeg || 900);
+  const melhor = {};   // chave do periodo -> {i, vol}
+  chaves.forEach(k => {
+    const i = +k;
+    const cp = chaveDoPeriodo(velas[i].time, periodo);
+    const v = volumeDaVela(velas[i]);
+    if(!melhor[cp] || v > melhor[cp].vol) melhor[cp] = {i, vol:v};
+  });
+  const saida = {};
+  Object.values(melhor).forEach(({i}) => { saida[i] = marcas[i]; });
+  return saida;
 }
 window.calculaMudancaCarater = calculaMudancaCarater;
 
@@ -1527,7 +1550,7 @@ function refreshPhiRibbonAndBorders(){
   marcosVolume = calculaMarcosVolume(candles, tfToSeconds(currentTF));
 
   // a mudanca de carater entra por cima: ela ganha da semana e do mes
-  mudancasCarater = calculaMudancaCarater(candles);
+  mudancasCarater = calculaMudancaCarater(candles, tfToSeconds(currentTF));
   Object.keys(mudancasCarater).forEach(k => { marcosVolume[k] = 'carater'; });
 
   marcosFortes = {};
