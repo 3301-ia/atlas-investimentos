@@ -4129,7 +4129,8 @@ let fluxoNegocios = [];             // {t, preco, notional, comprador}
 let fluxoPorVela = {};              // time da vela -> {compra, venda}
 let bolhasLigadas = true;
 let fluxoVersao = 0;                // sobe a cada mudanca no fluxo por vela
-let bolhasCache = null;             // {versao, corte, maior, alvos}
+let bolhasCache = null;             // {chave, corte, maior, alvos}
+let estatFluxo = null;              // {versao, corte, maior} — corte global
 
 // Minimo pra um negocio virar bolha. Nao pode ser fixo: 500 USD e enorme numa
 // altcoin e invisivel no BTC. Uso a mediana do notional recente como base.
@@ -4218,18 +4219,34 @@ function fmtNotional(v){
 //
 // Uma bolha por vela e por lado, com o volume somado. Antes era uma por
 // negocio, o que empilhava dezenas no mesmo ponto.
-// O corte sai do que esta NA TELA, nao do historico inteiro. Com as mil velas
-// semeadas, um corte global marcava sempre as mesmas velas gigantes e o resto
-// do grafico ficava mudo — ou, se voce estivesse olhando justamente o trecho
-// agitado, cobria tudo de bolha. Olhando so a janela visivel, o corte
-// acompanha o zoom: em qualquer trecho aparecem as velas que destoam DAQUELE
-// trecho, que e a pergunta que a bolha responde.
+// O CORTE E DO HISTORICO INTEIRO, NAO DA JANELA VISIVEL. Cheguei a calcular
+// pela janela e estava errado: o corte mudava a cada zoom, entao aproximar da
+// vela trocava as bolhas e os numeros na tela. Volume de vela e um fato — o
+// que a bolha diz nao pode depender de quanto voce aproximou. Com o corte
+// fixo, aproximar so espalha as mesmas bolhas, e um trecho calmo fica sem
+// nenhuma, que e a informacao correta: ali nada destoou.
 //
 // Percentil 88 em vez da mediana vezes 1,6: a distribuicao de volume tem cauda
 // longa e a mediana deixava passar quase um terco das velas.
+function estatisticaFluxo(){
+  if(estatFluxo && estatFluxo.versao === fluxoVersao) return estatFluxo;
+  const somas = [];
+  Object.keys(fluxoPorVela).forEach(k => {
+    const v = fluxoPorVela[k];
+    if(v.compra > 0) somas.push(v.compra);
+    if(v.venda  > 0) somas.push(v.venda);
+  });
+  if(somas.length < 6){ estatFluxo = null; return null; }
+  somas.sort((a,b) => a-b);
+  estatFluxo = {versao: fluxoVersao,
+    corte: somas[Math.min(somas.length-1, Math.floor(somas.length*0.88))],
+    maior: somas[somas.length-1]};
+  return estatFluxo;
+}
+
 function montaAlvosBolha(){
-  const chaves = Object.keys(fluxoPorVela);
-  if(!chaves.length) return null;
+  const est = estatisticaFluxo();
+  if(!est) return null;
 
   let de = -Infinity, ate = Infinity;
   try{
@@ -4241,29 +4258,20 @@ function montaAlvosBolha(){
   const porTempo = {};
   candles.forEach(c => { porTempo[c.time] = c; });
 
-  const naJanela = [], somas = [];
-  chaves.forEach(k => {
+  // so a janela visivel entra no desenho — mas medida contra o corte de
+  // sempre, entao o numero de cada bolha e o mesmo em qualquer zoom
+  const alvos = [];
+  Object.keys(fluxoPorVela).forEach(k => {
     const t = +k;
     if(t < de || t > ate) return;
     const vela = porTempo[t]; if(!vela) return;
     const v = fluxoPorVela[k];
-    naJanela.push({vela, v});
-    if(v.compra > 0) somas.push(v.compra);
-    if(v.venda  > 0) somas.push(v.venda);
-  });
-  if(somas.length < 6) return null;
-  somas.sort((a,b) => a-b);
-  const corte = somas[Math.min(somas.length-1, Math.floor(somas.length*0.88))];
-  const maior = somas[somas.length-1];
-
-  const alvos = [];
-  naJanela.forEach(o => {
-    if(o.v.compra >= corte) alvos.push({vela:o.vela, notional:o.v.compra, comprador:true});
-    if(o.v.venda  >= corte) alvos.push({vela:o.vela, notional:o.v.venda,  comprador:false});
+    if(v.compra >= est.corte) alvos.push({vela, notional:v.compra, comprador:true});
+    if(v.venda  >= est.corte) alvos.push({vela, notional:v.venda,  comprador:false});
   });
   // maior primeiro: quem tem direito ao lugar na tela e o fluxo que interessa
   alvos.sort((a,b) => b.notional - a.notional);
-  return {corte, maior, alvos, de, ate};
+  return {corte:est.corte, maior:est.maior, alvos, de, ate};
 }
 
 function desenhaBolhas(){
@@ -4656,6 +4664,209 @@ function pdfBarra(pct, cor){
     + '<span class="preenche" style="left:'+esq+'%;width:'+larg+'%;background:'+cor+'"></span></div>';
 }
 
+// ── A LEITURA ────────────────────────────────────────────────────────────
+// O relatorio dizia os numeros e parava ali — quem lia tinha que juntar as
+// pontas sozinho. Isto aqui junta: cruza direcao, fluxo, contra-argumento,
+// historico dos sinais e os niveis, e escreve o que os numeros dizem quando
+// vistos juntos.
+//
+// Tudo aqui e DERIVADO do retrato, frase por frase, com o numero citado no
+// meio da frase. Nada de opiniao sem numero atras: se um dado nao existe, a
+// frase correspondente nao e escrita. E leitura de dado, nao recomendacao —
+// o rodape do documento repete isso.
+
+// Concordancia entre os tempos do multi-TF: quantos apontam pro mesmo lado.
+function analiseTempos(r){
+  const mt = r.multi_tf || [];
+  if(!mt.length) return null;
+  const alta = mt.filter(m => m.estado === "alta").length;
+  const baixa = mt.filter(m => m.estado === "baixa").length;
+  const lateral = mt.length - alta - baixa;
+  return {n:mt.length, alta, baixa, lateral,
+          lado: alta > baixa ? "alta" : (baixa > alta ? "baixa" : null),
+          unanime: alta === mt.length || baixa === mt.length};
+}
+
+// O nivel de Fibonacci mais proximo acima e abaixo do preco. Sao eles que
+// viram "o que confirma" e "o que invalida", em vez de um palpite redondo.
+function analiseNiveis(r){
+  if(!r.fibo || !r.fibo.niveis || r.preco == null) return null;
+  let acima = null, abaixo = null;
+  r.fibo.niveis.forEach(n => {
+    if(n.preco > r.preco && (!acima || n.preco < acima.preco)) acima = n;
+    if(n.preco < r.preco && (!abaixo || n.preco > abaixo.preco)) abaixo = n;
+  });
+  const dist = n => n ? Math.abs(n.preco - r.preco) / r.preco * 100 : null;
+  return {acima, abaixo, distAcima:dist(acima), distAbaixo:dist(abaixo)};
+}
+
+function analiseDoMercado(r){
+  const p = [];                    // paragrafos
+  const dir = r.direcao || {};
+  const nome = (r.ativo||"o ativo").replace("USDT","");
+  const num = v => (v==null||!isFinite(v)) ? "--" : Number(v).toFixed(2);
+  const sin = v => (v==null||!isFinite(v)) ? "--" : (v>=0?"+":"")+Number(v).toFixed(1);
+
+  // 1) DIRECAO — o que as medias dizem, e o que a liberacao acrescenta
+  if(dir.estado){
+    let t = "As medias de "+nome+" somam <b>"+sin(dir.soma)+"&deg;</b>, o que classifica o "
+          + pdfEsc(r.timeframe)+" como <b>"+pdfEsc(dir.estado)+"</b>.";
+    if(dir.liberacao === "alta" || dir.liberacao === "baixa"){
+      t += " O sinal esta <b>liberado para "+dir.liberacao+"</b>: a EMA8 e a EMA16 estao as duas "
+        + (dir.liberacao === "alta" ? "acima" : "abaixo")
+        + " da MA89 e da EMA200, que e a condicao mais restritiva do painel.";
+      if(dir.estado !== dir.liberacao){
+        t += " Repare que a soma dos angulos aponta para "+pdfEsc(dir.estado)
+          + " e a liberacao para "+dir.liberacao+": a inclinacao ja virou antes do empilhamento,"
+          + " ou esta virando agora. Divergencia entre os dois pede paciencia, nao pressa.";
+      }
+    }else{
+      t += " O sinal <b>nao esta liberado</b>: as medias curtas nao estao as duas do mesmo lado"
+        + " da MA89 e da EMA200. Enquanto ficarem embaralhadas, qualquer entrada e contra a"
+        + " regra que o proprio painel usa para separar tendencia de repique.";
+    }
+    p.push(t);
+  }
+
+  // 2) OS OUTROS TEMPOS — concordam ou brigam com o que esta na tela
+  const tp = analiseTempos(r);
+  if(tp && tp.lado){
+    let t = "Nos "+tp.n+" tempos acompanhados, <b>"+(tp.lado==="alta"?tp.alta:tp.baixa)
+          + " apontam para "+tp.lado+"</b>"
+          + (tp.lateral ? " e "+tp.lateral+" esta"+(tp.lateral>1?"o":"")+" lateral" : "")+".";
+    if(tp.unanime){
+      t += " Sao todos, sem excecao — o cenario em que o tempo grafico da tela tem menos"
+        + " chance de estar contando uma historia isolada.";
+    }else if(dir.estado && tp.lado !== dir.estado){
+      t += " <b>Isso contradiz a tela.</b> Operar o "+pdfEsc(r.timeframe)+" contra a maioria dos"
+        + " tempos maiores e possivel, mas e o tipo de operacao que precisa de alvo curto e"
+        + " stop obedecido, porque a mare esta do outro lado.";
+    }else{
+      t += " Vai no mesmo sentido do que a tela mostra.";
+    }
+    p.push(t);
+  }
+
+  // 3) FLUXO — quem esta pagando pra entrar, e se isso bate com o preco
+  try{
+    const f = forcaDoFluxo(20);
+    if(f && (f.compra + f.venda) > 0){
+      const lado = f.pressao >= 0 ? "compradora" : "vendedora";
+      let t = "A agressao das ultimas "+f.velas+" velas esta <b>"+sin(f.pressao)+"%</b>"
+            + " — pressao "+lado+". Na vela em curso, <b>"+sin(f.pressao_vela)+"%</b>.";
+      const forte = Math.abs(f.pressao) >= 15;
+      if(dir.estado === "alta" && f.pressao < -15){
+        t += " <b>Isso e uma divergencia:</b> o preco sobe enquanto quem tem pressa esta vendendo."
+          + " Alta sustentada por falta de vendedor, e nao por comprador convicto, costuma"
+          + " devolver o caminho rapido quando o vendedor aparece.";
+      }else if(dir.estado === "baixa" && f.pressao > 15){
+        t += " <b>Isso e uma divergencia:</b> o preco cai enquanto o agressor e comprador —"
+          + " alguem esta absorvendo a queda. Nao e sinal de compra sozinho, mas e o tipo de"
+          + " leitura que costuma anteceder o fim de uma perna de baixa.";
+      }else if(forte){
+        t += " O fluxo <b>confirma</b> o que as medias mostram: preco e agressao no mesmo lado.";
+      }else{
+        t += " E uma pressao fraca, perto do equilibrio: o fluxo nao esta confirmando nem"
+          + " desmentindo o preco, so acompanhando.";
+      }
+      // a vela em curso destoando da media das 20 e informacao: pro outro lado
+      // e comeco de virada, pro mesmo lado e pressao se acumulando agora
+      if(Math.abs(f.pressao_vela - f.pressao) >= 20 && Math.abs(f.pressao_vela) >= 20){
+        const mesmoLado = (f.pressao_vela >= 0) === (f.pressao >= 0);
+        t += mesmoLado
+          ? " A vela em curso esta bem mais carregada que a media das "+f.velas
+            + ": a pressao esta se acumulando agora, e nao ha "+f.velas+" velas."
+          : " A vela em curso, porem, esta puxando para o outro lado da media das "+f.velas
+            + ": e cedo para chamar de virada, mas e onde ela comecaria a aparecer.";
+      }
+      p.push(t);
+    }
+  }catch(e){}
+
+  // 4) O QUE PESA CONTRA — o painel ja levanta as objecoes, aqui elas entram
+  //    na conta com peso
+  const ca = r.contra_argumentos || [];
+  if(ca.length){
+    const peso = r.contra_peso_total || 0;
+    let t = "Contra a leitura pesa"+(ca.length>1?"m":"")+" <b>"+ca.length+" objec"
+          + (ca.length>1?"oes":"ao")+"</b> (peso "+peso+"): "
+          + ca.map(x => pdfEsc(x.argumento)).join("; ")+".";
+    if(peso >= 4){
+      t += " Peso 4 ou mais nao e um detalhe — sao varias coisas erradas ao mesmo tempo."
+        + " Se a operacao ainda parece boa com esse peso contra, vale reler o motivo.";
+    }else if(peso >= 2){
+      t += " E um argumento forte contra, do tamanho de reduzir posicao ou esperar mais confirmacao.";
+    }
+    p.push(t);
+  }else{
+    p.push("<b>Nenhuma objecao</b> foi levantada pelo painel: preco, volume e distancia das"
+      + " medias estao dentro do que o proprio historico considera normal.");
+  }
+
+  // 5) O QUE O HISTORICO DIZ DESSE SINAL — sem isso a leitura vira opiniao
+  const pl = (r.placar||[]).slice().sort((a,b) => b.ocorrencias - a.ocorrencias);
+  if(pl.length){
+    const m = pl[0];
+    let t = "No historico carregado, o sinal <b>"+pdfEsc(m.sinal)+"</b> apareceu "
+          + m.ocorrencias+" vezes, com acerto de "+Math.round(m.acerto_pct)+"% e media de <b>"
+          + sin(m.media_R)+"R</b> ("+pdfEsc(r.placar_regua)+").";
+    if(m.media_R < 0){
+      t += " <b>Media negativa:</b> nesse recorte, esse sinal perdeu dinheiro mesmo com"
+        + " esse acerto. Acerto alto com media negativa e ganho pequeno pago com perda grande.";
+    }else if(m.media_R >= 0.5){
+      t += " Media positiva e folgada — o sinal se pagou nesse recorte.";
+    }else{
+      t += " Media positiva, mas apertada: e um sinal que depende de execucao boa pra sobrar algo.";
+    }
+    p.push(t);
+  }
+
+  // 6) ONDE ESTAO AS LINHAS — o que confirma e o que invalida, com preco
+  const nv = analiseNiveis(r);
+  if(nv && (nv.acima || nv.abaixo)){
+    let t = "O preco esta em <b>"+num(r.preco)+"</b>.";
+    if(nv.acima) t += " O proximo nivel de Fibonacci acima e <b>"+num(nv.acima.preco)
+      + "</b> ("+nv.acima.nivel+"), a "+num(nv.distAcima)+"% daqui.";
+    if(nv.abaixo) t += " Abaixo, <b>"+num(nv.abaixo.preco)+"</b> ("+nv.abaixo.nivel
+      + "), a "+num(nv.distAbaixo)+"%.";
+    if(nv.acima && nv.abaixo){
+      // a frase precisa apontar pro lado da leitura, senao fala de alta num
+      // documento que acabou de classificar o ativo como baixa
+      t += dir.estado === "baixa"
+        ? " Sao esses dois numeros que transformam a leitura em decisao: perder <b>"
+          + num(nv.abaixo.preco)+"</b> confirma a baixa; recuperar <b>"+num(nv.acima.preco)
+          + "</b> tira o argumento dela."
+        : " Sao esses dois numeros que transformam a leitura em decisao: superar <b>"
+          + num(nv.acima.preco)+"</b> confirma a alta; perder <b>"+num(nv.abaixo.preco)
+          + "</b> tira o argumento dela.";
+    }
+    p.push(t);
+  }
+
+  // 7) ATE ONDE COSTUMA IR — o historico das ancoras, quando existe
+  if(r.fibo_historico && r.fibo_historico.total >= 3 && r.fibo_historico.niveis){
+    const nvs = r.fibo_historico.niveis;
+    const chegam = nvs.filter(n => n.pct >= 60);
+    if(chegam.length){
+      const longe = chegam[chegam.length-1];
+      // o primeiro alvo que o historico NAO sustenta e a fronteira util:
+      // ate ali costuma chegar, dali pra frente e torcida
+      const alem = nvs.filter(n => n.pct < 60)[0];
+      let t = "Nas "+r.fibo_historico.total+" ancoras arquivadas deste ativo, o alvo <b>"
+            + longe.nivel+"</b> foi alcancado em "+Math.round(longe.pct)+"% das vezes.";
+      t += alem
+        ? " Ja o <b>"+alem.nivel+"</b> so em "+Math.round(alem.pct)+"%: e ali que o historico"
+          + " para de sustentar o alvo. Perseguir alem disso e torcida, nao estatistica."
+        : " Nenhum dos alvos arquivados ficou abaixo de 60%, o que com so "
+          + r.fibo_historico.total+" ancoras diz mais sobre a amostra pequena do que sobre o ativo.";
+      p.push(t);
+    }
+  }
+
+  return p;
+}
+window.analiseDoMercado = analiseDoMercado;
+
 function montaHtmlPdf(){
   const r = retratoDoAtivo();
   const d = new Date();
@@ -4687,6 +4898,13 @@ function montaHtmlPdf(){
         + '<p class="nota">Agressao compradora contra vendedora. Mede quem esta pagando '
         + 'para entrar, e nao o preco — preco subindo com pressao negativa e alta sem comprador convicto.</p>';
     }
+  }catch(e){}
+
+  // ── a leitura: os numeros cruzados, em texto
+  let leitura = "";
+  try{
+    const ps = analiseDoMercado(r);
+    if(ps && ps.length) leitura = ps.map(t => '<p class="an">'+t+'</p>').join("");
   }catch(e){}
 
   // ── placar
@@ -4787,6 +5005,13 @@ function montaHtmlPdf(){
   .capa-data{position:absolute;left:0;right:0;bottom:20mm;text-align:center;
     font-size:9px;color:#6b7280;letter-spacing:2px;}
 
+  /* A leitura e o unico bloco de texto corrido do documento, entao ganha
+     entrelinha maior e uma barra na lateral pra se separar das tabelas. */
+  .leitura{border-left:3px solid #F5A623;padding-left:11px;margin-bottom:16px;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  .an{margin:0 0 7px;font-size:10.5px;line-height:1.62;text-align:justify;}
+  .an b{color:#0b0e13;}
+
   h1{font-size:15px;margin:0 0 2px;letter-spacing:.5px;}
   .sub{font-size:9px;color:#6b7280;margin:0 0 16px;letter-spacing:1px;text-transform:uppercase;}
   h2{font-size:11px;text-transform:uppercase;letter-spacing:1.6px;color:#6b7280;
@@ -4848,6 +5073,10 @@ function montaHtmlPdf(){
 
 <h1>${pdfEsc(ativo)} &middot; ${pdfEsc(r.timeframe)}</h1>
 <p class="sub">${dataLonga} as ${hora} &middot; ${r.velas_carregadas} velas &middot; fonte ${pdfEsc(r.fonte||"--")}</p>
+
+${leitura ? '<section class="leitura"><h2>A leitura</h2>'+leitura
+  + '<p class="nota">Cada frase acima sai de um numero deste mesmo documento. Onde o dado nao'
+  + ' existe, a frase nao foi escrita.</p></section>' : ''}
 
 <div class="duas">
   <section>
@@ -5736,7 +5965,7 @@ function resetLive(){
 async function changeSym(sym){
   currentSym=sym;candles=[];resetLive();
   // negocio do ativo anterior nao vale aqui
-  fluxoNegocios=[]; fluxoPorVela={}; fluxoCorte=0; bolhasCache=null;
+  fluxoNegocios=[]; fluxoPorVela={}; fluxoCorte=0; bolhasCache=null; estatFluxo=null;
   resetaAlarmes();
   // alarmes e niveis de fibo sao guardados por simbolo
   carregaAlarmesManuais(); carregaFibNiveis(); carregaFontesAlarme(); carregaObservacoes();
@@ -5766,7 +5995,7 @@ async function loadAll(){
   if(mySeq!==loadSeq)return;
   if(!d){document.getElementById('ws-st').textContent='Erro de Conexao';return;}
   candles=d;
-  fluxoPorVela={}; bolhasCache=null;
+  fluxoPorVela={}; bolhasCache=null; estatFluxo=null;
   semeiaFluxoDoHistorico();
 
   // RENDERIZA O GRAFICO PRINCIPAL + STOCHRSI + RIBBON PHI INSTANTANEAMENTE!
