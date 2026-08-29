@@ -40,8 +40,17 @@ body.dark .modal-overlay{background:rgba(0,0,0,.6);}
 html,body{background:var(--bg);color:var(--text);font-family:var(--font);height:100%;overflow:hidden;-webkit-font-smoothing:antialiased;}
 
 /* TOPBAR */
+/* A barra tinha overflow:hidden com nowrap: passou de doze botoes, o que sobra
+   fica fora da tela e SEM como alcancar — o botao das bolhas ficava em x=1427 e
+   simplesmente nao existia num monitor de 1366. Agora ela rola na horizontal, e
+   a barra de rolagem some pra nao ocupar altura no cabecalho. */
 .topbar{display:flex;align-items:center;gap:6px;padding:0 10px;height:40px;
-  background:var(--bg2);border-bottom:1px solid rgba(245,166,35,.12);flex-shrink:0;overflow:hidden;}
+  background:var(--bg2);border-bottom:1px solid rgba(245,166,35,.12);flex-shrink:0;
+  overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-ms-overflow-style:none;
+  overscroll-behavior-x:contain;}
+.topbar::-webkit-scrollbar{height:0;display:none;}
+/* sem isto os botoes encolhem em vez de sair pra rolagem */
+.topbar > *{flex-shrink:0;}
 .logo{display:flex;align-items:center;gap:8px;flex-shrink:0;}
 .logo-icon{width:26px;height:26px;border-radius:var(--r2);flex-shrink:0;
   background:linear-gradient(135deg,var(--gold),var(--goldd));
