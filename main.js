@@ -951,7 +951,9 @@ function setupChart(){
   const ce=document.getElementById('chart');
   chart=LightweightCharts.createChart(ce,{
     width:ce.clientWidth,height:ce.clientHeight,
-    layout:{background:{color:'#ffffff'},textColor:'#6e7683',fontFamily:'IBM Plex Sans'},
+    // transparente pra bolha de tras aparecer; quem pinta o fundo agora e o
+    // .chart-wrap, no CSS
+    layout:{background:{color:'transparent'},textColor:'#6e7683',fontFamily:'IBM Plex Sans'},
     grid:{vertLines:{color:'#f0f1f3'},horzLines:{color:'#f0f1f3'}},
     rightPriceScale:{borderColor:'#e3e6ea',scaleMargins:{top:0.08,bottom:0.22}},
     timeScale:{borderColor:'#e3e6ea',timeVisible:true,secondsVisible:false,
@@ -2356,13 +2358,19 @@ function theme(){return darkMode?THEME.dark:THEME.light;}
 function applyChartTheme(){
   const t=theme();
   const opts={
-    layout:{background:{color:t.bg},textColor:t.text},
+    layout:{background:{color:'transparent'},textColor:t.text},
     grid:{vertLines:{color:t.grid},horzLines:{color:t.grid}},
     rightPriceScale:{borderColor:t.border},
     timeScale:{borderColor:t.border},
     crosshair:{vertLine:{labelBackgroundColor:t.crosshair},horzLine:{labelBackgroundColor:t.crosshair}},
   };
   try{if(chart)chart.applyOptions(opts);}catch(e){}
+  // o fundo saiu do grafico (agora transparente, pra bolha de tras aparecer),
+  // entao quem tem que trocar de cor com o tema e o container
+  try{
+    const w=document.querySelector('.chart-wrap');
+    if(w) w.style.background=t.bg;
+  }catch(e){}
   try{if(volS)volS.applyOptions({color:t.vol});}catch(e){}
   try{if(phiChart)phiChart.applyOptions({
     layout:{background:{color:t.bg2},textColor:t.text},
@@ -2874,7 +2882,9 @@ async function openMultiCharts(){
     if(!el)continue;
     const mchart=LightweightCharts.createChart(el,{
       width:el.clientWidth,height:el.clientHeight,
-      layout:{background:{color:'#ffffff'},textColor:'#6e7683',fontFamily:'IBM Plex Sans'},
+      // transparente pra bolha de tras aparecer; o fundo fica no proprio
+      // container do mini-grafico
+      layout:{background:{color:'transparent'},textColor:'#6e7683',fontFamily:'IBM Plex Sans'},
       grid:{vertLines:{color:'#f5f6f7'},horzLines:{color:'#f5f6f7'}},
       rightPriceScale:{borderColor:'#e3e6ea'},
       timeScale:{borderColor:'#e3e6ea',timeVisible:true,secondsVisible:false,rightOffset:3},
@@ -2898,9 +2908,18 @@ async function openMultiCharts(){
     // canvas de desenho do grafico principal.
     if(getComputedStyle(el).position === 'static') el.style.position = 'relative';
     const bcv = document.createElement('canvas');
-    bcv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2;';
-    el.appendChild(bcv);
+    // z-index 0, ATRAS das telas do grafico: por cima a bolha tingia a vela e
+    // escondia a cor dela, do mesmo jeito que acontecia no grafico principal
+    bcv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0;';
+    el.style.background = 'var(--bg1)';
+    el.insertBefore(bcv, el.firstChild);
     const bctx = bcv.getContext('2d');
+
+    // as telas que a lib cria entram depois do canvas; z-index 1 pra ficarem
+    // por cima dele
+    try{ [...el.querySelectorAll('canvas')].forEach(c=>{
+      if(c!==bcv){ c.style.position=c.style.position||'relative'; c.style.zIndex='1'; }
+    }); }catch(e){}
 
     const ro=new ResizeObserver(()=>{
       mchart.applyOptions({width:el.clientWidth,height:el.clientHeight});
@@ -4470,10 +4489,14 @@ function pintaBolhas(ctx, larguraCss, alvos, corte, velas, t2xFn, p2yFn){
   grupos.forEach(g => {
     ctx.beginPath();
     g.itens.forEach(i => { ctx.moveTo(i.x + i.r, i.y); ctx.arc(i.x, i.y, i.r, 0, Math.PI*2); });
-    ctx.fillStyle = "rgba("+g.cor+","+(g.destaque ? 0.42 : 0.24)+")";
+    // Alpha alto porque agora a bolha fica ATRAS do candle: ela nao esconde
+    // nada, entao nao ha razao pra ser timida. Quando dividia o canvas de
+    // desenho, na frente, precisava ser translucida pra vela aparecer por
+    // baixo — e era isso que a deixava lavada.
+    ctx.fillStyle = "rgba("+g.cor+","+(g.destaque ? 0.68 : 0.42)+")";
     ctx.fill();
-    ctx.lineWidth = g.destaque ? 1.4 : 0.8;
-    ctx.strokeStyle = "rgba("+g.cor+","+(g.destaque ? 0.95 : 0.5)+")";
+    ctx.lineWidth = g.destaque ? 1.5 : 1;
+    ctx.strokeStyle = "rgba("+g.cor+","+(g.destaque ? 1 : 0.7)+")";
     ctx.stroke();
   });
 
@@ -4522,7 +4545,13 @@ function alvosDeVelas(velas){
 }
 
 function desenhaBolhas(){
-  if(!bolhasLigadas || !dCtx || !chart || !candleSeries) return;
+  if(!bCtx || !bCanvas || !chart || !candleSeries) return;
+  // canvas proprio: limpo aqui, porque o redrawDrawings limpa o de desenho e
+  // este nao passa mais por la
+  const dpr = window.devicePixelRatio || 1;
+  bCtx.save(); bCtx.setTransform(1,0,0,1,0,0);
+  bCtx.clearRect(0,0,bCanvas.width,bCanvas.height); bCtx.restore();
+  if(!bolhasLigadas) return;
   if(!candles || !candles.length) return;
 
   // Cache so pela versao do fluxo: a lista e a mesma em qualquer zoom, o que
@@ -4535,8 +4564,8 @@ function desenhaBolhas(){
 
   // clientWidth, nao width: o buffer e multiplicado pelo dpr e o t2x devolve
   // pixel de CSS — comparar com o buffer nunca cortava nada numa tela retina
-  const larguraTela = (dCanvas && dCanvas.clientWidth) || 4000;
-  pintaBolhas(dCtx, larguraTela, bolhasCache.alvos, bolhasCache.corte, candles, t2x, p2y);
+  const larguraTela = (bCanvas && bCanvas.clientWidth) || 4000;
+  pintaBolhas(bCtx, larguraTela, bolhasCache.alvos, bolhasCache.corte, candles, t2x, p2y);
 }
 
 
@@ -6661,7 +6690,25 @@ function onDerivConnectClick(){
   }
   setDerivStatus('connecting','Conectando...');
   derivAPI.connect(appId);
+  // O App ID tambem serve pra LEITURA de mercado, que nao precisa de token.
+  // Sem esta linha, digitar o App ID nao ligava o painel Binance x Deriv ate a
+  // proxima recarga da pagina — parecia que o App ID nao funcionava.
+  try{ localStorage.setItem('deriv_app_id', appId); }catch(e){}
+  try{ derivDados.desliga(); derivDados.liga(); }catch(e){}
 }
+
+// Botao proprio pra so a leitura de mercado: quem nao quer operar pela Deriv
+// nao precisa passar pelo caminho de conta nenhuma pra ter o cruzamento.
+function ligaDadosDeriv(){
+  const campo=document.getElementById('deriv-appid');
+  const appId=(campo&&campo.value||'').trim();
+  if(!appId){ alert('Preencha o App ID primeiro (crie um gratis em api.deriv.com).'); return; }
+  try{ localStorage.setItem('deriv_app_id', appId); }catch(e){}
+  try{ derivDados.desliga(); derivDados.liga(); }catch(e){}
+  if(typeof showInfoToast==="function")
+    showInfoToast("DERIV","pedindo os ticks — o painel Binance x Deriv responde em instantes");
+}
+window.ligaDadosDeriv = ligaDadosDeriv;
 function resetLive(){
   pendingTick=null; dragDraw=null; isDragging=false;
   lastTradeAt=0; h1StochAt=0; h1StochCache={k:null,d:null};
@@ -6765,6 +6812,9 @@ const fibRetrLevels = [-0.888,-0.555,-0.333,-0.222,-0.111,0,0.111,0.222,0.333,0.
 const fibBreakLevels = [-0.111,-0.222,-0.333,-0.555,-0.888];
 
 let dCanvas, dCtx;
+// canvas proprio das bolhas, atras do grafico. Antes elas dividiam o canvas de
+// desenho, que fica NA FRENTE — e por isso tingiam a vela por cima.
+let bCanvas, bCtx;
 let activeTool = 'cursor';
 let drawColor = '#FFEB3B';
 let magnetOn = false;
@@ -6785,6 +6835,8 @@ function drawings(){
 function initDrawingTools(){
   dCanvas = document.getElementById('draw-canvas');
   dCtx = dCanvas.getContext('2d');
+  bCanvas = document.getElementById('bolha-canvas');
+  if(bCanvas) bCtx = bCanvas.getContext('2d');
   resizeDrawCanvas();
 
   document.querySelectorAll('.tool-btn[data-tool]').forEach(btn=>{
@@ -6879,6 +6931,10 @@ function resizeDrawCanvas(){
   dCanvas.width = Math.max(1, r.width*dpr);
   dCanvas.height = Math.max(1, r.height*dpr);
   dCtx.setTransform(dpr,0,0,dpr,0,0);
+  if(bCanvas){
+    bCanvas.width = dCanvas.width; bCanvas.height = dCanvas.height;
+    bCtx.setTransform(dpr,0,0,dpr,0,0);
+  }
   redrawDrawings();
 }
 
