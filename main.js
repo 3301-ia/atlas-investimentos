@@ -4433,7 +4433,12 @@ function pintaBolhas(ctx, larguraCss, alvos, corte, velas, t2xFn, p2yFn){
     const raio = Math.max(1.6, raioTeto * (0.35 + 0.65*f));
 
     const cor = a.equilibrio ? "150,150,158" : (a.comprador ? "0,200,83" : "255,59,48");
-    const yy = a.comprador ? y - raio - 2 : y + raio + 2;
+    // ANCORADA NA MAXIMA/MINIMA, centro em cima do ponto. Antes o centro
+    // ficava a "raio + 2" de distancia do pavio — e como o raio cresce com o
+    // zoom, o centro viajava: aproximar afastava a bolha da vela, afastar
+    // colava. Agora ela cresce e encolhe em torno do proprio ponto, que nao
+    // sai do lugar em zoom nenhum.
+    const yy = y;
 
     // a vela que destoa ganha borda mais forte — o corte deixou de escolher
     // quem aparece e passou a so marcar quem se destaca
