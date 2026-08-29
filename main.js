@@ -1056,16 +1056,71 @@ const BORDER_BULL='#089981', BORDER_BEAR='#f23645';
 // carregamento completo (applySeriesData) quanto A CADA FECHAMENTO DE VELA
 // em tempo real (antes so rodava no load, ficando desatualizado durante o
 // dia inteiro de mercado aberto).
+// O voto binario (bull/bear) da um degrau seco: vermelho, cinza, verde. O que
+// se quer ver e a TEMPERATURA — o ribbon vermelho esfria, a vela clareia, e so
+// entao esverdeia. Entao guardo a proporcao do voto, nao o vencedor.
+//
+// Score = (subindo - descendo) / total, de -1 a +1. Como sao 19 medias
+// votando, ele muda de uma media por vez e a passagem sai suave sozinha; a EMA
+// por cima so tira o tremor de uma media que vai e volta.
+function computePhiScoreSeries(phiArrs){
+  const n=phiArrs[0].length;
+  const voteLookback=8;
+  const bruto=new Array(n).fill(null);
+  for(let i=0;i<n;i++){
+    if(i<voteLookback) continue;
+    let up=0, down=0;
+    for(let k=0;k<phiArrs.length;k++){
+      const now=phiArrs[k][i], past=phiArrs[k][i-voteLookback];
+      if(now==null||past==null)continue;
+      if(now>past)up++; else if(now<past)down++;
+    }
+    const tot=up+down;
+    if(!tot) continue;
+    bruto[i]=(up-down)/tot;
+  }
+  const kk=2/(6+1);   // EMA de 6: alisa sem atrasar a virada
+  let ant=null;
+  return bruto.map(v=>{
+    if(v==null) return null;
+    ant = (ant==null) ? v : v*kk + ant*(1-kk);
+    return ant;
+  });
+}
+
+// Vermelho cheio (-1) -> neutro claro (0) -> verde cheio (+1). Passa pelo
+// neutro de proposito: interpolar vermelho direto pra verde atravessa o marrom,
+// que e o que faz um gradiente desses ficar sujo.
+//
+// O expoente 0,7 acende a cor mais rapido perto dos extremos, entao a vela
+// so fica pastel de verdade quando o ribbon esta mesmo indeciso.
+function corTemperaturaVela(score){
+  const escuro = (typeof darkMode!=="undefined") && darkMode;
+  const neutro = escuro ? [64,70,80] : [219,224,230];
+  const alvo   = score >= 0 ? [8,153,129] : [242,54,69];
+  const f = Math.pow(Math.min(1, Math.abs(score)), 0.7);
+  const c = neutro.map((v,i)=> Math.round(v + (alvo[i]-v)*f));
+  return "rgb("+c[0]+","+c[1]+","+c[2]+")";
+}
+
 function refreshPhiRibbonAndBorders(){
   const closes=candles.map(c=>c.close);
   const phiArrs=PHI_PERIODS.map(p=>ema(closes,p));
   const alignmentPerBar=computePhiAlignmentSeries(phiArrs);
+  const scorePerBar=computePhiScoreSeries(phiArrs);
   renderPhiRibbonSegments(candles,phiArrs,alignmentPerBar);
+  // O CORPO leva a temperatura do ribbon; a BORDA guarda se a vela fechou em
+  // alta ou em baixa. Antes era o contrario — corpo na cor real e borda no
+  // ribbon — e a passagem de vermelho pra verde nao aparecia, porque so um
+  // fiozinho de borda mudava de cor.
   candleSeries.setData(candles.map((c,i)=>{
-    const a=alignmentPerBar[i];
-    return a ? {...c, borderColor:a==='bull'?BORDER_BULL:BORDER_BEAR} : c;
+    const s=scorePerBar[i];
+    if(s==null) return c;
+    const cor=corTemperaturaVela(s);
+    return {...c, color:cor, wickColor:cor,
+            borderColor: c.close>=c.open ? BORDER_BULL : BORDER_BEAR};
   }));
-  return {phiArrs,alignmentPerBar};
+  return {phiArrs,alignmentPerBar,scorePerBar};
 }
 
 // Versao leve pra rodar A CADA TICK (nao so no fechamento) — so recalcula o
@@ -1086,17 +1141,18 @@ function updateLiveCandleBorder(){
   });
   if(up===0&&down===0)return;
   const last=candles[n];
-  const borderColor = up>=down?BORDER_BULL:BORDER_BEAR;
-  try{ candleSeries.update({time:last.time,open:last.open,high:last.high,low:last.low,close:last.close,borderColor}); }catch(e){}
+  const cor=corTemperaturaVela((up-down)/(up+down));
+  try{ candleSeries.update({time:last.time,open:last.open,high:last.high,low:last.low,close:last.close,
+    color:cor, wickColor:cor,
+    borderColor: last.close>=last.open ? BORDER_BULL : BORDER_BEAR}); }catch(e){}
 }
 
 function applySeriesData(){
   const closes=candles.map(c=>c.close);
 
-  // Ribbon Phi Clube + borda das velas — calculado ANTES do resto, pra usar
-  // o voto por maioria (bull/bear por barra) na cor da BORDA de cada vela.
-  // O preenchimento da vela continua sendo a cor real (fechou em alta ou em
-  // baixa) — so a borda reflete o contexto do ribbon.
+  // Ribbon Phi Clube + cor das velas — calculado ANTES do resto, porque e o
+  // score por barra que da a TEMPERATURA do corpo de cada vela. A borda e que
+  // guarda a cor real (fechou em alta ou em baixa).
   refreshPhiRibbonAndBorders();
 
   volS.setData(candles.map(c=>({time:c.time,value:c.volume,color:c.close>=c.open?'rgba(0,230,118,.15)':'rgba(244,67,54,.15)'})));
