@@ -4255,6 +4255,19 @@ function sinalUnificado(){
     });
   }catch(e){}
 
+  // ── RETORNO NA 200 (o trampolim). Quarta porta: e continuacao, mas com um
+  // gatilho proprio — a 89 segurando depois da volta pra media.
+  try{
+    const rt = retornoNa200();
+    if(rt && rt.checks){
+      push({porta:'retorno na 200', lado:rt.lado, pronto:!!rt.completo, vetado:false,
+        falta: rt.total - rt.ok,
+        resumo: rt.ok+'/'+rt.total+' (esticou, voltou, testou a 89, segurou)',
+        detalhe: rt.porque, stop:rt.stop, alvo:rt.alvo, rr:rt.rr,
+        linhas: rt.checks.filter(c=>!c.ok).map(c=>({nome:c.nome, falta:c.falta}))});
+    }
+  }catch(e){}
+
   // ── REVERSAO
   try{
     ['compra','venda'].forEach(L => {
@@ -4282,7 +4295,7 @@ function sinalUnificado(){
   const contradicao = ladosProntos.length > 1;
 
   return {
-    avaliados: saidas.length, possiveis: 6,
+    avaliados: saidas.length, possiveis: 8,
     entra: prontos.length > 0 && !contradicao,
     contradicao,
     alvo, prontos, todos: saidas,
@@ -4468,6 +4481,266 @@ function sinalNoTick(){
   });
 }
 window.sinalNoTick = sinalNoTick;
+
+
+// ══════════════════════════════════════════════════════
+// A EMA200 COMO IMA E COMO TRAMPOLIM
+// ══════════════════════════════════════════════════════
+// Duas afirmacoes, e as duas dao pra medir em vez de acreditar:
+//
+//   IMA — quanto mais o preco se afasta da EMA200, mais forte a chamada de
+//   volta. Isso nao e opiniao: da pra pegar todas as velas do historico,
+//   agrupar pela distancia em ATR e contar quantas voltaram a tocar a media
+//   dentro de N velas. Se a taxa nao subir com a distancia, o ima nao existe
+//   NESTE grafico, e o painel diz isso.
+//
+//   TRAMPOLIM — o preco volta pra media, testa a MA89 no caminho, e se a 89
+//   segurar ele parte de novo no sentido de onde veio. E uma continuacao
+//   disfarcada de reversao: quem estava esticado pra baixo e voltou ate a
+//   media continua vendedor, nao virou comprador.
+//
+// A diferenca entre as duas e o que decide o lado. Longe da media, o proximo
+// movimento provavel e DE VOLTA. Encostado na media depois de ter esticado, o
+// proximo provavel e EMBORA outra vez — e e ai que se entra, porque o stop cabe
+// atras da 89.
+
+const MAG_HORIZONTE = 30;    // velas pra considerar "voltou"
+const RETORNO_ZONA  = 1.2;   // em ATR: perto o bastante da 200 pra contar
+const RETORNO_JANELA = 25;   // ha quantas velas o esticamento ainda vale
+const RETORNO_ESTICOU = 2.5; // em ATR: o que conta como ter esticado
+
+// Series necessarias, cacheadas junto das outras
+let magCache = null, magChave = '';
+function seriesMagnetismo(){
+  if(!candles || candles.length < 260) return null;
+  const ch = candles.length+'|'+candles[candles.length-1].time+'|'+currentSym+'|'+currentTF;
+  if(magChave === ch && magCache) return magCache;
+  const closes = candles.map(c=>c.close), highs = candles.map(c=>c.high), lows = candles.map(c=>c.low);
+  magCache = {closes, highs, lows,
+    e200: ema(closes,200), ma89: sma(closes,89),
+    atr: atrCalc(highs, lows, closes, 14)};
+  magChave = ch;
+  return magCache;
+}
+
+// O IMA, MEDIDO. Para cada faixa de distancia, quantas velas voltaram a tocar a
+// EMA200 dentro do horizonte — e em quantas velas, na mediana.
+function magnetismo(){
+  const S = seriesMagnetismo();
+  if(!S) return null;
+  const n = S.closes.length - 1;
+  const dist = i => (S.e200[i]!=null && S.atr[i]>0) ? (S.closes[i]-S.e200[i])/S.atr[i] : null;
+  const agora = dist(n);
+  if(agora == null) return null;
+
+  // faixas por |distancia| em ATR
+  const faixas = [[0,1],[1,2],[2,3],[3,5],[5,99]];
+  const nome = f => f[1]>=99 ? '5+ ATR' : f[0]+'-'+f[1]+' ATR';
+  const res = faixas.map(f => ({faixa:nome(f), de:f[0], ate:f[1], n:0, voltou:0, velas:[]}));
+  for(let i=210; i<n-MAG_HORIZONTE; i++){
+    const d = dist(i);
+    if(d == null) continue;
+    const a = Math.abs(d);
+    const b = res.find(r => a >= r.de && a < r.ate);
+    if(!b) continue;
+    b.n++;
+    // "voltou" = o range da vela conteve a EMA200
+    const sinal0 = Math.sign(S.closes[i] - S.e200[i]);
+    for(let j=i+1; j<=i+MAG_HORIZONTE; j++){
+      if(S.e200[j]==null) continue;
+      // tocou (a vela contem a linha) OU cruzou (o lado trocou) — so o
+      // primeiro perde o cruzamento que acontece entre duas velas
+      const contem = S.lows[j] <= S.e200[j] && S.highs[j] >= S.e200[j];
+      const cruzou = Math.sign(S.closes[j] - S.e200[j]) !== sinal0;
+      if(contem || cruzou){ b.voltou++; b.velas.push(j-i); break; }
+    }
+  }
+  res.forEach(r => {
+    r.taxa = r.n>0 ? +(r.voltou/r.n*100).toFixed(1) : null;
+    r.medianaVelas = r.velas.length
+      ? r.velas.sort((a,b)=>a-b)[Math.floor(r.velas.length/2)] : null;
+    delete r.velas;
+  });
+  const minhaFaixa = res.find(r => Math.abs(agora) >= r.de && Math.abs(agora) < r.ate);
+  // o ima existe se a taxa CRESCE com a distancia
+  const comDados = res.filter(r => r.n >= 20 && r.taxa != null);
+  let cresce = null;
+  if(comDados.length >= 3){
+    const prim = comDados[0].taxa, ult = comDados[comDados.length-1].taxa;
+    cresce = ult - prim;
+  }
+  // GUARDA: se quase tudo cai numa faixa so, comparar faixas nao diz nada.
+  // Acontece quando o ATR e minusculo perto da amplitude do movimento — a
+  // distancia em ATR estoura e todas as velas viram "5+".
+  const totalN = res.reduce((a,r)=>a+r.n,0);
+  const maiorFaixa = Math.max.apply(null, res.map(r=>r.n));
+  const degenerado = totalN > 0 && (maiorFaixa/totalN) > 0.85;
+  return {atrs:+agora.toFixed(2), faixas:res, minhaFaixa, cresce, degenerado,
+          horizonte:MAG_HORIZONTE, amostraOk: comDados.length >= 3};
+}
+window.magnetismo = magnetismo;
+
+// O TRAMPOLIM: esticou, voltou pra media, testou a 89, e segurou.
+// O lado e o da tendencia que ja vinha — quem esticou pra baixo e voltou
+// continua vendedor.
+function retornoNa200(){
+  const S = seriesMagnetismo();
+  if(!S) return null;
+  const n = S.closes.length - 1;
+  const atr = S.atr[n];
+  if(!(atr > 0) || S.e200[n] == null || S.ma89[n] == null)
+    return {estado:'sem dados', porque:'faltam medias ou ATR'};
+  const dAgora = (S.closes[n] - S.e200[n]) / atr;
+
+  // 1) ESTICOU nas ultimas RETORNO_JANELA velas, e pra que lado
+  let pico = 0, ladoEsticou = null;
+  for(let i=Math.max(210, n-RETORNO_JANELA); i<=n; i++){
+    if(S.e200[i]==null || !(S.atr[i]>0)) continue;
+    const d = (S.closes[i]-S.e200[i])/S.atr[i];
+    if(Math.abs(d) > Math.abs(pico)){ pico = d; ladoEsticou = d > 0 ? 'alta' : 'baixa'; }
+  }
+  const esticou = Math.abs(pico) >= RETORNO_ESTICOU;
+  // tendencia = o lado de onde ele veio; volta pra media nao troca a tendencia
+  const lado = ladoEsticou === 'alta' ? 'compra' : 'venda';
+
+  // 2) VOLTOU pra zona da media
+  const voltou = Math.abs(dAgora) <= RETORNO_ZONA;
+
+  // 3) TESTOU A 89 e ela SEGUROU. Na alta a 89 tem que ficar por baixo
+  //    sustentando; na baixa, por cima barrando.
+  const compra = lado === 'compra';
+  let tocou89 = false, segurou89 = false;
+  for(let i=Math.max(0, n-6); i<=n; i++){
+    const m = S.ma89[i]; if(m == null) continue;
+    if(S.lows[i] <= m && S.highs[i] >= m) tocou89 = true;
+  }
+  // segurou = o fechamento atual esta do lado certo da 89
+  segurou89 = compra ? S.closes[n] > S.ma89[n] : S.closes[n] < S.ma89[n];
+
+  const checks = [
+    {nome:'esticou da EMA200', ok:esticou,
+     txt: pico.toFixed(2) + ' ATR de pico nas ultimas ' + RETORNO_JANELA + ' velas',
+     falta:'o preco nao chegou a esticar ' + RETORNO_ESTICOU + ' ATR da media'},
+    {nome:'voltou pra media', ok:voltou,
+     txt: dAgora.toFixed(2) + ' ATR da EMA200 agora',
+     falta:'ainda esta a ' + Math.abs(dAgora).toFixed(2) + ' ATR da media (precisa de ' + RETORNO_ZONA + ')'},
+    {nome:'testou a MA89', ok:tocou89,
+     txt: tocou89 ? 'tocou nas ultimas 6 velas' : 'nao tocou a 89',
+     falta:'o preco ainda nao testou a MA89'},
+    {nome:'a 89 segurou', ok:segurou89,
+     txt: 'fechamento ' + (S.closes[n] > S.ma89[n] ? 'acima' : 'abaixo') + ' da MA89 ('
+          + S.ma89[n].toFixed(2) + ')',
+     falta:'o fechamento nao esta do lado certo da MA89'},
+  ];
+  const ok = checks.filter(c=>c.ok).length;
+  const completo = checks.every(c=>c.ok);
+
+  // stop atras da 89, com folga; alvo = o extremo de onde ele veio
+  const folga = atr * 0.5;
+  const stop = compra ? S.ma89[n] - folga : S.ma89[n] + folga;
+  // o alvo e "de volta pro extremo de onde veio", mas com o pico limitado a
+  // 5 ATR: um pico absurdo (ATR minusculo perto do movimento) faria o R:R
+  // virar ficcao, e R:R inflado e o numero que convence alguem a entrar
+  const picoUtil = Math.min(Math.abs(pico), 5);
+  const alvo = S.e200[n] + (compra ? 1 : -1) * picoUtil * atr;
+  const preco = S.closes[n];
+  const rr = (preco !== stop) ? +(Math.abs(alvo-preco)/Math.abs(preco-stop)).toFixed(2) : null;
+
+  return {estado: completo ? 'pronto' : ok >= 2 ? 'formando' : 'longe',
+    lado, completo, ok, total:checks.length, checks,
+    pico:+pico.toFixed(2), picoUtil:+picoUtil.toFixed(2), distAgora:+dAgora.toFixed(2),
+    ma89:+S.ma89[n].toFixed(2), ema200:+S.e200[n].toFixed(2),
+    stop:+stop.toFixed(2), alvo:+alvo.toFixed(2), rr,
+    porque: completo
+      ? 'esticou ' + pico.toFixed(1) + ' ATR, voltou pra media e a 89 segurou — '
+        + 'continuacao de ' + lado + ', com o stop cabendo atras da 89'
+      : checks.filter(c=>!c.ok).map(c=>c.falta).join('; ')};
+}
+window.retornoNa200 = retornoNa200;
+
+function renderMagnetismo(){
+  const box = document.getElementById('mag-box');
+  const cnt = document.getElementById('mag-count');
+  if(!box) return;
+  let mg = null, rt = null;
+  try{ mg = magnetismo(); }catch(e){}
+  try{ rt = retornoNa200(); }catch(e){}
+  const esc = t => String(t).replace(/[&<>]/g, x=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[x]));
+  const nf = v => (v==null||!isFinite(v)) ? '--'
+    : Number(v).toLocaleString('pt-BR',{maximumFractionDigits:2});
+  if(!mg && !rt){
+    if(cnt) cnt.textContent = '--';
+    box.innerHTML = '<div style="font-size:9px;color:var(--t3);">Carregando...</div>';
+    return;
+  }
+  let h = '';
+  // ── O TRAMPOLIM primeiro: e ele que da entrada
+  if(rt && rt.checks){
+    const cor = rt.completo ? 'var(--green)' : rt.ok>=2 ? 'var(--goldd)' : 'var(--t3)';
+    if(cnt){ cnt.textContent = rt.ok+'/'+rt.total; cnt.style.color = cor; }
+    h += '<div style="font-size:11px;font-weight:800;color:'+cor+';">'
+       + (rt.completo?'RETORNO PRONTO':rt.ok>=2?'RETORNO FORMANDO':'SEM RETORNO')
+       + ' <span style="font-size:9px;font-weight:600;color:var(--t3);">continuacao de '
+       + esc(rt.lado) + '</span></div>';
+    h += '<div style="font-size:9px;color:var(--t2);margin:3px 0 4px;line-height:1.45;">'
+       + esc(rt.porque) + '.</div>';
+    rt.checks.forEach(c => {
+      h += '<div style="font-size:9px;color:'+(c.ok?'var(--green)':'var(--t3)')+';'
+         + 'display:flex;gap:5px;align-items:baseline;">'
+         + '<span style="width:9px;flex:none;">'+(c.ok?'&#10004;':'&#9633;')+'</span>'
+         + '<span><b>'+esc(c.nome)+'</b> <span style="color:var(--t3);">'+esc(c.txt)+'</span></span>'
+         + '</div>';
+    });
+    h += '<div style="font-size:9px;color:var(--t2);margin-top:4px;">EMA200 <b>'+nf(rt.ema200)
+       + '</b> &middot; MA89 <b>'+nf(rt.ma89)+'</b></div>';
+    if(rt.ok >= 2){
+      h += '<div style="font-size:9px;color:var(--t2);">stop <b>'+nf(rt.stop)
+         + '</b> (atras da 89) &middot; alvo <b>'+nf(rt.alvo)+'</b>'
+         + (rt.rr!=null ? ' &middot; R:R <b>'+rt.rr+':1</b>' : '') + '</div>';
+    }
+  }
+  // ── O IMA, medido
+  if(mg){
+    h += '<div style="font-size:8px;color:var(--t3);letter-spacing:.5px;margin-top:7px;">'
+       + 'O IMA &mdash; voltou a tocar a EMA200 em ate ' + mg.horizonte + ' velas</div>';
+    mg.faixas.forEach(f => {
+      if(f.n < 10) return;
+      const eu = mg.minhaFaixa && f.faixa === mg.minhaFaixa.faixa;
+      h += '<div style="display:flex;gap:6px;font-size:9px;margin-top:1px;'
+         + (eu?'background:var(--bg2);border-radius:3px;':'') + '">'
+         + '<span style="width:52px;color:'+(eu?'var(--t1)':'var(--t3)')+';">'
+         + esc(f.faixa) + (eu?'*':'') + '</span>'
+         + '<span style="flex:1;height:6px;background:var(--bd);border-radius:3px;overflow:hidden;'
+         + 'align-self:center;"><span style="display:block;height:6px;width:'
+         + Math.round(f.taxa||0) + '%;background:var(--accent);"></span></span>'
+         + '<span style="width:74px;text-align:right;color:var(--t2);">'
+         + '<b>'+(f.taxa!=null?f.taxa:'--')+'%</b> <span style="color:var(--t3);">'
+         + (f.medianaVelas!=null?'~'+f.medianaVelas+'v':'') + '</span></span></div>';
+    });
+    // A CONCLUSAO: o ima existe neste grafico ou nao?
+    h += '<div style="font-size:9px;margin-top:4px;line-height:1.45;color:'
+       + (mg.cresce == null ? 'var(--t3)' : mg.cresce >= 10 ? 'var(--green)'
+          : mg.cresce <= -10 ? 'var(--red)' : 'var(--goldd)') + ';">'
+       + (mg.degenerado ? '<b>Distribuicao degenerada:</b> quase todas as velas caem numa'
+            + ' faixa so, entao comparar faixas nao diz nada. Acontece quando o ATR fica'
+            + ' minusculo perto da amplitude do movimento.'
+          : !mg.amostraOk ? 'Amostra pequena demais pra afirmar se o ima existe aqui.'
+          : mg.cresce >= 10
+            ? '<b>O ima existe neste grafico:</b> a taxa de volta sobe ' + mg.cresce.toFixed(0)
+              + ' pontos da faixa mais perto pra mais longe. Quanto mais esticado, mais provavel voltar.'
+          : mg.cresce <= -10
+            ? '<b>O ima NAO existe aqui</b> &mdash; a taxa de volta CAI com a distancia ('
+              + mg.cresce.toFixed(0) + ' pontos). Neste grafico, esticar tem sido sinal de'
+              + ' continuar esticando, nao de voltar.'
+            : 'A taxa de volta quase nao muda com a distancia (' + mg.cresce.toFixed(0)
+              + ' pontos): o ima nao esta se manifestando neste historico.')
+       + '</div>';
+    h += '<div style="font-size:8px;color:var(--t3);margin-top:2px;">agora a <b>'
+       + mg.atrs + ' ATR</b> da media</div>';
+  }
+  box.innerHTML = h;
+}
+window.renderMagnetismo = renderMagnetismo;
 
 // ── A COMUNICACAO ────────────────────────────────────────────────────────
 // O painel e escrito na ordem em que a decisao acontece: primeiro o veredito,
@@ -7112,6 +7385,7 @@ function iniciaForca(){
     try{ renderGatilho3(); }catch(e){}      // e o QUANDO da continuacao: a entrada da onda 3
     try{ renderFractal(); }catch(e){}       // o encaixe entre escalas (rede propria, cache de 90s)
     try{ renderLog(); }catch(e){}           // e o registro do que os paineis disseram, com desfecho
+    try{ renderMagnetismo(); }catch(e){}    // a 200 como ima e como trampolim
     try{ renderSinal(); }catch(e){}         // o consolidador: uma resposta so
   },2000);
 }
