@@ -3575,6 +3575,12 @@ function limiaresDoTempo(velas){
     // O teto e so anti-absurdo — quando ele encosta, quem manda e o teto e nao
     // a medicao, entao ele fica bem acima do que dado real costuma dar.
     pressao: temFluxo ? Math.min(45, Math.max(8, +(percentil(press, 75)||10).toFixed(1))) : 10,
+    // A BOLHA USA OUTRA MARCA DA MESMA REGUA. O portao pergunta "esse dominio
+    // e raro o bastante pra agir?" e por isso usa o quartil de cima. A bolha
+    // pergunta outra coisa: "quem ganhou esta vela?" — e essa e uma pergunta
+    // descritiva, que a mediana responde. Com o corte do portao, 75% do
+    // grafico ficava cinza por construçao e a bolha parava de descrever nada.
+    dominioBolha: temFluxo ? Math.min(25, Math.max(4, +(percentil(press, 50)||8).toFixed(1))) : 8,
     // pressao que conta como "o volume acordou"
     acorda:  temFluxo ? Math.min(55, Math.max(10, +(percentil(press, 85)||12).toFixed(1))) : 12,
     // avisa quando o teto/piso e que decidiu, em vez da distribuicao
@@ -8207,10 +8213,28 @@ function registraNegocio(preco, qtd, comprador, ts, velaTime){
     if(v.oficial) return;
     if(comprador) v.compra += notional; else v.venda += notional;
     fluxoVersao++;
-    // guarda so as ultimas 200 velas, senao isto cresce sem parar
+    // ── O PRUNE ESTAVA APAGANDO BOLHA QUE AINDA ESTA NA TELA.
+    // Ele guardava as ultimas 200 velas e ponto. Mas o grafico carrega 500,
+    // 1000, e com o botao Tudo bem mais que isso — entao tudo alem das 200
+    // mais recentes perdia o fluxo e ficava sem bolha. Rolando pra tras as
+    // bolhas simplesmente sumiam, e parecia falta de dado quando era o proprio
+    // app deletando.
+    //
+    // E ele so rodava pra vela AINDA SEM numero oficial da Binance (o return
+    // acima), ou seja: disparava justamente na vela nova, a cada vela nova.
+    //
+    // O limite certo nao e um numero redondo, e o historico carregado: fluxo
+    // de vela que nao esta mais no grafico nao serve pra nada, e fluxo de vela
+    // que ESTA no grafico nao pode ser jogado fora.
     const chaves = Object.keys(fluxoPorVela);
-    if(chaves.length > 200){
-      chaves.sort((a,b)=>a-b).slice(0, chaves.length-200).forEach(k=>{ delete fluxoPorVela[k]; });
+    if(chaves.length > 300){
+      const maisAntiga = (candles && candles.length) ? candles[0].time : null;
+      if(maisAntiga != null){
+        chaves.forEach(k => { if(+k < maisAntiga) delete fluxoPorVela[k]; });
+      }else{
+        // sem grafico carregado nao ha o que preservar: cai no corte simples
+        chaves.sort((a,b)=>a-b).slice(0, chaves.length-300).forEach(k=>{ delete fluxoPorVela[k]; });
+      }
     }
   }
 }
@@ -8283,6 +8307,10 @@ function montaAlvosBolha(){
   // ficar parada num valor parcial se o fluxo travasse. Volume so vira desenho
   // quando a vela fecha e o numero para de mudar.
   const ultimaVela = candles.length - 1;
+  // mesmo corte de dominio que o checklist usa, saindo da distribuicao deste
+  // tempo — assim bolha e portao falam a mesma lingua
+  let corteDom = 10;
+  try{ const L = limiaresAtuais(); if(L && L.temFluxo) corteDom = L.dominioBolha; }catch(e){}
   const alvos = [];
   candles.forEach((vela, i) => {
     if(i === ultimaVela) return;
@@ -8291,10 +8319,33 @@ function montaAlvosBolha(){
     const compra = v.compra||0, venda = v.venda||0;
     const total = compra + venda;
     if(total <= 0) return;
+    // ── O CINZA AGORA USA O CORTE DO PROPRIO TEMPO.
+    // Era 10% fixo — o mesmo numero meu que o resto do app abandonou. Numa
+    // vela de 1m 10% de desequilibrio e rotina e quase nada ficava cinza;
+    // numa vela diaria e evento e quase tudo ficava colorido. A bolha estava
+    // contando uma historia com regua diferente da do checklist.
+    // arredonda ANTES de comparar: com dom=30.16 e corte=30.2 a bolha saia
+    // cinza enquanto o rotulo dizia "30.2%", que e o corte — cor e numero
+    // discordando na fronteira
+    const dom = +(Math.abs(compra-venda)/total*100).toFixed(1);
+
+    // ── ABSORCAO: o que a bolha nao dizia e era o mais importante.
+    // Volume grande, agressao pesada de um lado, e o preco NAO indo junto —
+    // fecha de volta pra dentro do range. Isso e alguem do lado passivo
+    // comendo a agressao, e e diferente de "vela de volume alto". Ate agora
+    // as duas apareciam iguais na tela.
+    const range = vela.high - vela.low;
+    const agrComprador = compra >= venda;
+    const volta = range > 0
+      ? (agrComprador ? (vela.high - vela.close)/range : (vela.close - vela.low)/range)
+      : 0;
+    const absorvida = total >= est.corte && dom >= corteDom && volta >= 0.5;
+
     alvos.push({vela, notional:total, compra, venda,
-      comprador: compra >= venda,
+      comprador: agrComprador, dominio:dom,
       // quem domina por pouco nao e dominio; abaixo disso a vela fica neutra
-      equilibrio: total > 0 && Math.abs(compra-venda)/total < 0.10,
+      equilibrio: dom < corteDom,
+      absorvida,
       destaque: total >= est.corte});
   });
   // na ordem do grafico: o desenho segue a linha do tempo, e quando duas se
@@ -8368,9 +8419,9 @@ function pintaBolhas(ctx, larguraCss, alvos, corte, velas, t2xFn, p2yFn, alturaC
 
     // a vela que destoa ganha borda mais forte — o corte deixou de escolher
     // quem aparece e passou a so marcar quem se destaca
-    const chave = cor + "|" + (a.destaque ? 1 : 0);
+    const chave = cor + "|" + (a.destaque ? 1 : 0) + "|" + (a.absorvida ? 1 : 0);
     let g = grupos.get(chave);
-    if(!g){ g = {cor, destaque:a.destaque, itens:[]}; grupos.set(chave, g); }
+    if(!g){ g = {cor, destaque:a.destaque, absorvida:a.absorvida, itens:[]}; grupos.set(chave, g); }
     g.itens.push({x, y:yy, r:raio});
     n++;
 
@@ -8402,6 +8453,16 @@ function pintaBolhas(ctx, larguraCss, alvos, corte, velas, t2xFn, p2yFn, alturaC
     ctx.lineWidth = g.destaque ? 1.5 : 1;
     ctx.strokeStyle = "rgba("+g.cor+","+(g.destaque ? 1 : 0.7)+")";
     ctx.stroke();
+    // ANEL BRANCO = ABSORCAO. Volume grande e agressivo que o preco recusou.
+    // Deliberadamente branco e nao um tom da cor da bolha: absorcao contradiz
+    // o lado que agrediu, entao pintar na cor dele confundiria as duas coisas.
+    if(g.absorvida){
+      ctx.beginPath();
+      g.itens.forEach(i => { ctx.moveTo(i.x + i.r + 2, i.y); ctx.arc(i.x, i.y, i.r + 2, 0, Math.PI*2); });
+      ctx.lineWidth = 1.6;
+      ctx.strokeStyle = "rgba(245,248,252,0.9)";
+      ctx.stroke();
+    }
   });
 
   if(rotulos.length){
