@@ -1267,6 +1267,392 @@ function soAMaiorDoPeriodo(velas, marcas, tfSeg){
 window.calculaMudancaCarater = calculaMudancaCarater;
 
 // ══════════════════════════════════════════════════════
+// ELLIOTT — contagem a partir dos pivos, com as regras conferidas
+// ══════════════════════════════════════════════════════
+// Rotular onda de Elliott automaticamente e ambiguo por natureza: o mesmo
+// grafico admite mais de uma contagem valida, e quem promete uma resposta unica
+// esta escondendo isso de voce. Entao aqui NAO se decide a contagem — se
+// TESTA a contagem que os pivos sustentam contra as regras que nao admitem
+// excecao, e se diz o que a invalidaria.
+//
+// AS TRES REGRAS INVIOLAVEIS (se uma falha, a contagem esta errada, ponto):
+//   1. a onda 2 nao retrocede 100% da onda 1
+//   2. a onda 3 nao e a mais curta entre 1, 3 e 5
+//   3. a onda 4 nao invade o territorio de preco da onda 1
+//
+// As proporcoes de Fibonacci sao TENDENCIA, nao regra: onda 2 costuma corrigir
+// 0,5 a 0,786 da 1; onda 3 costuma dar 1,618 da 1; onda 4 corrige 0,236 a 0,382
+// da 3. Elas nao invalidam nada — servem pra dizer se a contagem esta comum ou
+// esticada.
+const ELLIOTT_K = 6;   // pivo de onda e mais largo que o de estrutura
+
+// Sequencia de pivos ALTERNADOS (topo, fundo, topo, ...). Dois topos seguidos
+// sem fundo entre eles nao formam onda; nesse caso fica o mais extremo.
+function pivosAlternados(velas, k){
+  const {altos, baixos} = achaPivos(velas, k || ELLIOTT_K);
+  const todos = [
+    ...altos.map(i=>({i, tipo:'alto',  preco:velas[i].high})),
+    ...baixos.map(i=>({i, tipo:'baixo', preco:velas[i].low})),
+  ].sort((a,b)=>a.i-b.i);
+  const out = [];
+  todos.forEach(p => {
+    const ult = out[out.length-1];
+    if(!ult){ out.push(p); return; }
+    if(ult.tipo !== p.tipo){ out.push(p); return; }
+    // mesmo tipo em sequencia: fica o mais extremo dos dois
+    if(p.tipo === 'alto'  && p.preco > ult.preco) out[out.length-1] = p;
+    if(p.tipo === 'baixo' && p.preco < ult.preco) out[out.length-1] = p;
+  });
+  return out;
+}
+
+function proporcao(a, b){ return (b > 0) ? a/b : null; }
+
+// Testa os ultimos pivos como um impulso 0-1-2-3-4-5. Devolve o que der pra
+// afirmar: as ondas ja formadas, as regras conferidas uma a uma, e em que
+// ponto da contagem o preco esta agora.
+function leituraElliott(velas){
+  if(!velas || velas.length < 60) return null;
+  const p = pivosAlternados(velas);
+  // UM pivo ja basta. O caso que mais interessa — "a onda 1 acabou e a 2
+  // esta corrigindo agora" — tem exatamente um pivo confirmado (o topo da 1);
+  // o ponto 0 se reconstroi e o fim da 2 ainda esta se formando.
+  if(p.length < 1) return null;
+
+  const seq = p.slice(-6);
+
+  // A DIRECAO VEM DO MOVIMENTO LIQUIDO, nao do tipo do primeiro pivo. O inicio
+  // da onda 1 quase nunca e um pivo — nao ha nada antes dele pra confirmar —,
+  // entao a sequencia costuma comecar ja no TOPO da onda 1. Ler o tipo do
+  // primeiro pivo fazia a contagem inteira andar uma casa: a onda 2 era rotulada
+  // como onda 1.
+  // Com dois ou mais pivos a direcao vem do movimento liquido. Com um so nao
+  // ha movimento liquido pra medir: o tipo do pivo diz tudo — um topo
+  // confirmado so pode ser o fim de uma perna de alta.
+  const alta = (seq.length > 1)
+    ? seq[seq.length-1].preco > seq[0].preco
+    : seq[0].tipo === 'alto';
+  const tipoInicial = alta ? 'baixo' : 'alto';
+  if(seq[0].tipo !== tipoInicial){
+    // reconstroi o ponto 0: o extremo entre o comeco da janela e o primeiro pivo
+    const ate = seq[0].i, de = Math.max(0, ate-200);
+    let m = de;
+    for(let i=de;i<ate;i++){
+      if(alta ? velas[i].low < velas[m].low : velas[i].high > velas[m].high) m = i;
+    }
+    seq.unshift({i:m, tipo:tipoInicial, preco: alta ? velas[m].low : velas[m].high, origem:true});
+  }
+
+  // A PERNA EM CURSO ENTRA COMO PROVISORIA. O fim da onda que esta se formando
+  // ainda nao e pivo (faltam as velas de confirmacao), e e justamente essa que
+  // interessa: "estamos na onda 2" so da pra dizer contando a perna atual.
+  const ultimo = seq[seq.length-1];
+  const n = velas.length-1;
+  const precoAgora = velas[n].close;
+  const andou = Math.abs(precoAgora - ultimo.preco);
+  const tamMedio = seq.length>1
+    ? seq.slice(1).reduce((s,x,k)=>s+Math.abs(x.preco-seq[k].preco),0)/(seq.length-1) : 0;
+  // so conta como perna nova se ja andou 20% do tamanho medio das anteriores
+  if(n > ultimo.i+2 && tamMedio>0 && andou > tamMedio*0.2){
+    const tipo = ultimo.tipo === 'alto' ? 'baixo' : 'alto';
+    seq.push({i:n, tipo, preco:precoAgora, provisorio:true});
+  }
+  while(seq.length > 6) seq.shift();
+  const rot = ['0','1','2','3','4','5'];
+  const ondas = [];
+  for(let k=1;k<seq.length;k++){
+    ondas.push({
+      onda: rot[k],
+      de: seq[k-1].preco, para: seq[k].preco,
+      tamanho: Math.abs(seq[k].preco - seq[k-1].preco),
+      iDe: seq[k-1].i, iPara: seq[k].i,
+      emCurso: !!seq[k].provisorio,
+    });
+  }
+  const O = n => ondas[n-1];   // O(1) = onda 1
+
+  // ── as tres regras
+  const regras = [];
+  if(O(1) && O(2)){
+    const retr = proporcao(O(2).tamanho, O(1).tamanho);
+    regras.push({regra:"onda 2 nao retrocede 100% da onda 1",
+      valor: retr==null?null:+(retr*100).toFixed(1),
+      ok: retr!=null && retr < 1});
+  }
+  if(O(1) && O(3) && O(5)){
+    regras.push({regra:"onda 3 nao e a mais curta",
+      valor:+(O(3).tamanho).toFixed(2),
+      // a regra e "nao ser A MAIS CURTA" — empatar e permitido
+      ok: !(O(3).tamanho < O(1).tamanho && O(3).tamanho < O(5).tamanho)});
+  }
+  if(O(1) && O(4)){
+    // onda 4 nao pode entrar no territorio da 1: num impulso de alta, o fundo
+    // da 4 tem que ficar acima do topo da 1
+    const topo1 = alta ? O(1).para : O(1).para;
+    const fim4  = O(4).para;
+    regras.push({regra:"onda 4 nao invade o territorio da onda 1",
+      valor:+fim4.toFixed(2),
+      ok: alta ? fim4 > topo1 : fim4 < topo1});
+  }
+  const violacoes = regras.filter(r => r.ok === false);
+
+  // ── proporcoes contra o que costuma acontecer
+  const props = {};
+  if(O(1) && O(2)) props.onda2_retracao = +(proporcao(O(2).tamanho, O(1).tamanho)*100).toFixed(1);
+  if(O(1) && O(3)) props.onda3_extensao = +(proporcao(O(3).tamanho, O(1).tamanho)).toFixed(2);
+  if(O(3) && O(4)) props.onda4_retracao = +(proporcao(O(4).tamanho, O(3).tamanho)*100).toFixed(1);
+  if(O(1) && O(5)) props.onda5_vs_onda1 = +(proporcao(O(5).tamanho, O(1).tamanho)).toFixed(2);
+
+  return {
+    direcao: alta ? "alta" : "baixa",
+    pivos: seq.length,
+    ondas, regras, violacoes,
+    proporcoes: props,
+    onde: ondas.length ? ondas[ondas.length-1].onda : null,
+    ultimoPivo: seq[seq.length-1],
+  };
+}
+
+// A PERGUNTA PRATICA: se a ultima perna foi uma onda 2, onde estaria a 3 e o
+// que mata a contagem?
+//
+// A onda 3 e a unica que tem alvo com base historica boa — 1,618 da onda 1 e o
+// numero mais comum, 2,618 quando ela estende. E o nivel que invalida e duro:
+// a onda 2 nao pode passar do inicio da onda 1. Passou, a contagem morreu, e
+// isso e regra, nao opiniao.
+function projecaoOnda3(leitura){
+  if(!leitura || leitura.ondas.length < 2) return null;
+  const o1 = leitura.ondas[0], o2 = leitura.ondas[1];
+  if(o1.onda !== '1' || o2.onda !== '2') return null;
+  // so projeta enquanto a contagem ESTA na onda 2. Com a 3, a 4 e a 5 ja
+  // formadas, os mesmos ondas[0] e ondas[1] continuam sendo a 1 e a 2 — e o
+  // alvo sairia como se a onda 3 ainda estivesse por vir.
+  if(leitura.onde !== '2') return null;
+  const alta = leitura.direcao === "alta";
+  const base = o2.para;                     // fim da onda 2 = inicio da 3
+  const passo = n => alta ? base + o1.tamanho*n : base - o1.tamanho*n;
+  const retr = proporcao(o2.tamanho, o1.tamanho);
+  return {
+    onda2_retracao_pct: retr==null?null:+(retr*100).toFixed(1),
+    // faixa classica da onda 2: 50% a 78,6%
+    onda2_na_faixa: retr!=null && retr >= 0.382 && retr <= 0.786,
+    alvos: {
+      "1.618": +passo(1.618).toFixed(2),
+      "2.000": +passo(2.0).toFixed(2),
+      "2.618": +passo(2.618).toFixed(2),
+    },
+    invalida_em: +o1.de.toFixed(2),   // inicio da onda 1
+    invalida_texto: alta
+      ? "fechar abaixo de "+(+o1.de.toFixed(2))+" mata a contagem: a onda 2 teria retrocedido 100% da 1"
+      : "fechar acima de "+(+o1.de.toFixed(2))+" mata a contagem: a onda 2 teria retrocedido 100% da 1",
+  };
+}
+// ── O FLUXO NEUTRO ───────────────────────────────────────────────────────
+// A bolha fica CINZA quando nenhum lado dominou a vela por mais de 10% do
+// notional dela (|compra-venda|/total < 0,10). Cinza nao quer dizer pouco
+// volume — o tamanho da bolha e o notional, e independe da cor. Quer dizer
+// volume DISPUTADO: comprador e vendedor agrediram quase igual.
+//
+// Uma fila longa de cinza e a assinatura de absorcao: ha negocio acontecendo e
+// ninguem consegue levar o preco. E o que se espera de um range, e tambem de
+// uma correcao — numa onda 2 saudavel o vendedor nao aparece com conviccao, so
+// falta comprador. Por isso vale medir quantas das ultimas velas sairam
+// neutras: e o contraste entre essa fila e a primeira sequencia unilateral que
+// marca o fim da correcao.
+const FLUXO_NEUTRO_LIMITE = 0.10;   // o mesmo corte que pinta a bolha de cinza
+function fluxoNeutro(nVelas){
+  if(typeof fluxoPorVela === "undefined" || !candles || !candles.length) return null;
+  const ultima = candles.length - 1;
+  const usadas = [];
+  for(let i=Math.max(0, ultima-(nVelas||30)); i<ultima; i++){   // a em formacao fica de fora
+    const v = fluxoPorVela[candles[i].time];
+    if(!v) continue;
+    const total = (v.compra||0)+(v.venda||0);
+    if(total <= 0) continue;
+    usadas.push({total, dom:(v.compra-v.venda)/total});
+  }
+  if(usadas.length < 5) return null;
+  const neutras = usadas.filter(x => Math.abs(x.dom) < FLUXO_NEUTRO_LIMITE);
+  // a fila de neutras que termina AGORA — a que importa e a mais recente
+  let seguidas = 0;
+  for(let i=usadas.length-1; i>=0; i--){
+    if(Math.abs(usadas[i].dom) < FLUXO_NEUTRO_LIMITE) seguidas++; else break;
+  }
+  const notMedio = usadas.reduce((a,x)=>a+x.total,0)/usadas.length;
+  const notNeutro = neutras.length ? neutras.reduce((a,x)=>a+x.total,0)/neutras.length : 0;
+  return {
+    velas: usadas.length,
+    neutras: neutras.length,
+    pct: +(neutras.length/usadas.length*100).toFixed(1),
+    seguidas,
+    // >1 quer dizer que as velas disputadas sao MAIORES que a media: e volume
+    // grande sendo absorvido, nao mercado parado
+    peso: notMedio > 0 ? +(notNeutro/notMedio).toFixed(2) : null,
+  };
+}
+window.fluxoNeutro = fluxoNeutro;
+
+window.pivosAlternados = pivosAlternados;
+window.leituraElliott = leituraElliott;
+window.projecaoOnda3 = projecaoOnda3;
+
+// ── O DESENHO DA CONTAGEM ────────────────────────────────────────────────
+// Vai no canvas dos desenhos (o de cima), nao no das bolhas: rotulo atras da
+// vela nao se le. E redesenhado pelo redrawDrawings, entao acompanha zoom e
+// arrasto pelo mesmo caminho que todo o resto.
+let elliottLigado = false;
+let elliottCache = null, elliottCacheVelas = -1;
+
+// A contagem so muda quando entra vela nova. Recalcular pivo a cada quadro de
+// arrasto custaria uma varredura do historico inteiro por frame.
+function elliottAtual(){
+  if(!candles || !candles.length) return null;
+  const chave = candles.length + "|" + candles[candles.length-1].time;
+  if(elliottCacheVelas === chave) return elliottCache;
+  try{ elliottCache = leituraElliott(candles); }catch(e){ elliottCache = null; }
+  elliottCacheVelas = chave;
+  return elliottCache;
+}
+function invalidaElliott(){ elliottCacheVelas = -1; }
+window.invalidaElliott = invalidaElliott;
+
+function pintaElliott(ctx){
+  if(!elliottLigado || !ctx || !candles || !candles.length) return;
+  const l = elliottAtual();
+  if(!l || !l.ondas.length) return;
+  const alta = l.direcao === "alta";
+  const corOk   = l.violacoes.length ? "#F23645" : "#E8A317";
+  const pontos = [];
+  l.ondas.forEach((o,k)=>{
+    if(k===0) pontos.push({i:o.iDe, preco:o.de, rot:'0', prov:false});
+    pontos.push({i:o.iPara, preco:o.para, rot:o.onda, prov:!!o.emCurso});
+  });
+  const xy = pontos.map(pt=>{
+    const c = candles[pt.i];
+    if(!c) return null;
+    const x = t2x(c.time), y = p2y(pt.preco);
+    return (x==null||y==null) ? null : {x, y, rot:pt.rot, prov:pt.prov};
+  });
+  ctx.save();
+  ctx.lineWidth = 1.4;
+  ctx.strokeStyle = corOk;
+  ctx.font = '700 11px IBM Plex Sans, sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  // o zigue-zague ligando os pivos: a perna em curso sai tracejada, porque o
+  // fim dela ainda nao existe
+  for(let k=1;k<xy.length;k++){
+    const a = xy[k-1], b = xy[k];
+    if(!a || !b) continue;
+    ctx.setLineDash(b.prov ? [4,4] : []);
+    ctx.globalAlpha = b.prov ? 0.65 : 0.9;
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  }
+  ctx.setLineDash([]); ctx.globalAlpha = 1;
+  xy.forEach((pt,k)=>{
+    if(!pt || pt.rot === '0') return;
+    // rotulo pra fora da perna: topo de alta em cima, fundo embaixo
+    const topo = alta ? (k % 2 === 1) : (k % 2 === 0);
+    const yy = pt.y + (topo ? -14 : 14);
+    ctx.fillStyle = 'rgba(12,16,22,0.85)';
+    ctx.beginPath(); ctx.arc(pt.x, yy, 8, 0, 6.2832); ctx.fill();
+    ctx.strokeStyle = corOk; ctx.lineWidth = 1.4;
+    ctx.globalAlpha = pt.prov ? 0.6 : 1;
+    ctx.beginPath(); ctx.arc(pt.x, yy, 8, 0, 6.2832); ctx.stroke();
+    ctx.fillStyle = corOk;
+    ctx.fillText(pt.rot, pt.x, yy+0.5);
+    ctx.globalAlpha = 1;
+  });
+  // A LINHA QUE MATA A CONTAGEM. E o unico nivel objetivo de Elliott, entao e
+  // o unico que merece uma linha propria no grafico.
+  const pj = projecaoOnda3(l);
+  if(pj){
+    const y = p2y(pj.invalida_em);
+    if(y != null){
+      const larg = (dCanvas && dCanvas.clientWidth) || 900;
+      ctx.setLineDash([6,5]); ctx.strokeStyle = '#F23645'; ctx.globalAlpha = 0.8;
+      ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(larg,y); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#F23645'; ctx.textAlign = 'left';
+      ctx.font = '600 9px IBM Plex Sans, sans-serif';
+      ctx.fillText('invalida a contagem  ' + pj.invalida_em, 6, y - 7);
+      ctx.globalAlpha = 1;
+    }
+  }
+  ctx.restore();
+}
+window.pintaElliott = pintaElliott;
+
+function toggleElliott(){
+  elliottLigado = !elliottLigado;
+  const b = document.getElementById('btn-elliott');
+  if(b) b.classList.toggle('on', elliottLigado);
+  invalidaElliott();
+  if(typeof redrawDrawings === 'function') redrawDrawings();
+  renderElliott();
+  if(typeof showInfoToast === 'function')
+    showInfoToast('ELLIOTT', elliottLigado ? 'contagem marcada no grafico' : 'contagem escondida');
+}
+window.toggleElliott = toggleElliott;
+
+// ── O PAINEL ─────────────────────────────────────────────────────────────
+// A ordem aqui e proposital: primeiro onde estamos, depois o que INVALIDA,
+// depois os alvos. Alvo antes de invalidacao e como se le Elliott errado.
+function renderElliott(){
+  const box = document.getElementById('elliott-box');
+  const cnt = document.getElementById('elliott-count');
+  if(!box) return;
+  const l = elliottAtual();
+  if(!l || !l.ondas.length){
+    if(cnt) cnt.textContent = '--';
+    box.innerHTML = '<div style="font-size:9px;color:var(--t3);">Sem pivos suficientes para contar.</div>';
+    return;
+  }
+  const esc = t => String(t).replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  const nf = v => (v==null||!isFinite(v)) ? '--' : Number(v).toLocaleString('pt-BR',{maximumFractionDigits:2});
+  const ult = l.ondas[l.ondas.length-1];
+  const cor = l.violacoes.length ? 'var(--red)' : 'var(--goldd)';
+  if(cnt){ cnt.textContent = 'onda ' + l.onde; cnt.style.color = cor; }
+  let h = '<div style="font-size:11px;font-weight:800;color:'+cor+';">ONDA '+esc(l.onde)
+        + '<span style="font-size:9px;font-weight:600;color:var(--t3);"> &nbsp;impulso de '+esc(l.direcao)
+        + (ult.emCurso ? ' &middot; em curso' : '') + '</span></div>';
+  h += '<div style="font-size:9px;color:var(--t2);margin-top:3px;">'
+     + l.ondas.map(o=>esc(o.onda)+': '+nf(o.de)+' &rarr; '+nf(o.para)).join(' &nbsp;|&nbsp; ')
+     + '</div>';
+  // as regras, uma linha cada — e o que distingue contagem de desenho
+  if(l.regras.length){
+    h += '<div style="margin-top:5px;">' + l.regras.map(rg =>
+      '<div style="font-size:9px;color:'+(rg.ok?'var(--green)':'var(--red)')+';">'
+      + (rg.ok?'&#10003;':'&#10007;') + ' ' + esc(rg.regra) + '</div>').join('') + '</div>';
+  }
+  const pj = projecaoOnda3(l);
+  if(pj){
+    h += '<div style="margin-top:6px;font-size:9px;color:var(--red);font-weight:700;">'
+       + 'INVALIDA EM ' + nf(pj.invalida_em) + '</div>'
+       + '<div style="font-size:9px;color:var(--t3);">passar dai, a onda 2 teria retrocedido 100% da 1</div>';
+    h += '<div style="margin-top:5px;font-size:9px;color:var(--t2);">retracao da onda 2: <b>'
+       + pj.onda2_retracao_pct + '%</b> '
+       + (pj.onda2_na_faixa ? '<span style="color:var(--green);">(faixa classica)</span>'
+                            : '<span style="color:var(--t3);">(fora de 38,2&ndash;78,6%)</span>')
+       + '</div>';
+    h += '<div style="margin-top:3px;font-size:9px;color:var(--t2);">alvos da onda 3: '
+       + '<b>'+nf(pj.alvos['1.618'])+'</b> (1,618) &middot; '
+       + nf(pj.alvos['2.000']) + ' (2,0) &middot; '
+       + nf(pj.alvos['2.618']) + ' (2,618)</div>';
+  }
+  // o fluxo confirmando ou nao a correcao
+  try{
+    const fn = fluxoNeutro(30);
+    if(fn){
+      h += '<div style="margin-top:6px;font-size:9px;color:var(--t3);">fluxo disputado: <b>'
+         + fn.neutras + '/' + fn.velas + '</b> velas ('+fn.pct+'%)'
+         + (fn.peso!=null ? ' &middot; notional ' + fn.peso + 'x a media' : '') + '</div>';
+    }
+  }catch(e){}
+  box.innerHTML = h;
+}
+window.renderElliott = renderElliott;
+
+// ══════════════════════════════════════════════════════
 // MARCOS DE VOLUME — a maior vela do dia, da semana e do mes
 // ══════════════════════════════════════════════════════
 // A bolha diz quanto foi o volume de cada vela. Isto aqui diz outra coisa:
@@ -3406,17 +3792,23 @@ function desenhaBolhasMulti(sym){
 
   // o brilho antes das bolhas, e antes da saida por falta de fluxo: o marco sai
   // do volume da propria vela e existe mesmo sem o corte agressor
+  // O PAINEL, NAO O CONTAINER. A tela da bolha cobre o container inteiro,
+  // mas o desenho da lib ocupa so o que sobra depois da escala de preco (a
+  // direita) e do eixo do tempo (embaixo). Recortar pelo container deixava a
+  // bolha pintar em cima dos dois — as bolinhas por cima dos numeros.
   let altMini = mc.el.clientHeight || 4000;
-  try{ altMini -= ts.height() || 0; }catch(e){}
+  let largMini = mc.el.clientWidth || 4000;
+  try{ altMini  -= ts.height() || 0; }catch(e){}
+  try{ largMini -= mc.chart.priceScale('right').width() || 0; }catch(e){}
 
   mc.bctx.save();
   mc.bctx.beginPath();
-  mc.bctx.rect(0, 0, mc.el.clientWidth, altMini);
+  mc.bctx.rect(0, 0, largMini, altMini);
   mc.bctx.clip();
 
-  try{ pintaBrilhoMarcos(mc.bctx, mc.el.clientWidth, mc.candles, mc.marcos||{}, null, t2, p2, altMini); }catch(e){}
+  try{ pintaBrilhoMarcos(mc.bctx, largMini, mc.candles, mc.marcos||{}, null, t2, p2, altMini); }catch(e){}
   if(bolhasLigadas && mc.bolhas.alvos.length)
-    pintaBolhas(mc.bctx, mc.el.clientWidth, mc.bolhas.alvos, mc.bolhas.corte, mc.candles, t2, p2, altMini);
+    pintaBolhas(mc.bctx, largMini, mc.bolhas.alvos, mc.bolhas.corte, mc.candles, t2, p2, altMini);
   mc.bctx.restore();
 }
 window.desenhaBolhasMulti = desenhaBolhasMulti;
@@ -3492,15 +3884,37 @@ async function openMultiCharts(){
     el.insertBefore(bcv, el.firstChild);
     const bctx = bcv.getContext('2d');
 
-    // as telas que a lib cria entram depois do canvas; z-index 1 pra ficarem
-    // por cima dele
-    try{ [...el.querySelectorAll('canvas')].forEach(c=>{
-      if(c!==bcv){ c.style.position=c.style.position||'relative'; c.style.zIndex='1'; }
-    }); }catch(e){}
+    // A CAMADA VAI NO INVOLUCRO, nao nas telas. A lib usa z-index proprio
+    // entre as telas dela (1 no painel, 2 na mira) e cria telas novas quando
+    // quer — mexer numa por uma achatava essa ordem e deixava de fora toda
+    // tela criada depois. Subindo so o involucro, a ordem interna dela fica
+    // intacta e tudo que ela criar ja nasce por cima da bolha.
+    try{
+      const inv = el.querySelector('.tv-lightweight-charts') || el.lastElementChild;
+      if(inv && inv !== bcv){ inv.style.position = 'relative'; inv.style.zIndex = '1'; }
+    }catch(e){}
 
+    // O DESLOCAMENTO ERA AQUI. O applyOptions muda o tamanho do grafico, mas a
+    // lib so refaz o layout dela no quadro seguinte: medir timeToCoordinate no
+    // mesmo tique devolvia a coordenada do tamanho VELHO, e a bolha ficava
+    // desencontrada da vela. E como redimensionar nao muda o intervalo visivel,
+    // nenhum subscribe disparava depois pra corrigir — ficava torto ate a
+    // pessoa arrastar o grafico.
+    //
+    // Dois quadros: no primeiro a lib aplica o tamanho, no segundo as
+    // coordenadas ja sao as novas.
     const ro=new ResizeObserver(()=>{
-      mchart.applyOptions({width:el.clientWidth,height:el.clientHeight});
-      dimensionaCanvasMulti(sym);
+      const w = el.clientWidth, h = el.clientHeight;
+      if(w < 2 || h < 2) return;          // grade fechando: medida nao vale
+      mchart.applyOptions({width:w, height:h});
+      if(multiCharts[sym] && multiCharts[sym].reajuste)
+        cancelAnimationFrame(multiCharts[sym].reajuste);
+      const id = requestAnimationFrame(()=>requestAnimationFrame(()=>{
+        if(!multiCharts[sym]) return;
+        multiCharts[sym].reajuste = null;
+        dimensionaCanvasMulti(sym);
+      }));
+      if(multiCharts[sym]) multiCharts[sym].reajuste = id;
     });
     ro.observe(el);
     multiCharts[sym]={chart:mchart,series,ma,candles:[],ro,noMore:false,loadingMore:false,live:null,
@@ -3590,6 +4004,8 @@ function closeMultiCharts(){
   for(const sym of MULTI_SYMS){
     if(multiCharts[sym]){
       try{multiCharts[sym].ro.disconnect();}catch(e){}
+      // o reajuste pendente rodaria num grafico ja removido
+      try{ if(multiCharts[sym].reajuste) cancelAnimationFrame(multiCharts[sym].reajuste); }catch(e){}
       try{multiCharts[sym].chart.remove();}catch(e){}
       delete multiCharts[sym];
     }
@@ -3647,6 +4063,7 @@ function iniciaForca(){
   forcaTimer=setInterval(()=>{
     try{ renderForca(); }catch(e){}
     try{ renderConsolidacao(); }catch(e){}   // mesma cadencia, mesmo motivo
+    try{ renderElliott(); }catch(e){}       // idem: contagem cacheada, custo zero
   },2000);
 }
 
@@ -5616,6 +6033,32 @@ function retratoDoAtivo(){
       preco:x.price,quando:new Date(x.time).toISOString()}));
   }catch(e){}
 
+  // ── ELLIOTT: a contagem, as tres regras e o alvo da onda 3
+  try{
+    const el = leituraElliott(candles);
+    if(el){
+      r.elliott = {
+        direcao: el.direcao,
+        onde: el.onde,
+        em_curso: !!(el.ondas.length && el.ondas[el.ondas.length-1].emCurso),
+        ondas: el.ondas.map(o=>({onda:o.onda, de:+o.de.toFixed(2), para:+o.para.toFixed(2),
+                                 tamanho:+o.tamanho.toFixed(2), em_curso:!!o.emCurso})),
+        regras: el.regras,
+        violacoes: el.violacoes.map(v=>v.regra),
+        proporcoes: el.proporcoes,
+        valida: el.violacoes.length === 0,
+      };
+      const pr = projecaoOnda3(el);
+      if(pr) r.elliott.projecao_onda3 = pr;
+    }
+  }catch(e){}
+
+  // ── FLUXO NEUTRO: quantas velas sairam disputadas (a bolha cinza)
+  try{
+    const fn = fluxoNeutro(30);
+    if(fn) r.fluxo_neutro = fn;
+  }catch(e){}
+
   return r;
 }
 
@@ -5885,6 +6328,32 @@ function analiseDoMercado(r){
     }
   }catch(e){}
 
+  // 3a1) O VOLUME DISPUTADO — a fila de bolhas cinza
+  if(r.fluxo_neutro && r.fluxo_neutro.velas >= 5){
+    const fn = r.fluxo_neutro;
+    let t = "Das ultimas "+fn.velas+" velas fechadas, <b>"+fn.neutras+" sairam disputadas</b>"
+          + " ("+fn.pct+"%): nenhum lado agrediu mais de 10% do notional da vela. Sao as"
+          + " bolhas cinza.";
+    if(fn.peso != null && fn.peso >= 1){
+      t += " E elas nao sao velas pequenas — o notional medio das disputadas esta em <b>"
+        + fn.peso+"x</b> a media do periodo. Isso e <b>absorcao</b>, nao mercado parado:"
+        + " ha dinheiro grande passando e o preco nao anda. Alguem esta atendendo os dois"
+        + " lados no mesmo nivel.";
+    }else if(fn.peso != null){
+      t += " O notional medio delas e <b>"+fn.peso+"x</b> o do periodo, ou seja, sao as velas"
+        + " mais fracas da amostra: aqui o cinza e falta de participante, nao disputa.";
+    }
+    if(fn.pct >= 60){
+      t += " Com essa proporcao o fluxo nao tem direcao para dar: <b>qualquer leitura"
+        + " direcional tirada dele agora vale pouco</b>. O que vale e o contraste — a"
+        + " primeira sequencia de velas de um lado so, depois de uma fila assim, e o sinal.";
+    }else if(fn.seguidas >= 4){
+      t += " As <b>"+fn.seguidas+" ultimas seguidas</b> sao neutras: a disputa esta"
+        + " acontecendo agora, na ponta.";
+    }
+    p.push(t);
+  }
+
   // 3a2) AS DUAS PONTAS — mesma pergunta, dois livros
   if(r.oferta_procura && r.oferta_procura.acordo){
     const o = r.oferta_procura;
@@ -6085,6 +6554,62 @@ function analiseDoMercado(r){
       t += " Media positiva, mas apertada: e um sinal que depende de execucao boa pra sobrar algo.";
     }
     p.push(t);
+  }
+
+  // 5b) ELLIOTT — a contagem, e o que a mata
+  // Elliott so vale a pena escrito assim: com o nivel de invalidacao no meio da
+  // frase. As tres regras sao objetivas e conferiveis; as proporcoes de
+  // Fibonacci sao tendencia, e sao apresentadas como tendencia.
+  if(r.elliott && r.elliott.ondas && r.elliott.ondas.length){
+    const el = r.elliott;
+    const ult = el.ondas[el.ondas.length-1];
+    let t = "Contando os pivos de "+nome+" como um impulso de <b>"+pdfEsc(el.direcao)
+          + "</b>, o preco esta na <b>onda "+pdfEsc(String(el.onde))+"</b>"
+          + (el.em_curso ? " — e ela ainda esta se formando, entao o fim dela pode mudar" : "")
+          + ". A perna vai de "+num(ult.de)+" a "+num(ult.para)+".";
+    if(el.violacoes && el.violacoes.length){
+      t += " <b>Mas essa contagem ja esta violada:</b> "+pdfEsc(el.violacoes.join("; "))
+        + ". Regra violada nao e detalhe em Elliott — e o que separa contagem de desenho."
+        + " O que estiver sendo lido a partir dela tem que ser refeito.";
+    }else{
+      t += " As "+(el.regras?el.regras.length:0)+" regras conferiveis com as ondas ja"
+        + " formadas <b>passam</b>: a contagem se sustenta ate aqui.";
+    }
+    const pp = el.proporcoes||{};
+    const bits = [];
+    if(pp.onda2_retracao != null) bits.push("a onda 2 corrigiu "+pp.onda2_retracao+"% da 1");
+    if(pp.onda3_extensao != null) bits.push("a onda 3 deu "+pp.onda3_extensao+"x a onda 1");
+    if(pp.onda4_retracao != null) bits.push("a onda 4 corrigiu "+pp.onda4_retracao+"% da 3");
+    if(pp.onda5_vs_onda1 != null) bits.push("a onda 5 saiu "+pp.onda5_vs_onda1+"x a onda 1");
+    if(bits.length) t += " Em proporcao: "+bits.join(", ")+".";
+    p.push(t);
+
+    const pj = el.projecao_onda3;
+    if(pj){
+      let u = "A onda 2 retrocedeu <b>"+pj.onda2_retracao_pct+"%</b> da onda 1"
+        + (pj.onda2_na_faixa
+            ? ", dentro da faixa de 38,2% a 78,6% em que a maioria das ondas 2 para"
+            : ", <b>fora</b> da faixa de 38,2% a 78,6% em que a maioria das ondas 2 para —"
+              + " nao invalida nada, mas e uma contagem menos comum")
+        + ". Projetando a onda 1 a partir do fim da 2, a onda 3 miraria <b>"
+        + num(pj.alvos["1.618"])+"</b> (1,618, o alvo mais frequente), "
+        + num(pj.alvos["2.000"])+" (2,0) ou "+num(pj.alvos["2.618"])
+        + " (2,618, quando ela estende).";
+      u += " <b>O que mata isso e objetivo:</b> "+pdfEsc(pj.invalida_texto)
+        + " — nao e leitura, e a primeira das tres regras.";
+      // o fluxo tem que concordar: onda 2 e correcao, nao distribuicao
+      if(r.fluxo_neutro && r.fluxo_neutro.pct >= 50){
+        u += " O fluxo esta coerente com uma correcao: "+r.fluxo_neutro.pct
+          + "% das velas recentes sairam disputadas, ou seja, o vendedor nao esta"
+          + " agredindo com conviccao — esta faltando comprador. O gatilho seria a"
+          + " primeira sequencia claramente compradora saindo dessa fila.";
+      }else if(r.fluxo_neutro){
+        u += " O fluxo, porem, nao esta neutro ("+r.fluxo_neutro.pct+"% de velas"
+          + " disputadas): ha lado agredindo durante a correcao, e vale conferir de que"
+          + " lado antes de tratar a perna como simples repique.";
+      }
+      p.push(u);
+    }
   }
 
   // 6) ONDE ESTAO AS LINHAS — o que confirma e o que invalida, com preco
@@ -7946,6 +8471,8 @@ function redrawDrawings(){
   });
   // as bolhas por ultimo, por cima dos desenhos
   try{ desenhaBolhas(); }catch(e){}
+  // e a contagem de Elliott por cima das bolhas: e rotulo, precisa ser lido
+  try{ pintaElliott(dCtx); }catch(e){}
   if(isDragging&&dragDraw){
     try{paint(dragDraw,true);}catch(e){}
   }
