@@ -3916,6 +3916,237 @@ function renderLog(){
 }
 window.renderLog = renderLog;
 
+
+// ══════════════════════════════════════════════════════
+// O SINAL — um lugar so, e ele responde ENTRA ou NAO ENTRA
+// ══════════════════════════════════════════════════════
+// Quatro paineis dizendo "QUASE" nao e apoio a decisao, e ruido. Pior: "quase"
+// e a palavra que faz alguem entrar faltando uma, que foi exatamente o que
+// aconteceu. Este painel existe pra dar UMA resposta, e ela vem de qualquer um
+// dos portoes — nao importa se o trade e a favor do movimento ou contra ele.
+//
+// Sao tres portoes, dois lados, seis combinacoes:
+//   CONTINUACAO  — o checklist de posicionamento liberado
+//   ONDA 3       — o gatilho disparado dentro de uma contagem
+//   REVERSAO     — as tres obrigatorias da oportunidade extrema
+//
+// Nenhum deles e "melhor". O que decide qual aparece e simples: o que ESTA
+// completo. Se nenhum estiver, o painel mostra o mais perto E QUANTO FALTA,
+// em numero, atualizado no tick — porque "falta 0,3% pra cruzar a EMA200"
+// caindo na sua frente e informacao, e "QUASE" parado nao e.
+//
+// E a regra que fecha tudo: enquanto falta, a resposta e NAO. Nao existe
+// "quase da". Um portao incompleto e um portao fechado.
+
+function sinalUnificado(){
+  const saidas = [];
+  const push = (o) => { if(o) saidas.push(o); };
+
+  // ── CONTINUACAO
+  try{
+    const p = padraoAgora();
+    if(p) ['compra','venda'].forEach(L => {
+      const x = p[L];
+      if(!x) return;
+      const faltam = x.obrigTotal - x.obrigOk;
+      const confFalta = Math.max(0, x.confirmMin - x.confirmOk);
+      push({porta:'continuacao', lado:L,
+        pronto: x.estado === 'liberado',
+        vetado: x.estado === 'vetado',
+        falta: faltam + confFalta,
+        resumo: x.obrigOk+'/'+x.obrigTotal+' obrig, '+x.confirmOk+'/'+x.confirmMin+' conf',
+        detalhe: x.frase,
+        linhas: x.linhas ? x.linhas.filter(l =>
+          !l.ok && (l.classe === 'obrigatoria' || (l.classe === 'confirmacao' && confFalta > 0))
+        ) : []});
+    });
+  }catch(e){}
+
+  // ── ONDA 3
+  try{
+    ['compra','venda'].forEach(L => {
+      const g = gatilhoOnda3(L);
+      if(!g || !g.checks) return;
+      const faltamChecks = g.checks.filter(c=>!c.ok).length;
+      const falta = faltamChecks + (g.nivel && g.nivel.rompeu ? 0 : 1)
+                  + (g.volume && g.volume.acordou ? 0 : 1);
+      push({porta:'onda 3', lado:L, pronto:!!g.disparado, vetado:false, falta,
+        resumo:(g.checks.length-faltamChecks)+'/'+g.checks.length+' + rompimento + volume',
+        detalhe:g.porque,
+        stop:g.stopTecnico, alvo:g.alvos ? g.alvos['1.618'] : null, rr:g.rr,
+        linhas: g.checks.filter(c=>!c.ok).map(c=>({nome:c.nome, falta:c.txt}))});
+    });
+  }catch(e){}
+
+  // ── REVERSAO
+  try{
+    ['compra','venda'].forEach(L => {
+      const o = oportunidadeExtrema(L);
+      if(!o || !o.linhas) return;
+      const obrig = o.linhas.filter(l=>l.classe==='obrigatoria');
+      push({porta:'reversao', lado:L, pronto:!!o.completo, vetado:false,
+        falta: obrig.filter(l=>!l.ok).length + (o.confOk >= 1 ? 0 : 1),
+        resumo:o.obrigOk+'/'+o.obrigTotal+' obrig, '+o.confOk+' conf',
+        detalhe:o.frase, stop:o.stopNatural,
+        linhas: obrig.filter(l=>!l.ok).map(l=>({nome:l.nome, falta:l.falta || l.txt}))});
+    });
+  }catch(e){}
+
+  if(!saidas.length) return null;
+  const prontos = saidas.filter(s => s.pronto && !s.vetado);
+  // ordena por: pronto primeiro, depois quem falta menos
+  saidas.sort((a,b) => (b.pronto - a.pronto) || (a.falta - b.falta));
+  const alvo = prontos.length ? prontos[0] : saidas[0];
+
+  // CONTRADICAO: dois portoes prontos em lados opostos. Isso nao e escolha, e
+  // aviso — quando o mercado da sinal dos dois lados ao mesmo tempo, o que ele
+  // esta dizendo e que nao esta decidido.
+  const ladosProntos = [...new Set(prontos.map(s=>s.lado))];
+  const contradicao = ladosProntos.length > 1;
+
+  return {
+    avaliados: saidas.length, possiveis: 6,
+    entra: prontos.length > 0 && !contradicao,
+    contradicao,
+    alvo, prontos, todos: saidas,
+    // a menor distancia ate completar, entre TODAS as combinacoes
+    maisPerto: saidas.reduce((m,s)=> (!m || s.falta < m.falta) ? s : m, null),
+  };
+}
+window.sinalUnificado = sinalUnificado;
+
+// A distancia VIVA ate a condicao que falta. E o que transforma "QUASE" em
+// numero que anda: preco contra EMA200, contra o nivel de rompimento, contra
+// a pressao necessaria. Recalculado no tick, nao no timer de 2s.
+function distanciaViva(){
+  if(!candles || !candles.length) return null;
+  const p = candles[candles.length-1].close;
+  const out = [];
+  try{
+    if(ultimasEmas && ultimasEmas.ema200){
+      const d = (p/ultimasEmas.ema200 - 1)*100;
+      out.push({o:'EMA200', valor:+d.toFixed(3), texto:
+        (d>=0?'+':'') + d.toFixed(3) + '% da EMA200'});
+    }
+  }catch(e){}
+  try{
+    const f = forcaDoFluxo(3);
+    if(f) out.push({o:'pressao', valor:+f.pressao.toFixed(1), texto:
+      'pressao ' + (f.pressao>=0?'+':'') + f.pressao.toFixed(1) + '% (3 velas)'});
+  }catch(e){}
+  return {preco:p, itens:out};
+}
+window.distanciaViva = distanciaViva;
+
+// O painel. Curto de proposito: se precisar rolar pra saber se entra, ele
+// falhou. O detalhe fica nos paineis de baixo, que continuam existindo.
+let sinalCacheEstado = '';
+function renderSinal(){
+  const box = document.getElementById('sinal-box');
+  const cnt = document.getElementById('sinal-count');
+  if(!box) return;
+  let s = null;
+  try{ s = sinalUnificado(); }catch(e){}
+  const esc = t => String(t).replace(/[&<>]/g, x=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[x]));
+  const nf = v => (v==null||!isFinite(v)) ? '--'
+    : Number(v).toLocaleString('pt-BR',{maximumFractionDigits:2});
+  if(!s){
+    if(cnt) cnt.textContent = '--';
+    box.innerHTML = '<div style="font-size:9px;color:var(--t3);">Carregando os portoes...</div>';
+    return;
+  }
+  const viva = distanciaViva();
+
+  if(s.contradicao){
+    if(cnt){ cnt.textContent = 'CONFLITO'; cnt.style.color = 'var(--red)'; }
+    let h = '<div style="font-size:13px;font-weight:900;color:var(--red);">NAO ENTRA</div>'
+          + '<div style="font-size:9px;color:var(--t2);line-height:1.45;margin-top:3px;">'
+          + 'Ha portao pronto dos <b>dois lados</b> ao mesmo tempo ('
+          + esc(s.prontos.map(x=>x.porta+' '+x.lado).join(', '))
+          + '). Isso nao e oportunidade dupla &mdash; e o mercado dizendo que nao esta'
+          + ' decidido. Sinal contraditorio e motivo pra ficar de fora, nao pra escolher.'
+          + '</div>';
+    box.innerHTML = h;
+    return;
+  }
+
+  if(s.entra){
+    const a = s.alvo;
+    if(cnt){ cnt.textContent = a.lado.toUpperCase(); cnt.style.color = 'var(--green)'; }
+    let h = '<div style="font-size:13px;font-weight:900;color:var(--green);">ENTRA '
+          + esc(a.lado.toUpperCase()) + '</div>'
+          + '<div style="font-size:9px;color:var(--t2);margin-top:2px;">pela porta <b>'
+          + esc(a.porta) + '</b> &mdash; ' + esc(a.resumo) + '</div>';
+    if(s.prontos.length > 1){
+      h += '<div style="font-size:9px;color:var(--green);margin-top:2px;">'
+         + s.prontos.length + ' portoes prontos no mesmo lado: '
+         + esc(s.prontos.map(x=>x.porta).join(' + ')) + '</div>';
+    }
+    if(a.stop != null){
+      h += '<div style="font-size:9px;color:var(--t2);margin-top:3px;">stop <b>'
+         + nf(a.stop) + '</b>' + (a.alvo!=null ? ' &middot; alvo <b>'+nf(a.alvo)+'</b>' : '')
+         + (a.rr!=null ? ' &middot; R:R <b>'+a.rr+':1</b>' : '') + '</div>';
+      // o tamanho sai do painel de risco, se a banca estiver informada
+      try{
+        const t = tamanhoPermitido(candles[candles.length-1].close, a.stop);
+        if(t) h += '<div style="font-size:9px;color:var(--t2);">maximo <b>'
+                 + nf(t.unidades) + '</b> unidades &middot; risco ' + nf(t.risco) + '</div>';
+        else h += '<div style="font-size:9px;color:var(--t3);">informe a banca em'
+                + ' LOCALIZACAO &amp; RISCO pra ver o tamanho maximo</div>';
+      }catch(e){}
+    }
+    box.innerHTML = h;
+    return;
+  }
+
+  // ── NAO ENTRA, e o que falta em numero
+  const m = s.maisPerto;
+  if(cnt){ cnt.textContent = 'falta ' + m.falta; cnt.style.color = 'var(--t3)'; }
+  let h = '<div style="font-size:13px;font-weight:900;color:var(--t3);">NAO ENTRA</div>';
+  h += '<div style="font-size:9px;color:var(--t2);margin-top:2px;line-height:1.45;">'
+     + 'o portao mais perto e <b>' + esc(m.porta) + ' ' + esc(m.lado) + '</b>, faltando <b>'
+     + m.falta + '</b> &mdash; ' + esc(m.resumo) + '</div>';
+  if(m.linhas && m.linhas.length){
+    m.linhas.slice(0,3).forEach(l => {
+      h += '<div style="font-size:9px;color:var(--t3);display:flex;gap:5px;">'
+         + '<span style="flex:none;">&#9633;</span><span>' + esc(l.nome||'')
+         + (l.falta ? ' <span style="color:var(--t3);">&mdash; '+esc(l.falta)+'</span>' : '')
+         + '</span></div>';
+    });
+  }
+  // A DISTANCIA VIVA. E o que faz "quase" virar numero que anda com o tape.
+  if(viva && viva.itens.length){
+    h += '<div style="font-size:9px;color:var(--t2);margin-top:4px;'
+       + 'border-top:1px solid var(--bd);padding-top:4px;">'
+       + '<span style="color:var(--t3);">agora:</span> '
+       + viva.itens.map(i=>'<b>'+esc(i.texto)+'</b>').join(' &middot; ') + '</div>';
+  }
+  h += '<div style="font-size:8px;color:var(--t3);margin-top:3px;line-height:1.4;">'
+     + 'enquanto falta, a resposta e nao &mdash; um portao incompleto e um portao fechado'
+     + (s.avaliados < s.possiveis
+         ? '<br>' + s.avaliados + ' de ' + s.possiveis + ' combinacoes avaliadas: a onda 3'
+           + ' so existe quando ha contagem que se sustente'
+         : '')
+     + '</div>';
+  box.innerHTML = h;
+}
+window.renderSinal = renderSinal;
+
+// ── O TICK. O consolidador anda com o preco, nao com o timer de 2s: e a
+// diferenca entre ver "falta 0,30%" e ver 0,30 virar 0,12 na sua frente. So o
+// consolidador — recalcular os quatro paineis por tick seria desperdicio, e
+// eles nao mudam tao rapido assim.
+let sinalTickAgendado = false;
+function sinalNoTick(){
+  if(sinalTickAgendado) return;
+  sinalTickAgendado = true;
+  requestAnimationFrame(()=>{
+    sinalTickAgendado = false;
+    try{ renderSinal(); }catch(e){}
+  });
+}
+window.sinalNoTick = sinalNoTick;
+
 // ── A COMUNICACAO ────────────────────────────────────────────────────────
 // O painel e escrito na ordem em que a decisao acontece: primeiro o veredito,
 // depois a frase do que falta, depois a lista item a item. Quem esta com a mao
@@ -5422,6 +5653,9 @@ window.verificaAlarmes=verificaAlarmes;
 
 function applyTick(price, ts_ms){
   verificaAlarmes(price);
+  // o consolidador anda com o tape, nao com o timer: "falta 0,30%" virando
+  // 0,12 na frente da pessoa e informacao; "QUASE" parado nao e
+  try{ sinalNoTick(); }catch(e){}
   // o Multi-TF mostra o mesmo ativo em outros tempos: anda com o mesmo tick
   if(typeof mtfAplicaTick==="function") mtfAplicaTick(price,ts_ms);
   if(!candles.length||!candleSeries)return;
@@ -6556,6 +6790,7 @@ function iniciaForca(){
     try{ renderGatilho3(); }catch(e){}      // e o QUANDO da continuacao: a entrada da onda 3
     try{ renderFractal(); }catch(e){}       // o encaixe entre escalas (rede propria, cache de 90s)
     try{ renderLog(); }catch(e){}           // e o registro do que os paineis disseram, com desfecho
+    try{ renderSinal(); }catch(e){}         // o consolidador: uma resposta so
   },2000);
 }
 

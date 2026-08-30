@@ -18,7 +18,7 @@
   <link rel="stylesheet" media="print" onload="this.media='all';this.onload=null"
         href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap">
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap"></noscript>
-  <link rel="stylesheet" href="./style.css?v=15">
+  <link rel="stylesheet" href="./style.css?v=16">
 </head>
 <body>
 <div id="vectra-splash">
@@ -951,6 +951,13 @@
               </div>
             </div>
 
+            <!-- O SINAL: um lugar so, uma resposta so. Quatro paineis dizendo
+                 "QUASE" nao e apoio a decisao, e ruido — e "quase" e a palavra
+                 que faz alguem entrar faltando uma. Vem de qualquer porta:
+                 continuacao, onda 3 ou reversao, nos dois lados. Anda no tick. -->
+            <div class="sp-sec" style="background:var(--bg2);"><span>O SINAL</span><span class="sp-sec-val" id="sinal-count">--</span></div>
+            <div id="sinal-box" style="padding:7px 9px;"><div style="font-size:9px;color:var(--t3);">Carregando os portoes...</div></div>
+
             <!-- PADRAO DE POSICIONAMENTO: o unico painel que responde "ja da
                  pra entrar?". Fica no TOPO da coluna porque e a primeira
                  pergunta, nao a ultima. Obrigatoria faltando = nao entra. -->
@@ -1404,7 +1411,7 @@
      o que o main.js espera pra iniciar, e os onclick do HTML so disparam no
      clique, bem depois. -->
 <script defer src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
-<script defer src="./main.js?v=15"></script>
+<script defer src="./main.js?v=16"></script>
 </body>
 
 </html>
