@@ -267,6 +267,27 @@ tr.gold-selected td{background:rgba(245,166,35,.06);}
 .tool-btn:hover{background:rgba(20,24,32,.06);color:var(--text);}
 .tool-btn.active{background:rgba(245,166,35,.15);border-color:rgba(245,166,35,.5);color:var(--gold);}
 .tool-btn.danger:hover{background:rgba(244,67,54,.15);color:var(--red);}
+/* .on e o estado dos toggles de sobreposicao (bolhas, Elliott, trampolim).
+   Verde e nao dourado de proposito: dourado ja e a ferramenta SELECIONADA, e
+   as duas coisas convivem — da pra estar com o lapis ativo e as bolhas ligadas
+   ao mesmo tempo. Mesma cor faria parecer que uma desliga a outra. */
+.tool-btn.on{background:rgba(8,153,129,.16);border-color:rgba(8,153,129,.5);color:var(--green);}
+
+/* ── A BARRA RECOLHIDA ──────────────────────────────────────────────────
+   Recolher nao e esconder: some com os 15 botoes e deixa so o punho, que
+   continua clicavel na borda. Esconder de vez deixaria a pessoa sem caminho
+   de volta a nao ser adivinhar. */
+#drawing-toolbar.recolhida .tool-btn:not(#tool-collapse),
+#drawing-toolbar.recolhida .tool-sep,
+#drawing-toolbar.recolhida .tool-color,
+#drawing-toolbar.recolhida .tool-swatches,
+#drawing-toolbar.recolhida > div[style*="relative"]{display:none;}
+#drawing-toolbar.recolhida{padding:3px;opacity:.55;}
+#drawing-toolbar.recolhida:hover{opacity:1;}
+#drawing-toolbar{transition:opacity .15s;}
+
+/* desenhos escondidos: o olho marcado, pra nao virar "sumiu tudo" */
+.tool-btn.olho-off{background:rgba(244,67,54,.14);border-color:rgba(244,67,54,.45);color:var(--red);}
 .tool-sep{height:1px;background:var(--bd2);margin:2px 1px;}
 .tool-tip{position:absolute;left:34px;top:4px;background:var(--bg4);border:1px solid var(--bd3);
   color:var(--text);font-size:9px;padding:3px 6px;border-radius:3px;white-space:nowrap;
