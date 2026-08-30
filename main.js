@@ -8359,6 +8359,16 @@ function montaAlvosBolha(){
 //
 // Recebe as funcoes de coordenada porque cada grafico tem a sua: no principal
 // sao t2x/p2y, no mini sao os metodos do proprio chart.
+// O limite vem da ESCALA, nao de um numero bonito. O raio varia de 35% a 100%
+// do teto, entao a faixa util e 0,65 x raioTeto. Pra essa faixa ser
+// perceptivel ela precisa de uns 2px: 2 / 0,65 = 3,1. Abaixo disso o piso
+// engole a escala e todas as bolhas saem do mesmo tamanho — a bolha para de
+// dizer volume, que e a unica coisa que ela existe pra dizer.
+//
+// Com 4,5 (meu primeiro chute) o modo evento entrava com 7px de espacamento,
+// onde uma bolha por vela ainda cabe folgada.
+const BOLHA_RAIO_LEGIVEL = 3.1;
+const BOLHA_RAIO_EVENTO  = 4.0;
 function pintaBolhas(ctx, larguraCss, alvos, corte, velas, t2xFn, p2yFn, alturaCss){
   if(!ctx || !alvos || !alvos.length || !velas || !velas.length) return 0;
   // O priceToCoordinate EXTRAPOLA: pra um preco fora do range visivel ele
@@ -8379,7 +8389,21 @@ function pintaBolhas(ctx, larguraCss, alvos, corte, velas, t2xFn, p2yFn, alturaC
       if(x1 != null && x0 != null && x1 > x0) espacamento = x1 - x0;
     }
   }catch(e){}
-  const raioTeto = Math.max(1.6, Math.min(26, espacamento * 0.56));
+  // ── MODO EVENTO: quando nao ha espaco, a bolha muda de pergunta.
+  // Com o grafico aberto em 1000 velas o espacamento fica em ~1px, o raio bate
+  // no piso e o minimo passa a ser IGUAL ao maximo: todas as bolhas do mesmo
+  // tamanho, ou seja, a bolha para de codificar volume — que e a unica coisa
+  // que ela existe pra fazer. E 999 circulos sobrepostos viram mancha.
+  //
+  // Isso acontecia em TODOS os tempos graficos, porque o problema nunca foi o
+  // timeframe: e a densidade de velas na tela.
+  //
+  // Abaixo do limite de legibilidade ela deixa de ser "uma por vela" e passa a
+  // marcar so o que se destaca (percentil 90 ou absorcao), com raio fixo e
+  // legivel. Menos marcas dizendo mais, em vez de mil dizendo nada.
+  const raioTetoBruto = Math.min(26, espacamento * 0.56);
+  const modoEvento = raioTetoBruto < BOLHA_RAIO_LEGIVEL;
+  const raioTeto = modoEvento ? BOLHA_RAIO_EVENTO : Math.max(2.2, raioTetoBruto);
 
   // Uma bolha por vela sao mil circulos com o grafico todo na tela, e mil
   // pares fill+stroke custavam 4,7ms por quadro — mais de um quarto do
@@ -8391,6 +8415,8 @@ function pintaBolhas(ctx, larguraCss, alvos, corte, velas, t2xFn, p2yFn, alturaC
   let n = 0;
 
   for(const a of alvos){
+    // no modo evento so passa quem se destaca — o resto viraria ruido de 1px
+    if(modoEvento && !a.destaque && !a.absorvida) continue;
     const x = t2xFn(a.vela.time);
     if(x == null || x < -40 || x > larguraCss + 40) continue;
     const y = p2yFn(a.comprador ? a.vela.high : a.vela.low);
@@ -8407,7 +8433,11 @@ function pintaBolhas(ctx, larguraCss, alvos, corte, velas, t2xFn, p2yFn, alturaC
     // E o piso de 35%: vela fraca encolhe, mas continua visivel na fila — a
     // bolha e por vela, entao sumir uma quebra a sequencia que voce acompanha.
     const f = Math.sqrt(Math.min(1, a.notional / (corte || a.notional)));
-    const raio = Math.max(1.6, raioTeto * (0.35 + 0.65*f));
+    // no modo evento o raio e fixo: com poucos pixels a diferenca de area nao
+    // se le, e fingir que se le e pior do que nao mostrar
+    // piso de 1,5 e nao 2,0: com raioTeto perto do limite, um piso alto demais
+    // achata justamente a faixa que acabou de ser preservada
+    const raio = modoEvento ? raioTeto : Math.max(1.5, raioTeto * (0.35 + 0.65*f));
 
     const cor = a.equilibrio ? "150,150,158" : (a.comprador ? "0,200,83" : "255,59,48");
     // ANCORADA NA MAXIMA/MINIMA, centro em cima do ponto. Antes o centro
@@ -8464,6 +8494,20 @@ function pintaBolhas(ctx, larguraCss, alvos, corte, velas, t2xFn, p2yFn, alturaC
       ctx.stroke();
     }
   });
+
+  // A TROCA DE MODO NAO PODE SER SILENCIOSA. Ver de repente 30 bolhas onde
+  // havia mil parece dado sumindo; dito em uma linha, e uma escolha de leitura.
+  if(modoEvento && larguraCss > 220){
+    ctx.save();
+    ctx.font = "9px ui-monospace, monospace";
+    ctx.textAlign = "left"; ctx.textBaseline = "bottom";
+    const msg = "bolhas: so as notaveis (aproxime pra ver uma por vela)";
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.fillText(msg, 7, (alturaCss||400) - 5);
+    ctx.fillStyle = "rgba(150,158,170,0.95)";
+    ctx.fillText(msg, 6, (alturaCss||400) - 6);
+    ctx.restore();
+  }
 
   if(rotulos.length){
     ctx.textAlign = "center";
