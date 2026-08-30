@@ -1893,6 +1893,70 @@ function pintaElliott(ctx){
 }
 window.pintaElliott = pintaElliott;
 
+// ── O TRAMPOLIM DESENHADO ────────────────────────────────────────────────
+// Este setup e espacial: uma zona em volta da EMA200, a MA89 como gatilho, o
+// stop logo atras dela e o alvo la em cima. Ler isso como quatro numeros num
+// painel e leitura pior do que ver as linhas no lugar onde o preco vai passar.
+// So desenha quando o setup ja tem 2 das 4 — antes disso seriam linhas no meio
+// do grafico sem motivo.
+function pintaTrampolim(ctx){
+  if(!ctx || !candles || !candles.length) return;
+  let rt = null;
+  try{ rt = retornoNa200(); }catch(e){ return; }
+  if(!rt || !rt.checks || rt.ok < 2) return;
+  const larg = (dCanvas && dCanvas.clientWidth) || 900;
+  const yDe = p => { try{ return p2y(p); }catch(e){ return null; } };
+  const atrAprox = Math.abs(rt.ema200 - rt.ma89) || 1;
+  ctx.save();
+  ctx.font = '600 9px IBM Plex Sans, sans-serif';
+  ctx.textBaseline = 'bottom';
+
+  const linha = (preco, cor, rotulo, tracejado) => {
+    const y = yDe(preco);
+    if(y == null || y < -50 || y > 5000) return;
+    ctx.setLineDash(tracejado || []);
+    ctx.strokeStyle = cor; ctx.lineWidth = 1.3; ctx.globalAlpha = 0.9;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(larg, y); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = cor; ctx.textAlign = 'left';
+    ctx.fillText(rotulo, 6, y - 3);
+    ctx.globalAlpha = 1;
+  };
+
+  // A ZONA DA MEDIA: e uma faixa, nao uma linha. "Voltou pra media" tem
+  // tolerancia em ATR, e desenhar so a linha esconderia justamente a folga que
+  // a regra usa.
+  const yA = yDe(rt.ema200 + atrAprox*0.35), yB = yDe(rt.ema200 - atrAprox*0.35);
+  if(yA != null && yB != null){
+    ctx.fillStyle = 'rgba(120,140,200,0.10)';
+    ctx.fillRect(0, Math.min(yA,yB), larg, Math.abs(yB-yA));
+  }
+  linha(rt.ema200, '#7C8CC8', 'EMA200 (a media)', [5,4]);
+  linha(rt.ma89,   '#E8A317', 'MA89 — o gatilho', []);
+  if(rt.ok >= 3){
+    linha(rt.stop, '#F23645', 'stop ' + rt.stop.toLocaleString('pt-BR'), [3,3]);
+    linha(rt.alvo, '#089981', 'alvo ' + rt.alvo.toLocaleString('pt-BR'), [3,3]);
+  }
+  // o estado, no canto
+  ctx.textAlign = 'right';
+  ctx.fillStyle = rt.completo ? '#089981' : '#E8A317';
+  ctx.font = '700 10px IBM Plex Sans, sans-serif';
+  ctx.fillText('TRAMPOLIM ' + rt.ok + '/' + rt.total + ' — ' + rt.lado, larg - 8, 14);
+  ctx.restore();
+}
+window.pintaTrampolim = pintaTrampolim;
+
+let trampolimLigado = false;
+function toggleTrampolim(){
+  trampolimLigado = !trampolimLigado;
+  const b = document.getElementById('btn-trampolim');
+  if(b) b.classList.toggle('on', trampolimLigado);
+  if(typeof redrawDrawings === 'function') redrawDrawings();
+  if(typeof showInfoToast === 'function')
+    showInfoToast('TRAMPOLIM', trampolimLigado ? 'zona da 200 e gatilho da 89 no grafico' : 'linhas escondidas');
+}
+window.toggleTrampolim = toggleTrampolim;
+
 function toggleElliott(){
   elliottLigado = !elliottLigado;
   const b = document.getElementById('btn-elliott');
@@ -4511,16 +4575,27 @@ const RETORNO_ESTICOU = 2.5; // em ATR: o que conta como ter esticado
 
 // Series necessarias, cacheadas junto das outras
 let magCache = null, magChave = '';
-function seriesMagnetismo(){
+// velasOpt pelo mesmo motivo do gatilhoOnda3: 'candles' e let de modulo e sem
+// isso nao ha como exercitar o setup em cenario nenhum. Uma regra de entrada
+// que ninguem consegue reproduzir num caso montado e uma regra em que ninguem
+// deveria confiar.
+function seriesMagnetismo(velasOpt){
+  const V = velasOpt || candles;
+  if(velasOpt) return montaSeriesMag(V);
   if(!candles || candles.length < 260) return null;
   const ch = candles.length+'|'+candles[candles.length-1].time+'|'+currentSym+'|'+currentTF;
   if(magChave === ch && magCache) return magCache;
-  const closes = candles.map(c=>c.close), highs = candles.map(c=>c.high), lows = candles.map(c=>c.low);
-  magCache = {closes, highs, lows,
-    e200: ema(closes,200), ma89: sma(closes,89),
-    atr: atrCalc(highs, lows, closes, 14)};
+  magCache = montaSeriesMag(candles);
   magChave = ch;
   return magCache;
+}
+function montaSeriesMag(V){
+  if(!V || V.length < 120) return null;
+  const closes = V.map(c=>c.close), highs = V.map(c=>c.high), lows = V.map(c=>c.low);
+  return {closes, highs, lows,
+    e200: ema(closes, Math.min(200, Math.floor(V.length/2))),
+    ma89: sma(closes, Math.min(89, Math.floor(V.length/3))),
+    atr: atrCalc(highs, lows, closes, 14)};
 }
 
 // O IMA, MEDIDO. Para cada faixa de distancia, quantas velas voltaram a tocar a
@@ -4583,8 +4658,8 @@ window.magnetismo = magnetismo;
 // O TRAMPOLIM: esticou, voltou pra media, testou a 89, e segurou.
 // O lado e o da tendencia que ja vinha — quem esticou pra baixo e voltou
 // continua vendedor.
-function retornoNa200(){
-  const S = seriesMagnetismo();
+function retornoNa200(velasOpt){
+  const S = seriesMagnetismo(velasOpt);
   if(!S) return null;
   const n = S.closes.length - 1;
   const atr = S.atr[n];
@@ -4594,7 +4669,7 @@ function retornoNa200(){
 
   // 1) ESTICOU nas ultimas RETORNO_JANELA velas, e pra que lado
   let pico = 0, ladoEsticou = null;
-  for(let i=Math.max(210, n-RETORNO_JANELA); i<=n; i++){
+  for(let i=Math.max(0, n-RETORNO_JANELA); i<=n; i++){
     if(S.e200[i]==null || !(S.atr[i]>0)) continue;
     const d = (S.closes[i]-S.e200[i])/S.atr[i];
     if(Math.abs(d) > Math.abs(pico)){ pico = d; ladoEsticou = d > 0 ? 'alta' : 'baixa'; }
@@ -4609,13 +4684,26 @@ function retornoNa200(){
   // 3) TESTOU A 89 e ela SEGUROU. Na alta a 89 tem que ficar por baixo
   //    sustentando; na baixa, por cima barrando.
   const compra = lado === 'compra';
-  let tocou89 = false, segurou89 = false;
+  // SEGURAR NAO E "FECHAR DO LADO CERTO". Isso e verdade quase sempre numa
+  // tendencia, entao a condicao passava de graca e o setup dava falso
+  // positivo. Segurar e a vela PERFURAR a 89 e o fechamento VOLTAR — uma
+  // rejeicao, com pavio do outro lado. E isso que se ve quando a media
+  // sustenta de verdade, e e o que justifica o stop caber logo atras dela.
+  let tocou89 = false, segurou89 = false, velaRejeicao = null;
   for(let i=Math.max(0, n-6); i<=n; i++){
     const m = S.ma89[i]; if(m == null) continue;
-    if(S.lows[i] <= m && S.highs[i] >= m) tocou89 = true;
+    const perfurou = compra ? S.lows[i] < m : S.highs[i] > m;
+    if(!perfurou) continue;
+    tocou89 = true;
+    const voltou = compra ? S.closes[i] > m : S.closes[i] < m;
+    if(!voltou) continue;
+    // o pavio alem da media precisa ter tamanho: 20% do range da vela.
+    // Roçar a media e fechar acima nao e rejeicao, e passar perto.
+    const range = S.highs[i] - S.lows[i];
+    if(!(range > 0)) continue;
+    const pavio = compra ? (m - S.lows[i]) : (S.highs[i] - m);
+    if(pavio / range >= 0.20){ segurou89 = true; velaRejeicao = i; }
   }
-  // segurou = o fechamento atual esta do lado certo da 89
-  segurou89 = compra ? S.closes[n] > S.ma89[n] : S.closes[n] < S.ma89[n];
 
   const checks = [
     {nome:'esticou da EMA200', ok:esticou,
@@ -4627,10 +4715,13 @@ function retornoNa200(){
     {nome:'testou a MA89', ok:tocou89,
      txt: tocou89 ? 'tocou nas ultimas 6 velas' : 'nao tocou a 89',
      falta:'o preco ainda nao testou a MA89'},
-    {nome:'a 89 segurou', ok:segurou89,
-     txt: 'fechamento ' + (S.closes[n] > S.ma89[n] ? 'acima' : 'abaixo') + ' da MA89 ('
-          + S.ma89[n].toFixed(2) + ')',
-     falta:'o fechamento nao esta do lado certo da MA89'},
+    {nome:'a 89 rejeitou', ok:segurou89,
+     txt: segurou89
+       ? 'perfurou a MA89 e fechou de volta, ha ' + (n - velaRejeicao) + ' vela(s)'
+       : tocou89 ? 'perfurou a 89 mas nao fechou de volta com pavio'
+                 : 'a 89 esta em ' + S.ma89[n].toFixed(2),
+     falta:'falta a rejeicao: perfurar a MA89 e o fechamento voltar, com pavio'
+           + ' de pelo menos 20% do range'},
   ];
   const ok = checks.filter(c=>c.ok).length;
   const completo = checks.every(c=>c.ok);
@@ -4650,13 +4741,93 @@ function retornoNa200(){
     lado, completo, ok, total:checks.length, checks,
     pico:+pico.toFixed(2), picoUtil:+picoUtil.toFixed(2), distAgora:+dAgora.toFixed(2),
     ma89:+S.ma89[n].toFixed(2), ema200:+S.e200[n].toFixed(2),
-    stop:+stop.toFixed(2), alvo:+alvo.toFixed(2), rr,
+    stop:+stop.toFixed(2), alvo:+alvo.toFixed(2), rr, velaRejeicao,
     porque: completo
       ? 'esticou ' + pico.toFixed(1) + ' ATR, voltou pra media e a 89 segurou — '
         + 'continuacao de ' + lado + ', com o stop cabendo atras da 89'
       : checks.filter(c=>!c.ok).map(c=>c.falta).join('; ')};
 }
 window.retornoNa200 = retornoNa200;
+
+// ── O TRAMPOLIM, MEDIDO ──────────────────────────────────────────────────
+// Nenhum setup entra aqui sem taxa base — foi assim com o portao, com a
+// reversao e com a onda 3, e nao seria diferente com este. Reproduzo as quatro
+// condicoes vela a vela pra tras e meco o desfecho com a MESMA barreira dupla,
+// pra poder comparar com os outros portoes.
+//
+// E meco tambem o RAIO: quando ele parte da media, quanto ele anda a favor
+// antes de voltar? E o MFE (maximum favorable excursion) em ATR. "E um raio"
+// vira um numero — e se a mediana for pequena, o setup pode acertar direcao e
+// ainda assim nao pagar o risco.
+function trampolimNoIndice(i, S){
+  if(i < 215 || i >= S.closes.length) return null;
+  const atr = S.atr[i];
+  if(!(atr > 0) || S.e200[i] == null || S.ma89[i] == null) return null;
+  let pico = 0;
+  for(let j=Math.max(210, i-RETORNO_JANELA); j<=i; j++){
+    if(S.e200[j]==null || !(S.atr[j]>0)) continue;
+    const d = (S.closes[j]-S.e200[j])/S.atr[j];
+    if(Math.abs(d) > Math.abs(pico)) pico = d;
+  }
+  if(Math.abs(pico) < RETORNO_ESTICOU) return null;
+  const compra = pico > 0;
+  if(Math.abs((S.closes[i]-S.e200[i])/atr) > RETORNO_ZONA) return null;
+  // a rejeicao na 89, mesma regra da leitura ao vivo
+  let rej = false;
+  for(let j=Math.max(0, i-6); j<=i; j++){
+    const m = S.ma89[j]; if(m == null) continue;
+    const perf = compra ? S.lows[j] < m : S.highs[j] > m;
+    if(!perf) continue;
+    const volt = compra ? S.closes[j] > m : S.closes[j] < m;
+    if(!volt) continue;
+    const range = S.highs[j] - S.lows[j];
+    if(!(range > 0)) continue;
+    const pavio = compra ? (m - S.lows[j]) : (S.highs[j] - m);
+    if(pavio/range >= 0.20){ rej = true; break; }
+  }
+  return rej ? {lado: compra ? 'compra' : 'venda', atr} : null;
+}
+
+function probabilidadeTrampolim(){
+  const S = seriesMagnetismo();
+  if(!S) return null;
+  const H = PADRAO_HORIZONTE, B = PADRAO_BARREIRA;
+  let ap = 0, dec = 0, ac = 0, varridas = 0;
+  const mfes = [];
+  for(let i=215; i<S.closes.length-1-H; i++){
+    varridas++;
+    const t = trampolimNoIndice(i, S);
+    if(!t) continue;
+    ap++;
+    const compra = t.lado === 'compra', base = S.closes[i];
+    const alvo = compra ? base + t.atr*B : base - t.atr*B;
+    const stop = compra ? base - t.atr*B : base + t.atr*B;
+    // o RAIO: o quanto andou a favor dentro do horizonte
+    let mfe = 0, resolvido = null;
+    for(let j=i+1; j<=i+H; j++){
+      const fav = compra ? (S.highs[j]-base)/t.atr : (base-S.lows[j])/t.atr;
+      if(fav > mfe) mfe = fav;
+      if(resolvido == null){
+        const bA = compra ? S.highs[j] >= alvo : S.lows[j]  <= alvo;
+        const bS = compra ? S.lows[j]  <= stop : S.highs[j] >= stop;
+        if(bA && bS) resolvido = 'ambiguo';
+        else if(bA) resolvido = 'acerto';
+        else if(bS) resolvido = 'erro';
+      }
+    }
+    mfes.push(+mfe.toFixed(2));
+    if(resolvido === 'acerto'){ dec++; ac++; }
+    else if(resolvido === 'erro'){ dec++; }
+  }
+  mfes.sort((a,b)=>a-b);
+  return {aparicoes:ap, varridas, decididos:dec,
+    taxa: dec>0 ? +(ac/dec*100).toFixed(1) : null,
+    confiavel: dec >= 10,
+    raioMediano: mfes.length ? mfes[Math.floor(mfes.length/2)] : null,
+    raioP75: mfes.length ? mfes[Math.floor(mfes.length*0.75)] : null,
+    horizonte:H, barreira:B};
+}
+window.probabilidadeTrampolim = probabilidadeTrampolim;
 
 function renderMagnetismo(){
   const box = document.getElementById('mag-box');
@@ -4699,6 +4870,36 @@ function renderMagnetismo(){
          + (rt.rr!=null ? ' &middot; R:R <b>'+rt.rr+':1</b>' : '') + '</div>';
     }
   }
+  // ── A TAXA DO TRAMPOLIM e o tamanho do raio
+  try{
+    const pt = probabilidadeTrampolim();
+    if(pt && pt.aparicoes){
+      h += '<div style="margin-top:6px;padding-top:5px;border-top:1px solid var(--bd);">';
+      if(pt.confiavel){
+        const c = pt.taxa >= 55 ? 'var(--green)' : pt.taxa <= 45 ? 'var(--red)' : 'var(--goldd)';
+        h += '<div style="font-size:11px;font-weight:800;color:'+c+';">' + pt.taxa
+           + '% <span style="font-size:9px;font-weight:600;color:var(--t3);">quando este'
+           + ' setup apareceu (' + pt.decididos + ' decididos de ' + pt.aparicoes + ')</span></div>';
+      }else{
+        h += '<div style="font-size:9px;color:var(--t3);">apareceu <b>' + pt.aparicoes
+           + '</b> vez(es) em ' + pt.varridas + ' velas &mdash; poucas pra afirmar taxa</div>';
+      }
+      // O RAIO. "E um raio" vira numero: o quanto ele costuma andar a favor.
+      if(pt.raioMediano != null){
+        h += '<div style="font-size:9px;color:var(--t2);margin-top:2px;">o raio: andou <b>'
+           + pt.raioMediano + ' ATR</b> a favor na mediana (75% dos casos ate '
+           + pt.raioP75 + ' ATR), em ' + pt.horizonte + ' velas</div>';
+        if(pt.raioMediano < pt.barreira){
+          h += '<div style="font-size:9px;color:var(--goldd);line-height:1.4;">'
+             + 'A mediana e menor que o alvo de ' + pt.barreira + ' ATR: mesmo acertando a'
+             + ' direcao, o movimento tipico nao chega no alvo. Aqui o alvo tem que ser'
+             + ' mais curto, ou o setup nao paga.</div>';
+        }
+      }
+      h += '</div>';
+    }
+  }catch(e){}
+
   // ── O IMA, medido
   if(mg){
     h += '<div style="font-size:8px;color:var(--t3);letter-spacing:.5px;margin-top:7px;">'
@@ -11931,6 +12132,8 @@ function redrawDrawings(){
   try{ desenhaBolhas(); }catch(e){}
   // e a contagem de Elliott por cima das bolhas: e rotulo, precisa ser lido
   try{ pintaElliott(dCtx); }catch(e){}
+  // e o trampolim, que e o setup mais espacial de todos
+  if(trampolimLigado) try{ pintaTrampolim(dCtx); }catch(e){}
   if(isDragging&&dragDraw){
     try{paint(dragDraw,true);}catch(e){}
   }
