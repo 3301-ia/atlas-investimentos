@@ -18,7 +18,7 @@
   <link rel="stylesheet" media="print" onload="this.media='all';this.onload=null"
         href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap">
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap"></noscript>
-  <link rel="stylesheet" href="./style.css?v=22">
+  <link rel="stylesheet" href="./style.css?v=23">
 </head>
 <body>
 <div id="vectra-splash">
@@ -968,6 +968,13 @@
             <div class="sp-sec"><span>EMA200: IMA E TRAMPOLIM</span><span class="sp-sec-val" id="mag-count">--</span></div>
             <div id="mag-box" style="padding:6px 9px;"><div style="font-size:9px;color:var(--t3);">Carregando...</div></div>
 
+            <!-- STOP TECNICO E PRE-STOP: o stop vai onde a TESE MORRE (o
+                 extremo do pavio que rejeitou), nao numa media com folga. E o
+                 pre-stop olha o cruzamento 8/16 no 3m se aproximando, pra
+                 decidir antes do stop bater. 3m avisa, 15m sustenta, 1h vies. -->
+            <div class="sp-sec"><span>STOP TECNICO &amp; PRE-STOP</span><span class="sp-sec-val" id="prestop-count">--</span></div>
+            <div id="prestop-box" style="padding:6px 9px;"><div style="font-size:9px;color:var(--t3);">Lendo 3m, 15m e 1h...</div></div>
+
             <!-- PADRAO DE POSICIONAMENTO: o unico painel que responde "ja da
                  pra entrar?". Fica no TOPO da coluna porque e a primeira
                  pergunta, nao a ultima. Obrigatoria faltando = nao entra. -->
@@ -1421,7 +1428,7 @@
      o que o main.js espera pra iniciar, e os onclick do HTML so disparam no
      clique, bem depois. -->
 <script defer src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
-<script defer src="./main.js?v=22"></script>
+<script defer src="./main.js?v=23"></script>
 </body>
 
 </html>
