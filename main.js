@@ -1284,7 +1284,13 @@ window.calculaMudancaCarater = calculaMudancaCarater;
 // 0,5 a 0,786 da 1; onda 3 costuma dar 1,618 da 1; onda 4 corrige 0,236 a 0,382
 // da 3. Elas nao invalidam nada — servem pra dizer se a contagem esta comum ou
 // esticada.
-const ELLIOTT_K = 6;   // pivo de onda e mais largo que o de estrutura
+// Tres graus de pivo, porque Elliott e fractal por definicao: onda dentro de
+// onda. Ler um K so era ler um grau so e chamar de "a contagem".
+const ELLIOTT_GRAUS = [4, 8, 16];
+const ELLIOTT_K = 8;              // o grau do meio, quando alguem pede um so
+const ELLIOTT_MIN_ATR = 1.5;      // perna menor que isso e tremor, nao onda
+const ELLIOTT_SPAN_ATR = 5;       // e a sequencia inteira precisa ir a algum lugar
+const ELLIOTT_CONF_MIN = 45;      // abaixo disso o motor prefere nao afirmar
 
 // Sequencia de pivos ALTERNADOS (topo, fundo, topo, ...). Dois topos seguidos
 // sem fundo entre eles nao formam onda; nesse caso fica o mais extremo.
@@ -1299,7 +1305,6 @@ function pivosAlternados(velas, k){
     const ult = out[out.length-1];
     if(!ult){ out.push(p); return; }
     if(ult.tipo !== p.tipo){ out.push(p); return; }
-    // mesmo tipo em sequencia: fica o mais extremo dos dois
     if(p.tipo === 'alto'  && p.preco > ult.preco) out[out.length-1] = p;
     if(p.tipo === 'baixo' && p.preco < ult.preco) out[out.length-1] = p;
   });
@@ -1308,109 +1313,413 @@ function pivosAlternados(velas, k){
 
 function proporcao(a, b){ return (b > 0) ? a/b : null; }
 
-// Testa os ultimos pivos como um impulso 0-1-2-3-4-5. Devolve o que der pra
-// afirmar: as ondas ja formadas, as regras conferidas uma a uma, e em que
-// ponto da contagem o preco esta agora.
-function leituraElliott(velas){
-  if(!velas || velas.length < 60) return null;
-  const p = pivosAlternados(velas);
-  // UM pivo ja basta. O caso que mais interessa — "a onda 1 acabou e a 2
-  // esta corrigindo agora" — tem exatamente um pivo confirmado (o topo da 1);
-  // o ponto 0 se reconstroi e o fim da 2 ainda esta se formando.
-  if(p.length < 1) return null;
-
-  const seq = p.slice(-6);
-
-  // A DIRECAO VEM DO MOVIMENTO LIQUIDO, nao do tipo do primeiro pivo. O inicio
-  // da onda 1 quase nunca e um pivo — nao ha nada antes dele pra confirmar —,
-  // entao a sequencia costuma comecar ja no TOPO da onda 1. Ler o tipo do
-  // primeiro pivo fazia a contagem inteira andar uma casa: a onda 2 era rotulada
-  // como onda 1.
-  // Com dois ou mais pivos a direcao vem do movimento liquido. Com um so nao
-  // ha movimento liquido pra medir: o tipo do pivo diz tudo — um topo
-  // confirmado so pode ser o fim de uma perna de alta.
-  const alta = (seq.length > 1)
-    ? seq[seq.length-1].preco > seq[0].preco
-    : seq[0].tipo === 'alto';
-  const tipoInicial = alta ? 'baixo' : 'alto';
-  if(seq[0].tipo !== tipoInicial){
-    // reconstroi o ponto 0: o extremo entre o comeco da janela e o primeiro pivo
-    const ate = seq[0].i, de = Math.max(0, ate-200);
-    let m = de;
-    for(let i=de;i<ate;i++){
-      if(alta ? velas[i].low < velas[m].low : velas[i].high > velas[m].high) m = i;
-    }
-    seq.unshift({i:m, tipo:tipoInicial, preco: alta ? velas[m].low : velas[m].high, origem:true});
+// ── O FLUXO DE UMA ONDA — os "volumes frios" ─────────────────────────────
+// Esta e a parte que o motor antigo nao tinha e que muda tudo. Elliott sozinho
+// e infalsificavel: qualquer zigue-zague aceita rotulo, e sempre da pra
+// redesenhar quando erra. Mas este app tem o lado agressor vela a vela, e isso
+// permite uma pergunta que a contagem NAO pode responder por si:
+//
+//   a onda 3 e a que carrega mais dinheiro e mais agressao?
+//   as ondas 2 e 4 sao FRIAS — pouco volume, agressao dividida?
+//   a onda 5 vem com menos convicçao que a 3?
+//
+// Correcao verdadeira e falta de comprador, nao vendedor agredindo. Ela aparece
+// como fila de vela cinza e volume abaixo da media. Uma contagem cujas ondas
+// pares vem QUENTES esta quase sempre errada — aquilo nao e correcao, e outro
+// impulso. Agora o motor mede isso e desconta na confianca em vez de rotular
+// igual e deixar por isso mesmo.
+function fluxoDaOnda(velas, a, b){
+  const de = Math.min(a,b), ate = Math.max(a,b);
+  let notional = 0, delta = 0, n = 0;
+  for(let i=de; i<=ate && i<velas.length; i++){
+    const v = velas[i];
+    const c = v.compra||0, s = v.venda||0;
+    if(c+s <= 0) continue;
+    notional += c+s; delta += c-s; n++;
   }
+  if(!n) return null;
+  return {velas:n, notional, porVela: notional/n,
+          agressao: notional > 0 ? delta/notional : 0};
+}
 
-  // A PERNA EM CURSO ENTRA COMO PROVISORIA. O fim da onda que esta se formando
-  // ainda nao e pivo (faltam as velas de confirmacao), e e justamente essa que
-  // interessa: "estamos na onda 2" so da pra dizer contando a perna atual.
-  const ultimo = seq[seq.length-1];
-  const n = velas.length-1;
-  const precoAgora = velas[n].close;
-  const andou = Math.abs(precoAgora - ultimo.preco);
-  const tamMedio = seq.length>1
-    ? seq.slice(1).reduce((s,x,k)=>s+Math.abs(x.preco-seq[k].preco),0)/(seq.length-1) : 0;
-  // so conta como perna nova se ja andou 20% do tamanho medio das anteriores
-  if(n > ultimo.i+2 && tamMedio>0 && andou > tamMedio*0.2){
-    const tipo = ultimo.tipo === 'alto' ? 'baixo' : 'alto';
-    seq.push({i:n, tipo, preco:precoAgora, provisorio:true});
-  }
-  while(seq.length > 6) seq.shift();
-  const rot = ['0','1','2','3','4','5'];
+// ── AS HIPOTESES ─────────────────────────────────────────────────────────
+// Duas, e elas COMPETEM. O motor antigo so sabia dizer "impulso 1-2-3-4-5",
+// entao uma correcao recebia rotulo de impulso — que e exatamente onde a
+// leitura "estamos na onda 2" precisa ser testada, porque essa frase significa
+// "a ultima perna encaixa melhor como correcao do que como impulso".
+
+function pontosParaOndas(pts, rot){
   const ondas = [];
-  for(let k=1;k<seq.length;k++){
-    ondas.push({
-      onda: rot[k],
-      de: seq[k-1].preco, para: seq[k].preco,
-      tamanho: Math.abs(seq[k].preco - seq[k-1].preco),
-      iDe: seq[k-1].i, iPara: seq[k].i,
-      emCurso: !!seq[k].provisorio,
-    });
+  for(let k=1;k<pts.length;k++){
+    ondas.push({onda: rot[k-1], de: pts[k-1].preco, para: pts[k].preco,
+                tamanho: Math.abs(pts[k].preco - pts[k-1].preco),
+                iDe: pts[k-1].i, iPara: pts[k].i, emCurso: !!pts[k].provisorio});
   }
-  const O = n => ondas[n-1];   // O(1) = onda 1
+  return ondas;
+}
 
-  // ── as tres regras
-  const regras = [];
+// Regra dura comum as duas hipoteses: as pernas tem que ALTERNAR de sentido, e
+// a onda 1 tem que ir no sentido que se esta afirmando. O motor antigo nao
+// conferia isso — foi por isso que ele chamou ruido de "impulso de alta" com a
+// onda 1 indo pra baixo. Sozinha, esta checagem ja mata os dois casos de ruido.
+function sentidoCoerente(ondas, alta){
+  for(let k=0;k<ondas.length;k++){
+    const sobe = ondas[k].para > ondas[k].de;
+    const deveriaSubir = alta ? (k % 2 === 0) : (k % 2 === 1);
+    if(sobe !== deveriaSubir) return false;
+  }
+  return true;
+}
+
+// E piso de amplitude: perna abaixo de ELLIOTT_MIN_ATR nao e onda, e tremor.
+// Sem isso, chop de 2% em 400 velas virava impulso de cinco ondas.
+function amplitudeOk(ondas, atr){
+  if(atr == null || !isFinite(atr) || atr <= 0) return true;
+  if(!ondas.every(o => o.tamanho >= atr * ELLIOTT_MIN_ATR)) return false;
+  // E a sequencia toda tem que percorrer alguma coisa. Serrilhado num range
+  // pode ter pernas grandes e nao sair do lugar — aquilo e lateral, nao
+  // impulso, e nenhuma regra de proporcao percebe isso sozinha.
+  const precos = [ondas[0].de, ...ondas.map(o=>o.para)];
+  const span = Math.max(...precos) - Math.min(...precos);
+  return span >= atr * ELLIOTT_SPAN_ATR;
+}
+
+// O FLUXO SO PONTUA QUANDO TEM O QUE DIZER. Este foi um erro meu na primeira
+// versao: com volume chapado (fonte sem lado agressor, ou dado sintetico) todas
+// as comparacoes davam empate, o empate contava como acerto, e o ruido levava
+// 35 pontos de graca — justamente nos criterios que deviam ser os mais duros.
+// Sem variacao real entre as ondas, o fluxo se ABSTEM: nao soma nem no ponto
+// nem no maximo, e a confianca passa a sair so das proporcoes.
+const FLUXO_MARGEM = 1.15;   // 15% de diferenca pra chamar de "maior"
+function fluxoInformativo(fx){
+  const v = fx.filter(Boolean);
+  if(v.length < 2) return false;
+  const vols = v.map(f=>f.porVela).filter(x=>x>0);
+  if(vols.length < 2) return false;
+  const razao = Math.max(...vols) / Math.min(...vols);
+  const agr = v.map(f=>Math.abs(f.agressao));
+  const varAgr = Math.max(...agr) - Math.min(...agr);
+  return razao >= FLUXO_MARGEM || varAgr >= 0.10;
+}
+function maiorQue(a, b){ return a >= b * FLUXO_MARGEM; }
+
+// ── O DESCONTO POR EVIDENCIA ─────────────────────────────────────────────
+// Acertar 1 de 1 criterio nao e 100% de confianca, e falta de evidencia com
+// aparencia de certeza. Uma contagem de duas ondas sem fluxo util tem UM
+// criterio testavel; sem esta correcao ela saia com a mesma nota de um impulso
+// de cinco ondas que passou em onze — e foi assim que o ruido voltou marcando
+// 100%.
+//
+// EVIDENCIA_REF e quanto de criterio uma contagem curta PORE M bem sustentada
+// consegue reunir: retracao na faixa, onda 1 agredida a favor, onda 2 fria e
+// dividida. Ou seja, e o fluxo que torna uma contagem curta defensavel — que e
+// exatamente o ponto dos volumes frios. Sem fluxo, contagem curta nao passa.
+const EVIDENCIA_REF = 42;
+// E O TETO SEM FLUXO. Proporcao de Fibonacci sozinha nao sustenta contagem:
+// num passeio aleatorio as pernas saem parecidas por construçao, entao 'a onda
+// B retrocedeu 53% e a C deu 1,11x a A' acontece o tempo todo sem significar
+// nada. Foi assim que o ruido voltou marcando 64% depois do desconto.
+//
+// A regra fica dita: SEM VOLUME QUE DIFERENCIE AS ONDAS, a contagem nao passa
+// do teto e o motor prefere calar. E o que separa contagem de desenho — e e
+// tambem por que os volumes frios sao o centro disso, e nao um enfeite.
+const CONF_TETO_SEM_FLUXO = 40;   // abaixo do minimo de 45, entao nao afirma
+function confiancaFinal(pontos, max, temFluxo){
+  if(!(max > 0)) return 0;
+  const taxa = pontos / max;
+  const peso = Math.min(1, max / EVIDENCIA_REF);
+  const c = Math.round(taxa * peso * 100);
+  return temFluxo ? c : Math.min(c, CONF_TETO_SEM_FLUXO);
+}
+
+function testaImpulso(pts, velas, atr){
+  const rot = ['1','2','3','4','5'];
+  const ondas = pontosParaOndas(pts, rot);
+  if(ondas.length < 2) return null;
+  const alta = ondas[0].para > ondas[0].de;
+  if(!sentidoCoerente(ondas, alta)) return null;
+  if(!amplitudeOk(ondas, atr)) return null;
+  const O = n => ondas[n-1];
+
+  const regras = [], violacoes = [];
+  const marca = (regra, ok, valor) => {
+    regras.push({regra, ok, valor});
+    if(ok === false) violacoes.push({regra, valor});
+  };
   if(O(1) && O(2)){
-    const retr = proporcao(O(2).tamanho, O(1).tamanho);
-    regras.push({regra:"onda 2 nao retrocede 100% da onda 1",
-      valor: retr==null?null:+(retr*100).toFixed(1),
-      ok: retr!=null && retr < 1});
+    const r = proporcao(O(2).tamanho, O(1).tamanho);
+    marca("onda 2 nao retrocede 100% da onda 1", r != null && r < 1,
+          r==null?null:+(r*100).toFixed(1));
   }
   if(O(1) && O(3) && O(5)){
-    regras.push({regra:"onda 3 nao e a mais curta",
-      valor:+(O(3).tamanho).toFixed(2),
-      // a regra e "nao ser A MAIS CURTA" — empatar e permitido
-      ok: !(O(3).tamanho < O(1).tamanho && O(3).tamanho < O(5).tamanho)});
+    marca("onda 3 nao e a mais curta",
+          !(O(3).tamanho < O(1).tamanho && O(3).tamanho < O(5).tamanho),
+          +O(3).tamanho.toFixed(2));
   }
   if(O(1) && O(4)){
-    // onda 4 nao pode entrar no territorio da 1: num impulso de alta, o fundo
-    // da 4 tem que ficar acima do topo da 1
-    const topo1 = alta ? O(1).para : O(1).para;
-    const fim4  = O(4).para;
-    regras.push({regra:"onda 4 nao invade o territorio da onda 1",
-      valor:+fim4.toFixed(2),
-      ok: alta ? fim4 > topo1 : fim4 < topo1});
+    marca("onda 4 nao invade o territorio da onda 1",
+          alta ? O(4).para > O(1).para : O(4).para < O(1).para,
+          +O(4).para.toFixed(2));
   }
-  const violacoes = regras.filter(r => r.ok === false);
+  if(violacoes.length) return null;   // regra violada nao pontua, e ELIMINA
 
-  // ── proporcoes contra o que costuma acontecer
   const props = {};
-  if(O(1) && O(2)) props.onda2_retracao = +(proporcao(O(2).tamanho, O(1).tamanho)*100).toFixed(1);
-  if(O(1) && O(3)) props.onda3_extensao = +(proporcao(O(3).tamanho, O(1).tamanho)).toFixed(2);
-  if(O(3) && O(4)) props.onda4_retracao = +(proporcao(O(4).tamanho, O(3).tamanho)*100).toFixed(1);
-  if(O(1) && O(5)) props.onda5_vs_onda1 = +(proporcao(O(5).tamanho, O(1).tamanho)).toFixed(2);
+  if(O(1)&&O(2)) props.onda2_retracao = +(proporcao(O(2).tamanho,O(1).tamanho)*100).toFixed(1);
+  if(O(1)&&O(3)) props.onda3_extensao = +proporcao(O(3).tamanho,O(1).tamanho).toFixed(2);
+  if(O(3)&&O(4)) props.onda4_retracao = +(proporcao(O(4).tamanho,O(3).tamanho)*100).toFixed(1);
+  if(O(1)&&O(5)) props.onda5_vs_onda1 = +proporcao(O(5).tamanho,O(1).tamanho).toFixed(2);
 
-  return {
-    direcao: alta ? "alta" : "baixa",
-    pivos: seq.length,
-    ondas, regras, violacoes,
-    proporcoes: props,
-    onde: ondas.length ? ondas[ondas.length-1].onda : null,
-    ultimoPivo: seq[seq.length-1],
+  // ── PONTUACAO. As regras sao eliminatorias; as diretrizes pontuam. Cada
+  // ponto tem nome, porque um numero de confianca sem os motivos e chute com
+  // aparencia de medida.
+  let pts_ = 0, max = 0; const motivos = [];
+  const ponto = (vale, ok, txt) => { max += vale; if(ok){ pts_ += vale; motivos.push('+ '+txt); } };
+  const contra = (txt) => motivos.push('- '+txt);
+
+  if(props.onda2_retracao != null){
+    const r = props.onda2_retracao;
+    ponto(12, r>=38.2 && r<=78.6, 'onda 2 retrocedeu '+r+'%, na faixa classica');
+    if(!(r>=38.2 && r<=78.6)) contra('onda 2 em '+r+'%, fora de 38,2-78,6%');
+  }
+  if(props.onda3_extensao != null){
+    const e = props.onda3_extensao;
+    ponto(15, e >= 1.5, 'onda 3 deu '+e+'x a onda 1');
+    if(e < 1.5) contra('onda 3 so '+e+'x a onda 1 — impulso curto pra onda 3');
+  }
+  if(O(1)&&O(3)&&O(5)){
+    ponto(10, O(3).tamanho > O(1).tamanho && O(3).tamanho > O(5).tamanho,
+          'onda 3 e a mais longa das tres');
+  }
+  if(props.onda4_retracao != null){
+    const r = props.onda4_retracao;
+    ponto(10, r>=23.6 && r<=50, 'onda 4 retrocedeu '+r+'%, na faixa tipica');
+  }
+  if(props.onda2_retracao != null && props.onda4_retracao != null){
+    // alternancia: se a 2 e profunda, a 4 e rasa, e vice-versa
+    ponto(8, Math.abs(props.onda2_retracao - props.onda4_retracao) >= 20,
+          'ha alternancia entre a onda 2 e a onda 4');
+  }
+  if(props.onda5_vs_onda1 != null){
+    const q = props.onda5_vs_onda1;
+    ponto(8, q>=0.6 && q<=1.6, 'onda 5 proporcional a onda 1 ('+q+'x)');
+  }
+
+  // ── E O FLUXO, que e o que separa contagem de desenho
+  const fx = ondas.map(o => fluxoDaOnda(velas, o.iDe, o.iPara));
+  const temFluxo = fx.filter(Boolean).length === ondas.length && fluxoInformativo(fx);
+  if(temFluxo){
+    const imp = [0,2,4].filter(k=>k<ondas.length);   // 1, 3, 5
+    const cor = [1,3].filter(k=>k<ondas.length);     // 2, 4
+    if(imp.length >= 2 && fx[2]){
+      const outras = imp.filter(k=>k!==2);
+      const maior = outras.every(k => maiorQue(fx[2].porVela, fx[k].porVela));
+      ponto(15, maior, 'a onda 3 e a que carrega mais dinheiro por vela');
+      if(!maior) contra('a onda 3 NAO e a de maior volume — numa contagem certa ela costuma ser');
+      const agr = outras.every(k => maiorQue(Math.abs(fx[2].agressao)+0.01, Math.abs(fx[k].agressao)+0.01));
+      ponto(12, agr, 'a onda 3 e a de agressao mais forte');
+      if(!agr) contra('a agressao da onda 3 nao e a maior das tres');
+    }
+    if(cor.length && imp.length){
+      const mediaImp = imp.reduce((a,k)=>a+fx[k].porVela,0)/imp.length;
+      const friasOk = cor.every(k => maiorQue(mediaImp, fx[k].porVela));
+      ponto(12, friasOk, 'as ondas pares vem FRIAS — volume abaixo das impulsivas');
+      if(!friasOk) contra('onda par com volume QUENTE: correcao de verdade e falta de comprador, nao vendedor agredindo — isso costuma ser outro impulso, nao uma correcao');
+      const neutras = cor.every(k => Math.abs(fx[k].agressao) < 0.20);
+      ponto(8, neutras, 'agressao dividida nas correcoes, como se espera');
+      if(!neutras) contra('correcao com agressao de um lado so — nao parece correcao');
+    }
+    if(fx[4] && fx[2]){
+      ponto(8, Math.abs(fx[4].agressao) < Math.abs(fx[2].agressao),
+            'onda 5 com menos convicçao que a 3 (divergencia tipica)');
+    }
+    // Vale ate na contagem de duas ondas, que e a que interessa quando a
+    // pergunta e "estamos na onda 2?": a onda 1 tem que ter sido agredida no
+    // sentido que se esta afirmando. Onda 1 de alta com agressao vendedora nao
+    // e onda 1.
+    if(fx[0]){
+      const aFavor = alta ? fx[0].agressao > 0.10 : fx[0].agressao < -0.10;
+      ponto(10, aFavor, 'a onda 1 foi agredida no sentido do impulso');
+      if(!aFavor) contra('a onda 1 nao tem agressao no sentido que a contagem afirma');
+    }
+  }else{
+    motivos.push('~ sem fluxo com variacao util nesta janela: a confianca sai so das proporcoes');
+  }
+
+  return {tipo:'impulso', direcao: alta?'alta':'baixa', ondas, regras, violacoes,
+          proporcoes:props, motivos,
+          fluxo: fx.map((f,k)=>f && {onda:rot[k], porVela:Math.round(f.porVela),
+                                     agressao:+(f.agressao*100).toFixed(1)}),
+          confianca: confiancaFinal(pts_, max, temFluxo), evidencia: max,
+          temFluxo};
+}
+
+function testaZigzag(pts, velas, atr){
+  const rot = ['A','B','C'];
+  const ondas = pontosParaOndas(pts, rot);
+  if(ondas.length < 2 || ondas.length > 3) return null;
+  const alta = ondas[0].para > ondas[0].de;
+  if(!sentidoCoerente(ondas, alta)) return null;
+  if(!amplitudeOk(ondas, atr)) return null;
+  const O = n => ondas[n-1];
+
+  const regras = [], violacoes = [];
+  if(O(1) && O(2)){
+    const r = proporcao(O(2).tamanho, O(1).tamanho);
+    const ok = r != null && r < 1;
+    regras.push({regra:"onda B nao retrocede 100% da onda A", ok, valor:r==null?null:+(r*100).toFixed(1)});
+    if(!ok) violacoes.push({regra:"onda B nao retrocede 100% da onda A", valor:+(r*100).toFixed(1)});
+  }
+  if(violacoes.length) return null;
+
+  const props = {};
+  if(O(1)&&O(2)) props.ondaB_retracao = +(proporcao(O(2).tamanho,O(1).tamanho)*100).toFixed(1);
+  if(O(1)&&O(3)) props.ondaC_vs_ondaA = +proporcao(O(3).tamanho,O(1).tamanho).toFixed(2);
+
+  let pts_ = 0, max = 0; const motivos = [];
+  const ponto = (vale, ok, txt) => { max += vale; if(ok){ pts_ += vale; motivos.push('+ '+txt); } };
+  if(props.ondaB_retracao != null)
+    ponto(12, props.ondaB_retracao>=38.2 && props.ondaB_retracao<=78.6,
+          'onda B retrocedeu '+props.ondaB_retracao+'%, tipico de zigzag');
+  if(props.ondaC_vs_ondaA != null){
+    const q = props.ondaC_vs_ondaA;
+    ponto(15, (q>=0.8&&q<=1.25) || (q>=1.5&&q<=1.75),
+          'onda C em '+q+'x a onda A (igualdade ou 1,618)');
+  }
+  const fx = ondas.map(o => fluxoDaOnda(velas, o.iDe, o.iPara));
+  const temFluxo = fx.filter(Boolean).length === ondas.length && fluxoInformativo(fx);
+  if(temFluxo && fx[1]){
+    const outras = [0,2].filter(k=>k<ondas.length && fx[k]);
+    if(outras.length){
+      const fria = outras.every(k => maiorQue(fx[k].porVela, fx[1].porVela));
+      ponto(18, fria, 'a onda B vem FRIA — e o que se espera de um repique dentro de correcao');
+      ponto(10, Math.abs(fx[1].agressao) < 0.20, 'agressao dividida na onda B');
+    }
+  }else{
+    motivos.push('~ sem fluxo com variacao util nesta janela');
+  }
+
+  return {tipo:'zigzag', direcao: alta?'alta':'baixa', ondas, regras, violacoes,
+          proporcoes:props, motivos,
+          fluxo: fx.map((f,k)=>f && {onda:rot[k], porVela:Math.round(f.porVela),
+                                     agressao:+(f.agressao*100).toFixed(1)}),
+          confianca: confiancaFinal(pts_, max, temFluxo), evidencia: max,
+          temFluxo};
+}
+
+// ── A BUSCA ──────────────────────────────────────────────────────────────
+// Aqui esta a diferenca de fundo. O motor antigo pegava os ultimos 6 pivos e os
+// CHAMAVA de 1-2-3-4-5 — rotulacao posicional. Por isso ele sempre respondia:
+// sempre existem 6 pivos, logo sempre existe uma contagem. Um motor que nunca
+// diz "nao sei" nao esta informando nada.
+//
+// Agora ele ENUMERA candidatos, elimina os que violam as regras duras, pontua
+// os sobreviventes pelas diretrizes e pelo fluxo, e devolve o melhor com a
+// vice. Se nenhum candidato passa, a resposta e null — e essa e uma resposta
+// legitima, muitas vezes a mais util.
+
+function candidatosDePivos(velas, pivos, atr){
+  const saidas = [];
+  const n = velas.length - 1;
+  const precoAgora = velas[n].close;
+
+  // A perna em curso entra como PROVISORIA: o fim dela ainda nao e pivo (faltam
+  // as velas de confirmacao) e e justamente essa que interessa — "estamos na
+  // onda 2" so da pra dizer contando a perna atual.
+  const comProvisorio = (seq) => {
+    const ult = seq[seq.length-1];
+    if(n <= ult.i + 2) return seq;
+    const andou = Math.abs(precoAgora - ult.preco);
+    if(!(atr > 0) || andou < atr * ELLIOTT_MIN_ATR) return seq;
+    return [...seq, {i:n, tipo: ult.tipo==='alto'?'baixo':'alto',
+                     preco:precoAgora, provisorio:true}];
   };
+
+  // O ponto 0 quase nunca e pivo: nao ha nada antes dele pra confirmar. Ele se
+  // reconstroi como o extremo entre o inicio da janela e o primeiro pivo.
+  const comOrigem = (seq) => {
+    const p1 = seq[0];
+    const alta = p1.tipo === 'alto';       // pivo de topo => a perna ate ele subiu
+    const ate = p1.i, de = Math.max(0, ate - 300);
+    if(ate - de < 3) return null;
+    let m = de;
+    for(let i=de;i<ate;i++)
+      if(alta ? velas[i].low < velas[m].low : velas[i].high > velas[m].high) m = i;
+    return [{i:m, tipo: alta?'baixo':'alto',
+             preco: alta ? velas[m].low : velas[m].high, origem:true}, ...seq];
+  };
+
+  // Candidatos: janelas terminando no ultimo pivo, com e sem origem
+  // reconstruida, e com e sem a perna em curso. Cada uma vira uma hipotese.
+  for(let tam = 2; tam <= 6; tam++){
+    if(pivos.length < tam) break;
+    const base = pivos.slice(-tam);
+    [base, comOrigem(base)].forEach(seq => {
+      if(!seq) return;
+      [seq, comProvisorio(seq)].forEach(s => {
+        if(s.length >= 3 && s.length <= 6) saidas.push(s);
+      });
+    });
+  }
+  return saidas;
+}
+
+// A melhor contagem NUM grau. Testa cada candidato como impulso E como zigzag,
+// e deixa as duas hipoteses competirem pelo mesmo pedaco de grafico.
+function buscaContagem(velas, K, atr){
+  const pivos = pivosAlternados(velas, K);
+  if(pivos.length < 2) return null;
+  const cands = candidatosDePivos(velas, pivos, atr);
+  const achados = [];
+  cands.forEach(seq => {
+    const imp = testaImpulso(seq, velas, atr);
+    if(imp) achados.push(imp);
+    const zig = testaZigzag(seq, velas, atr);
+    if(zig) achados.push(zig);
+  });
+  if(!achados.length) return null;
+  // Mais ondas com a mesma confianca e uma leitura mais completa, entao a
+  // quantidade entra como desempate leve — nunca por cima da confianca.
+  achados.sort((a,b) => (b.confianca*10 + b.ondas.length) - (a.confianca*10 + a.ondas.length));
+  const melhor = achados[0];
+  melhor.grau = K;
+  const vice = achados.find(x => x.tipo !== melhor.tipo || x.ondas.length !== melhor.ondas.length);
+  if(vice) melhor.alternativa = {tipo:vice.tipo, direcao:vice.direcao,
+                                 confianca:vice.confianca, ondas:vice.ondas.length};
+  return melhor;
+}
+
+// ── A LEITURA, agora em tres graus ───────────────────────────────────────
+// Devolve a melhor contagem entre os graus, e diz em qual grau ela esta. Se
+// nenhum grau produz contagem com confianca minima, devolve null — que e o
+// motor dizendo "aqui nao ha onda que eu consiga defender", em vez de rotular
+// ruido de impulso pra ter o que mostrar.
+function leituraElliott(velas, opcoes){
+  const o = opcoes || {};
+  if(!velas || velas.length < 60) return null;
+  const closes = velas.map(c=>c.close);
+  const atrArr = atrCalc(velas.map(c=>c.high), velas.map(c=>c.low), closes, 14);
+  const atr = atrArr[atrArr.length-1];
+
+  const porGrau = [];
+  ELLIOTT_GRAUS.forEach(K => {
+    if(velas.length < K*6) return;
+    const r = buscaContagem(velas, K, atr);
+    if(r) porGrau.push(r);
+  });
+  if(!porGrau.length) return null;
+  porGrau.sort((a,b)=> b.confianca - a.confianca);
+  const melhor = porGrau[0];
+  const minimo = (o.minimo != null) ? o.minimo : ELLIOTT_CONF_MIN;
+  if(melhor.confianca < minimo) return null;
+
+  const ondas = melhor.ondas;
+  return Object.assign({}, melhor, {
+    pivos: ondas.length + 1,
+    onde: ondas.length ? ondas[ondas.length-1].onda : null,
+    ultimoPivo: {i: ondas[ondas.length-1].iPara, preco: ondas[ondas.length-1].para},
+    graus: porGrau.map(g=>({grau:g.grau, tipo:g.tipo, confianca:g.confianca,
+                            direcao:g.direcao, ondas:g.ondas.length})),
+  });
 }
 
 // A PERGUNTA PRATICA: se a ultima perna foi uma onda 2, onde estaria a 3 e o
@@ -1422,6 +1731,8 @@ function leituraElliott(velas){
 // isso e regra, nao opiniao.
 function projecaoOnda3(leitura){
   if(!leitura || leitura.ondas.length < 2) return null;
+  // zigzag nao tem onda 3 pra projetar: A-B-C acaba no C
+  if(leitura.tipo && leitura.tipo !== 'impulso') return null;
   const o1 = leitura.ondas[0], o2 = leitura.ondas[1];
   if(o1.onda !== '1' || o2.onda !== '2') return null;
   // so projeta enquanto a contagem ESTA na onda 2. Com a 3, a 4 e a 5 ja
@@ -1603,18 +1914,33 @@ function renderElliott(){
   if(!box) return;
   const l = elliottAtual();
   if(!l || !l.ondas.length){
-    if(cnt) cnt.textContent = '--';
-    box.innerHTML = '<div style="font-size:9px;color:var(--t3);">Sem pivos suficientes para contar.</div>';
+    if(cnt){ cnt.textContent = 'sem contagem'; cnt.style.color = 'var(--t3)'; }
+    // "Sem contagem" e uma RESPOSTA, nao uma falha. O motor so afirma o que
+    // consegue defender com regra e com volume; calar aqui e o que impede ele
+    // de rotular ruido de impulso so pra ter o que mostrar.
+    box.innerHTML = '<div style="font-size:9px;color:var(--t3);line-height:1.45;">'
+      + '<b>Nenhuma contagem que se sustente aqui.</b> Ou as pernas sao pequenas demais'
+      + ' contra o ATR, ou violam uma das tres regras, ou o volume nao diferencia as'
+      + ' ondas &mdash; sem volume frio nas correcoes a contagem nao passa do teto.</div>';
     return;
   }
   const esc = t => String(t).replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
   const nf = v => (v==null||!isFinite(v)) ? '--' : Number(v).toLocaleString('pt-BR',{maximumFractionDigits:2});
   const ult = l.ondas[l.ondas.length-1];
-  const cor = l.violacoes.length ? 'var(--red)' : 'var(--goldd)';
-  if(cnt){ cnt.textContent = 'onda ' + l.onde; cnt.style.color = cor; }
+  const conf = l.confianca == null ? 0 : l.confianca;
+  const cor = l.violacoes.length ? 'var(--red)'
+            : conf >= 75 ? 'var(--green)' : conf >= 55 ? 'var(--goldd)' : 'var(--t2)';
+  if(cnt){ cnt.textContent = conf + '%'; cnt.style.color = cor; }
   let h = '<div style="font-size:11px;font-weight:800;color:'+cor+';">ONDA '+esc(l.onde)
-        + '<span style="font-size:9px;font-weight:600;color:var(--t3);"> &nbsp;impulso de '+esc(l.direcao)
+        + '<span style="font-size:9px;font-weight:600;color:var(--t3);"> &nbsp;'
+        + esc(l.tipo||'impulso') + ' de ' + esc(l.direcao)
         + (ult.emCurso ? ' &middot; em curso' : '') + '</span></div>';
+  h += '<div style="font-size:9px;color:'+cor+';font-weight:700;">confianca ' + conf + '%'
+     + '<span style="color:var(--t3);font-weight:600;"> &middot; grau K=' + l.grau
+     + (l.temFluxo ? ' &middot; com fluxo' : ' &middot; SEM fluxo util') + '</span></div>';
+  if(l.alternativa)
+    h += '<div style="font-size:9px;color:var(--t3);">hipotese vice: ' + esc(l.alternativa.tipo)
+       + ' de ' + esc(l.alternativa.direcao) + ' (' + l.alternativa.confianca + '%)</div>';
   h += '<div style="font-size:9px;color:var(--t2);margin-top:3px;">'
      + l.ondas.map(o=>esc(o.onda)+': '+nf(o.de)+' &rarr; '+nf(o.para)).join(' &nbsp;|&nbsp; ')
      + '</div>';
@@ -1639,6 +1965,47 @@ function renderElliott(){
        + nf(pj.alvos['2.000']) + ' (2,0) &middot; '
        + nf(pj.alvos['2.618']) + ' (2,618)</div>';
   }
+  // ── OS VOLUMES POR ONDA. E daqui que sai a confianca, entao tem que estar
+  // visivel: onda impulsiva quente, onda corretiva fria. Ver o numero e o que
+  // permite discordar do motor com fundamento.
+  if(l.fluxo && l.fluxo.filter(Boolean).length){
+    h += '<div style="font-size:8px;color:var(--t3);letter-spacing:.5px;margin-top:6px;">'
+       + 'VOLUME POR ONDA &mdash; impulsiva quente, corretiva fria</div>';
+    const vols = l.fluxo.filter(Boolean).map(f=>f.porVela);
+    const maxV = Math.max.apply(null, vols) || 1;
+    l.fluxo.forEach((f, k) => {
+      if(!f) return;
+      const par = (k % 2 === 1);   // 2 e 4 no impulso, B no zigzag
+      const larg = Math.max(3, Math.round(f.porVela/maxV*100));
+      const c = par ? '#8b95a3' : (f.agressao >= 0 ? 'var(--green)' : 'var(--red)');
+      h += '<div style="display:flex;gap:5px;align-items:center;font-size:9px;margin-top:1px;">'
+         + '<span style="width:12px;color:var(--t2);font-weight:700;">'+esc(f.onda)+'</span>'
+         + '<span style="flex:1;height:6px;background:var(--bd);border-radius:3px;overflow:hidden;">'
+         + '<span style="display:block;height:6px;width:'+larg+'%;background:'+c+';"></span></span>'
+         + '<span style="width:64px;text-align:right;color:var(--t3);">'
+         + fmtBolhaCurto(f.porVela) + ' &middot; ' + (f.agressao>=0?'+':'') + f.agressao + '%'
+         + '</span></div>';
+    });
+  }
+
+  // ── POR QUE ESSA CONFIANCA. Um numero sem os motivos e chute com cara de
+  // medida; e sao os motivos negativos que valem mais, porque sao eles que
+  // dizem onde a contagem pode estar errada.
+  if(l.motivos && l.motivos.length){
+    const contra = l.motivos.filter(m=>m.startsWith('-'));
+    const aFavor = l.motivos.filter(m=>m.startsWith('+'));
+    const nota   = l.motivos.filter(m=>m.startsWith('~'));
+    h += '<div style="font-size:8px;color:var(--t3);letter-spacing:.5px;margin-top:6px;">'
+       + 'POR QUE ' + conf + '%</div>';
+    contra.forEach(m => { h += '<div style="font-size:9px;color:var(--red);line-height:1.4;">'
+       + esc(m.slice(2)) + '</div>'; });
+    nota.forEach(m => { h += '<div style="font-size:9px;color:var(--goldd);line-height:1.4;">'
+       + esc(m.slice(2)) + '</div>'; });
+    h += '<div style="font-size:9px;color:var(--t3);line-height:1.4;">'
+       + aFavor.length + ' criterio' + (aFavor.length===1?'':'s') + ' a favor'
+       + (aFavor.length ? ': ' + esc(aFavor.map(m=>m.slice(2)).join('; ')) : '') + '</div>';
+  }
+
   // o fluxo confirmando ou nao a correcao
   try{
     const fn = fluxoNeutro(30);
@@ -1762,10 +2129,20 @@ const PADRAO_REGRAS = [
      const mesmo = (c.elliott.direcao === 'alta') === (lado === 'compra');
      if(!mesmo) return {ok:false, txt:'impulso de ' + c.elliott.direcao,
        falta:'o impulso contado vai pro outro lado'};
+     // Zigzag e correcao, nao impulso: a perna a favor dentro dele e repique,
+     // nao tendencia. Nao confirma entrada no sentido do movimento maior.
+     if(c.elliott.tipo === 'zigzag')
+       return {ok:false, txt:'zigzag (correcao) na onda ' + c.elliott.onde,
+         falta:'a estrutura ai e corretiva, nao impulsiva'};
      // onda 5 e o fim do impulso, nao o comeco
      if(c.elliott.onde === '5') return {ok:false, txt:'onda 5 — fim do impulso',
        falta:'a contagem esta na onda 5, que e onde o impulso acaba'};
-     return {ok:true, txt:'onda ' + c.elliott.onde + ' de ' + c.elliott.direcao};
+     // confianca baixa nao confirma nada
+     if(c.elliott.confianca != null && c.elliott.confianca < 60)
+       return {ok:false, txt:'contagem fraca (' + c.elliott.confianca + '%)',
+         falta:'a contagem so tem ' + c.elliott.confianca + '% de confianca'};
+     return {ok:true, txt:'onda ' + c.elliott.onde + ' de ' + c.elliott.direcao
+                          + ' (' + c.elliott.confianca + '%)'};
    }},
 
   // ── VETOS
@@ -6711,6 +7088,12 @@ function retratoDoAtivo(){
     const el = leituraElliott(candles);
     if(el){
       r.elliott = {
+        tipo: el.tipo, confianca: el.confianca, grau: el.grau,
+        com_fluxo: !!el.temFluxo,
+        fluxo_por_onda: el.fluxo ? el.fluxo.filter(Boolean) : null,
+        motivos: el.motivos || null,
+        alternativa: el.alternativa || null,
+        graus_testados: el.graus || null,
         direcao: el.direcao,
         onde: el.onde,
         em_curso: !!(el.ondas.length && el.ondas[el.ondas.length-1].emCurso),
@@ -7236,8 +7619,12 @@ function analiseDoMercado(r){
   if(r.elliott && r.elliott.ondas && r.elliott.ondas.length){
     const el = r.elliott;
     const ult = el.ondas[el.ondas.length-1];
-    let t = "Contando os pivos de "+nome+" como um impulso de <b>"+pdfEsc(el.direcao)
-          + "</b>, o preco esta na <b>onda "+pdfEsc(String(el.onde))+"</b>"
+    let t = "A melhor contagem que se sustenta em "+nome+" e um <b>"+pdfEsc(el.tipo||'impulso')
+          + " de "+pdfEsc(el.direcao)+"</b> no grau K="+el.grau
+          + " — <b>"+el.confianca+"% de confianca</b>"
+          + (el.com_fluxo ? ", com o volume de cada onda conferido"
+                          : ", <b>sem volume que diferencie as ondas</b>, o que sozinho ja limita o quanto ela vale")
+          + ". O preco esta na <b>onda "+pdfEsc(String(el.onde))+"</b>"
           + (el.em_curso ? " — e ela ainda esta se formando, entao o fim dela pode mudar" : "")
           + ". A perna vai de "+num(ult.de)+" a "+num(ult.para)+".";
     if(el.violacoes && el.violacoes.length){
@@ -7245,8 +7632,13 @@ function analiseDoMercado(r){
         + ". Regra violada nao e detalhe em Elliott — e o que separa contagem de desenho."
         + " O que estiver sendo lido a partir dela tem que ser refeito.";
     }else{
-      t += " As "+(el.regras?el.regras.length:0)+" regras conferiveis com as ondas ja"
-        + " formadas <b>passam</b>: a contagem se sustenta ate aqui.";
+      const nr = el.regras ? el.regras.length : 0;
+      t += nr === 1
+        ? " A unica regra conferivel com as ondas ja formadas <b>passa</b>"
+          + " — com poucas ondas ha pouca regra pra conferir, e isso ja esta"
+          + " descontado na confianca acima."
+        : " As "+nr+" regras conferiveis com as ondas ja formadas <b>passam</b>:"
+          + " a contagem se sustenta ate aqui.";
     }
     const pp = el.proporcoes||{};
     const bits = [];
@@ -7255,6 +7647,27 @@ function analiseDoMercado(r){
     if(pp.onda4_retracao != null) bits.push("a onda 4 corrigiu "+pp.onda4_retracao+"% da 3");
     if(pp.onda5_vs_onda1 != null) bits.push("a onda 5 saiu "+pp.onda5_vs_onda1+"x a onda 1");
     if(bits.length) t += " Em proporcao: "+bits.join(", ")+".";
+    // OS MOTIVOS CONTRA vao no relatorio, nao so no painel: sao eles que dizem
+    // onde a contagem pode quebrar, e e o que um relatorio de analise deve
+    // carregar. Contagem so com argumento a favor e desenho, nao leitura.
+    const contra = (el.motivos||[]).filter(m=>m.startsWith('-')).map(m=>m.slice(2));
+    if(contra.length){
+      t += " <b>O que pesa contra essa contagem:</b> "+pdfEsc(contra.join('; '))+".";
+    }
+    if(el.fluxo_por_onda && el.fluxo_por_onda.length){
+      t += " Volume por onda: "+el.fluxo_por_onda.map(f=>
+        pdfEsc(f.onda)+" "+fmtBolhaCurto(f.porVela)+"/vela a "
+        +(f.agressao>=0?"+":"")+f.agressao+"%").join(", ")
+        + ". Numa contagem certa as impulsivas vem quentes e as corretivas frias —"
+        + " correcao e falta de comprador, nao vendedor agredindo.";
+    }
+    if(el.alternativa){
+      t += " A segunda hipotese testada foi um "+pdfEsc(el.alternativa.tipo)+" de "
+        + pdfEsc(el.alternativa.direcao)+" com "+el.alternativa.confianca+"% —"
+        + (el.alternativa.confianca >= el.confianca - 10
+            ? " perto o bastante pra nao descartar: a leitura aqui nao e unica."
+            : " bem atras, entao a contagem principal esta razoavelmente isolada.");
+    }
     p.push(t);
 
     const pj = el.projecao_onda3;
