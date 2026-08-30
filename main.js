@@ -2117,14 +2117,17 @@ const PADRAO_REGRAS = [
   {id:'rsi', classe:'confirmacao', nome:'RSI com espaco pra andar',
    testa(c, lado){
      if(c.rsi == null) return {ok:false, txt:'sem RSI'};
-     const ok = lado === 'compra' ? (c.rsi >= 45 && c.rsi < 70)
-                                  : (c.rsi <= 55 && c.rsi > 30);
-     return {ok, txt:'RSI ' + c.rsi.toFixed(1),
-       falta: ok ? null : (lado==='compra'
-         ? (c.rsi < 45 ? 'RSI ainda fraco (' + c.rsi.toFixed(1) + ')'
-                       : 'RSI ja esticado (' + c.rsi.toFixed(1) + ')')
-         : (c.rsi > 55 ? 'RSI ainda forte (' + c.rsi.toFixed(1) + ')'
-                       : 'RSI ja esticado pra baixo (' + c.rsi.toFixed(1) + ')'))};
+     const L = c.limiares;
+     const compra = lado === 'compra';
+     // faixa do PROPRIO grafico: numa tendencia forte o RSI vive alto, e exigir
+     // 45-70 fixo excluia exatamente as velas de tendencia
+     const lo = (L && L.rsiAmostra >= 60) ? (compra ? L.rsiBaixo : 100 - L.rsiAlto) : (compra?45:30);
+     const hi = (L && L.rsiAmostra >= 60) ? (compra ? L.rsiAlto : 100 - L.rsiBaixo) : (compra?70:55);
+     const ok = c.rsi >= lo && c.rsi <= hi;
+     return {ok, txt:'RSI ' + c.rsi.toFixed(1) + ' (faixa ' + lo.toFixed(0) + '-' + hi.toFixed(0) + ' neste tempo)',
+       falta: ok ? null : (c.rsi < lo
+         ? 'RSI em ' + c.rsi.toFixed(1) + ', abaixo da faixa util deste grafico ('+lo.toFixed(0)+')'
+         : 'RSI em ' + c.rsi.toFixed(1) + ', acima da faixa util deste grafico ('+hi.toFixed(0)+')')};
    }},
 
   // ── DADO NEUTRO
@@ -2149,9 +2152,22 @@ const PADRAO_REGRAS = [
   {id:'esticado', classe:'veto', nome:'RSI em extremo',
    testa(c, lado){
      if(c.rsi == null) return {ok:false, txt:'--'};
-     const mau = lado === 'compra' ? c.rsi >= 75 : c.rsi <= 25;
-     return {ok:mau, txt: mau ? 'RSI em ' + c.rsi.toFixed(1) + ' — extremo' : 'RSI fora do extremo',
-       falta: mau ? 'RSI em ' + c.rsi.toFixed(1) + ': comprar aqui e pagar o topo do movimento' : null};
+     const L = c.limiares;
+     const ext = (L && L.rsiAmostra >= 60) ? L.rsiExtremo : 75;
+     const extBaixo = 100 - ext;
+     const alvo = lado === 'compra' ? ext : extBaixo;
+     const noExtremo = lado === 'compra' ? c.rsi >= alvo : c.rsi <= alvo;
+     // EXTREMO SOZINHO NAO VETA. Numa tendencia o RSI vive esticado; o que
+     // marca exaustao e o preco fazendo extremo novo SEM o RSI acompanhar.
+     const divContra = c.divRsi && c.divRsi.tipo ===
+       (lado === 'compra' ? 'baixista' : 'altista');
+     const mau = noExtremo && divContra;
+     return {ok:mau,
+       txt: mau ? 'RSI ' + c.rsi.toFixed(1) + ' no extremo E divergindo'
+            : noExtremo ? 'RSI ' + c.rsi.toFixed(1) + ' esticado, mas sem divergencia'
+            : 'RSI ' + c.rsi.toFixed(1) + ', fora do extremo (' + alvo.toFixed(0) + ')',
+       falta: mau ? 'o preco faz extremo novo e o RSI nao acompanha (' + c.rsi.toFixed(1)
+                    + '): isso e exaustao, nao forca' : null};
    }},
 
   {id:'seco', classe:'veto', nome:'mercado seco',
@@ -2203,6 +2219,7 @@ function contextoPadrao(){
   // rotina; numa vela diaria e evento. O mesmo numero descrevendo coisas
   // opostas era o erro que aparecia assim que se olhava mais de um tempo.
   c.limiares = limiaresAtuais();
+  try{ c.divRsi = divergenciaRSI(candles, 40); }catch(e){ c.divRsi = null; }
   c.cortePressao = (c.limiares && c.limiares.temFluxo) ? c.limiares.pressao : 10;
   try{
     const r = rsiCalc(candles.map(x=>x.close), 14);
@@ -3554,17 +3571,49 @@ function percentil(arr, p){
 }
 
 // Os cortes deste conjunto de velas. Calculado uma vez por escala.
+// A JANELA DO PERCENTIL TEM QUE SER A MESMA DA REGRA. Este era um erro de
+// unidade e ele travava o portao inteiro: a regra de fluxo usa
+// forcaDoFluxo(20), que AGREGA 20 velas, mas o corte estava saindo do
+// percentil da pressao de UMA vela. Agregar reduz variancia — o desequilibrio
+// de 20 velas somadas quase nunca chega perto do que uma vela isolada faz.
+// Resultado: um corte de ~30% aplicado a um numero que raramente passa de
+// 12%, e o portao nunca abria. Medido: 0,3% das velas na compra, 0,0% na
+// venda, em 767 velas.
+//
+// Agora sao dois cortes, cada um calculado sobre a grandeza que o usa: o da
+// vela isolada pra bolha, e o da janela de 20 pro portao.
+const FLUXO_JANELA = 20;
 function limiaresDoTempo(velas){
   if(!velas || velas.length < 60) return null;
-  const press = [], vols = [];
+  const press = [], vols = [], pressJanela = [];
   velas.forEach(c => {
     const cp = c.compra||0, vd = c.venda||0, t = cp+vd;
     if(t <= 0) return;
     press.push(Math.abs(cp-vd)/t*100);
     vols.push(t);
   });
+  // a mesma conta do forcaDoFluxo, deslizando pelo historico
+  for(let i=FLUXO_JANELA; i<velas.length; i++){
+    let cp=0, vd=0;
+    for(let j=i-FLUXO_JANELA; j<i; j++){ cp += velas[j].compra||0; vd += velas[j].venda||0; }
+    const t = cp+vd;
+    if(t > 0) pressJanela.push(Math.abs(cp-vd)/t*100);
+  }
   const temFluxo = press.length >= 40;
   const medVol = vols.length ? vols.reduce((a,b)=>a+b,0)/vols.length : 0;
+  // ── O RSI TAMBEM. 45-70 e veto em 75 eram numeros meus, e eles criavam um
+  // absurdo: num mercado em tendencia o RSI vive alto, entao o veto disparava
+  // em 39,5% das velas e anulava justamente as velas em que as tres
+  // obrigatorias fechavam. Portao de continuacao vetado quando a tendencia
+  // esta forte — as tres obrigatorias SEM veto davam zero em 767 velas.
+  //
+  // Contra o proprio historico do ativo isso se resolve sozinho: "forte" passa
+  // a ser o que E forte NESTE grafico, e "extremo" fica sendo os 3% de cima.
+  const rs = [];
+  try{
+    const rr = rsiCalc(velas.map(c=>c.close), 14);
+    rr.forEach(v => { if(v != null && isFinite(v)) rs.push(v); });
+  }catch(e){}
   const p95 = percentil(vols, 95);
   return {
     temFluxo,
@@ -3574,7 +3623,9 @@ function limiaresDoTempo(velas){
     // ser "10% de desequilibrio" (numero meu) e passa a ser raridade relativa.
     // O teto e so anti-absurdo — quando ele encosta, quem manda e o teto e nao
     // a medicao, entao ele fica bem acima do que dado real costuma dar.
-    pressao: temFluxo ? Math.min(45, Math.max(8, +(percentil(press, 75)||10).toFixed(1))) : 10,
+    // O CORTE DO PORTAO sai da janela de 20, que e o que a regra mede
+    pressao: (temFluxo && pressJanela.length >= 40)
+      ? Math.min(35, Math.max(4, +(percentil(pressJanela, 75)||8).toFixed(1))) : 10,
     // A BOLHA USA OUTRA MARCA DA MESMA REGUA. O portao pergunta "esse dominio
     // e raro o bastante pra agir?" e por isso usa o quartil de cima. A bolha
     // pergunta outra coisa: "quem ganhou esta vela?" — e essa e uma pergunta
@@ -3584,16 +3635,64 @@ function limiaresDoTempo(velas){
     // pressao que conta como "o volume acordou"
     acorda:  temFluxo ? Math.min(55, Math.max(10, +(percentil(press, 85)||12).toFixed(1))) : 12,
     // avisa quando o teto/piso e que decidiu, em vez da distribuicao
-    saturado: temFluxo && ((percentil(press,75)||0) > 45 || (percentil(press,75)||99) < 8),
+    saturado: (temFluxo && pressJanela.length >= 40)
+      && ((percentil(pressJanela,75)||0) > 35 || (percentil(pressJanela,75)||99) < 4),
+    amostraJanela: pressJanela.length,
     // choque de volume: percentil 95 do proprio tempo, com piso de 1,8x a media
     choqueVol: (p95 && medVol > 0) ? Math.max(p95, medVol*1.8) : (medVol*2.2 || 0),
     choqueRazao: (p95 && medVol > 0) ? +(Math.max(p95, medVol*1.8)/medVol).toFixed(2) : 2.2,
     medVol,
+    // faixa util pra ENTRAR a favor: nem fraco demais, nem no topo do proprio
+    // historico. E o extremo, que e o unico que merece veto.
+    ...(function(){
+      // GUARDA CONTRA DISTRIBUICAO DEGENERADA. Num historico onde o RSI vive
+      // colado em 0 ou 100 os percentis saem sem sentido — p35=2 e p97=100,
+      // e ai a faixa aceita tudo e o veto nunca dispara: o percentil deixa de
+      // medir e passa a nao dizer nada. Faixa larga demais ou extremo em 99+
+      // sao o sinal disso, e nesses casos volto pros valores classicos e
+      // marco como degenerado, em vez de fingir que foi medido.
+      const lo = rs.length>=60 ? +(percentil(rs,35)||45).toFixed(1) : 45;
+      const hi = rs.length>=60 ? +(percentil(rs,92)||70).toFixed(1) : 70;
+      const ex = rs.length>=60 ? +(percentil(rs,97)||75).toFixed(1) : 75;
+      const ruim = rs.length < 60 || (hi - lo) > 55 || ex >= 99 || lo < 15;
+      return ruim
+        ? {rsiBaixo:45, rsiAlto:70, rsiExtremo:75, rsiDegenerado:true, rsiAmostra:rs.length}
+        : {rsiBaixo:lo, rsiAlto:hi, rsiExtremo:ex, rsiDegenerado:false, rsiAmostra:rs.length};
+    })(),
     amostra: press.length,
   };
 }
 window.limiaresDoTempo = limiaresDoTempo;
 window.percentil = percentil;
+
+// ── DIVERGENCIA DO RSI ───────────────────────────────────────────────────
+// O veto de RSI estava errado por CONCEITO, nao por calibracao. Nivel alto de
+// RSI numa tendencia de alta nao e exaustao — e a tendencia. Vetar por nivel
+// fazia o portao de continuacao anular a si mesmo justamente quando a
+// continuacao estava acontecendo: as tres obrigatorias fechavam em 4,8% das
+// velas e, com o veto, sobrava ZERO.
+//
+// Exaustao e o preco fazendo topo mais alto e o RSI NAO acompanhando. Isso e
+// uma relacao, nao um numero, e nao se anula sozinha numa tendencia sadia.
+function divergenciaRSI(velas, n){
+  const N = n || 40;
+  if(!velas || velas.length < N + 20) return null;
+  let rsi;
+  try{ rsi = rsiCalc(velas.map(c=>c.close), 14); }catch(e){ return null; }
+  const fim = velas.length - 1, corte = fim - N, meio = corte + Math.floor(N/2);
+  if(corte < 20) return null;
+  const maxP = (de,ate) => { let m=-Infinity; for(let i=de;i<=ate;i++) m=Math.max(m,velas[i].high); return m; };
+  const minP = (de,ate) => { let m= Infinity; for(let i=de;i<=ate;i++) m=Math.min(m,velas[i].low);  return m; };
+  const maxR = (de,ate) => { let m=-Infinity; for(let i=de;i<=ate;i++) if(rsi[i]!=null) m=Math.max(m,rsi[i]); return m; };
+  const minR = (de,ate) => { let m= Infinity; for(let i=de;i<=ate;i++) if(rsi[i]!=null) m=Math.min(m,rsi[i]); return m; };
+  const p1a=maxP(corte,meio), p2a=maxP(meio,fim), r1a=maxR(corte,meio), r2a=maxR(meio,fim);
+  const p1b=minP(corte,meio), p2b=minP(meio,fim), r1b=minR(corte,meio), r2b=minR(meio,fim);
+  let tipo = null;
+  if(p2a > p1a && r2a < r1a) tipo = 'baixista';   // topo mais alto, RSI mais fraco
+  if(p2b < p1b && r2b > r1b) tipo = 'altista';    // fundo mais baixo, RSI mais forte
+  return {tipo, velas:N, rsiAtual: rsi[fim]};
+}
+window.divergenciaRSI = divergenciaRSI;
 
 // ── OS PORTOES EM QUALQUER ESCALA ────────────────────────────────────────
 // A mesma leitura reduzida do checklist, rodando sobre um array de velas
@@ -4292,6 +4391,51 @@ function renderSinal(){
          + '</span></div>';
     });
   }
+  // ── COMO BUSCAR A ENTRADA ────────────────────────────────────────────
+  // "Falta 2" nao diz o que fazer. Isto converte cada condicao que falta num
+  // ALVO OBSERVAVEL — um preco, uma porcentagem — pra dar pra colocar alarme e
+  // parar de encarar a tela. Um portao que so sabe dizer nao e inutil; um que
+  // diz "nao, e o que precisa acontecer e isto" da pra usar.
+  try{
+    const alvos = [];
+    const preco = candles[candles.length-1].close;
+    const nfp = v => Number(v).toLocaleString('pt-BR',{maximumFractionDigits:2});
+    const compra = m.lado === 'compra';
+    const faltando = id => m.linhas && m.linhas.some(l => (l.id||'') === id || (l.nome||'').indexOf(id) >= 0);
+    // EMA200: o nivel exato a cruzar
+    if(ultimasEmas && ultimasEmas.ema200 &&
+       (compra ? preco <= ultimasEmas.ema200 : preco >= ultimasEmas.ema200)){
+      const d = Math.abs(preco/ultimasEmas.ema200 - 1)*100;
+      alvos.push('preco ' + (compra?'acima':'abaixo') + ' de <b>' + nfp(ultimasEmas.ema200)
+        + '</b> (' + d.toFixed(2) + '% daqui)');
+    }
+    // empilhamento: o nivel onde as curtas limpam as longas
+    if(ultimasEmas && ultimasEmas.ma89 && ultimasEmas.ema200){
+      const barreira = compra ? Math.max(ultimasEmas.ma89, ultimasEmas.ema200)
+                              : Math.min(ultimasEmas.ma89, ultimasEmas.ema200);
+      const e8 = ultimasEmas.ema8, e16 = ultimasEmas.ema16;
+      const jaLimpou = compra ? (e8>barreira && e16>barreira) : (e8<barreira && e16<barreira);
+      if(!jaLimpou) alvos.push('EMA8 e EMA16 ' + (compra?'acima':'abaixo') + ' de <b>'
+        + nfp(barreira) + '</b> (a mais lenta entre MA89 e EMA200)');
+    }
+    // fluxo: quanto de agressao ainda falta
+    const cp = (typeof c !== 'undefined' && c.cortePressao) ? c.cortePressao : null;
+    const fA = forcaDoFluxo(20);
+    if(fA && cp != null && (compra ? fA.pressao < cp : fA.pressao > -cp)){
+      alvos.push('agressao de 20 velas chegar a <b>' + (compra?'+':'-') + cp
+        + '%</b> (esta em ' + (fA.pressao>=0?'+':'') + fA.pressao.toFixed(1) + '%)');
+    }
+    if(alvos.length){
+      h += '<div style="margin-top:6px;padding-top:5px;border-top:1px solid var(--bd);">'
+         + '<div style="font-size:8px;color:var(--t3);letter-spacing:.5px;">'
+         + 'O QUE PRECISA ACONTECER</div>'
+         + alvos.map(t=>'<div style="font-size:9px;color:var(--t2);line-height:1.4;">&rarr; '
+           + t + '</div>').join('')
+         + '<div style="font-size:8px;color:var(--t3);margin-top:2px;">'
+         + 'da pra por alarme nesses niveis e parar de encarar a tela</div></div>';
+    }
+  }catch(e){}
+
   // A DISTANCIA VIVA. E o que faz "quase" virar numero que anda com o tape.
   if(viva && viva.itens.length){
     h += '<div style="font-size:9px;color:var(--t2);margin-top:4px;'
