@@ -3171,6 +3171,250 @@ function renderReversao(){
 }
 window.renderReversao = renderReversao;
 
+
+// ══════════════════════════════════════════════════════
+// GATILHO DA ONDA 3 — o filtro de entrada da continuacao
+// ══════════════════════════════════════════════════════
+// O checklist de posicionamento diz SE da pra entrar. Ele nao diz QUANDO. Um
+// portao aberto fica aberto por dezenas de velas, e entrar em qualquer ponto
+// dele nao e a mesma coisa: entrar no comeco da onda 3 e entrar no fim dela tem
+// o mesmo checklist e resultados opostos.
+//
+// A onda 3 e o melhor pedaco de um impulso por tres motivos que dao pra
+// verificar, nao por fama: e a mais longa das tres impulsivas (regra), e a que
+// carrega mais volume e mais agressao (e o motor ja confere isso), e ela comeca
+// num ponto com invalidacao DURA logo abaixo — o inicio da onda 1. Alvo longe e
+// stop perto e o unico jeito honesto de compensar acertar pouco.
+//
+// O gatilho tem duas partes, e as duas vem do que ja esta no app:
+//
+//   ARMADO — a contagem diz onda 2, a retracao esta na faixa classica, e o
+//   volume da onda 2 esta FRIO. Frio e o que distingue correcao de perna nova:
+//   correcao e falta de comprador, nao vendedor agredindo. Enquanto a onda 2
+//   estiver quente, isto aqui nao arma.
+//
+//   DISPARADO — a correcao quebra a propria estrutura E o volume acorda no
+//   sentido do impulso. So o rompimento de preco dispara cedo demais (todo
+//   repique rompe alguma coisa); so o volume dispara sem lugar pra por o stop.
+//
+// Espero o rompimento do ultimo topo menor DENTRO da correcao, nao do topo da
+// onda 1: esperar o topo da onda 1 e entrar com a onda 3 ja andada, que e
+// exatamente o erro que faz a melhor onda virar a pior entrada.
+
+const G3_K_MICRO = 3;            // pivo pequeno, pra achar estrutura dentro da correcao
+const G3_FAIXA = [30, 85];       // retracao aceitavel da onda 2, em %
+const G3_ACORDA = 12;            // agressao que conta como "volume acordou", em %
+
+// Os topos (ou fundos) menores dentro da correcao. Sao eles que dao o nivel de
+// rompimento, e e o mais RECENTE que vale — os anteriores ja foram superados.
+function estruturaDaCorrecao(iDe, iPara, alta, V){
+  const de = Math.min(iDe, iPara), ate = Math.max(iDe, iPara);
+  if(ate - de < G3_K_MICRO*2 + 2) return null;
+  const trecho = V.slice(de, ate+1);
+  const {altos, baixos} = achaPivos(trecho, G3_K_MICRO);
+  const lista = alta ? altos : baixos;
+  if(!lista.length) return null;
+  const i = de + lista[lista.length-1];
+  return {i, preco: alta ? V[i].high : V[i].low};
+}
+
+// velasOpt existe pra esta funcao poder ser testada com um cenario montado.
+// 'candles' e um let de modulo, entao nao da pra injetar de fora — e uma funcao
+// de decisao que nao pode ser exercitada em cenario nenhum e uma funcao que
+// ninguem consegue conferir.
+function gatilhoOnda3(lado, velasOpt){
+  const L = lado || 'compra';
+  const alta = L === 'compra';
+  const V = velasOpt || candles;
+  const fora = (estado, porque) => ({lado:L, estado, porque, armado:false, disparado:false});
+
+  let l = null;
+  if(!V || V.length < 60) return fora('sem dados', 'poucas velas');
+  try{ l = velasOpt ? leituraElliott(V) : elliottAtual(); }catch(e){}
+  if(!l) return fora('sem contagem', 'nao ha contagem que se sustente agora');
+  if(l.tipo !== 'impulso') return fora('sem contagem',
+    'a estrutura atual e ' + l.tipo + ', nao um impulso');
+  if((l.direcao === 'alta') !== alta) return fora('lado errado',
+    'o impulso contado e de ' + l.direcao + ', contra este lado');
+  if(l.onde !== '2') return fora('fora da janela',
+    'a contagem esta na onda ' + l.onde + ' — o gatilho da onda 3 so existe na onda 2');
+
+  const pj = projecaoOnda3(l);
+  const o1 = l.ondas[0], o2 = l.ondas[1];
+  const retr = pj ? pj.onda2_retracao_pct : null;
+
+  // ── ARMADO
+  const checks = [];
+  const add = (nome, ok, txt, falta) => checks.push({nome, ok:!!ok, txt, falta:falta||null});
+
+  add('retracao na faixa',
+      retr != null && retr >= G3_FAIXA[0] && retr <= G3_FAIXA[1],
+      retr != null ? ('onda 2 corrigiu ' + retr + '%') : 'sem medida',
+      retr == null ? 'sem retracao medida'
+      : retr < G3_FAIXA[0] ? 'a onda 2 mal corrigiu (' + retr + '%) — cedo'
+      : 'a onda 2 corrigiu ' + retr + '%, fundo demais pra uma onda 2 confortavel');
+
+  // o volume da onda 2 tem que estar FRIO contra o da onda 1
+  let f1 = null, f2 = null, frio = false;
+  try{
+    f1 = fluxoDaOnda(V, o1.iDe, o1.iPara);
+    f2 = fluxoDaOnda(V, o2.iDe, o2.iPara);
+    frio = !!(f1 && f2 && f2.porVela < f1.porVela && Math.abs(f2.agressao) < 0.20);
+  }catch(e){}
+  add('onda 2 fria', frio,
+      (f1 && f2) ? ('onda 1 ' + fmtBolhaCurto(f1.porVela) + '/vela a '
+                    + (f1.agressao*100).toFixed(0) + '%, onda 2 '
+                    + fmtBolhaCurto(f2.porVela) + '/vela a ' + (f2.agressao*100).toFixed(0) + '%')
+                 : 'sem fluxo por onda',
+      (f1 && f2) ? 'a onda 2 nao esta fria — correcao e falta de comprador, nao vendedor agredindo'
+                 : 'sem fluxo pra comparar as ondas');
+
+  add('confianca da contagem', l.confianca >= 60,
+      l.confianca + '%',
+      'a contagem so tem ' + l.confianca + '% — fraca demais pra apostar numa onda 3');
+
+  const armado = checks.every(c=>c.ok);
+
+  // ── O NIVEL DE ROMPIMENTO
+  const est = estruturaDaCorrecao(o2.iDe, o2.iPara, alta, V);
+  const nivel = est ? est.preco : o1.para;   // sem estrutura interna, cai no topo da onda 1
+  const n = V.length - 1;
+  const fechou = V[n-1] ? V[n-1].close : V[n].close;
+  const rompeu = alta ? fechou > nivel : fechou < nivel;
+
+  // ── O VOLUME ACORDANDO
+  let acordou = false, pressao = null;
+  try{
+    // as 3 ultimas FECHADAS: a em formacao ainda muda de agressao ate fechar, e
+    // um gatilho que oscila com a vela em curso dispara e desdispara sozinho
+    let cc = 0, vv = 0;
+    for(let i=Math.max(0, V.length-4); i<V.length-1; i++){
+      cc += V[i].compra||0; vv += V[i].venda||0;
+    }
+    if(cc + vv > 0){
+      pressao = (cc - vv)/(cc + vv)*100;
+      acordou = alta ? pressao >= G3_ACORDA : pressao <= -G3_ACORDA;
+    }
+  }catch(e){}
+
+  const disparado = armado && rompeu && acordou;
+
+  // ── ONDE O STOP VAI. Dois, e a diferenca importa: o tecnico e barato e pode
+  // ser tirado sem a tese morrer; o de regra e caro e so e atingido quando a
+  // contagem acabou de verdade. Mostro os dois e deixo a escolha explicita.
+  const extremo2 = o2.para;
+  // ATR DAS PROPRIAS VELAS. Antes vinha do esticamento(), que le o candles
+  // global — a folga do stop saia de uma serie diferente da que esta sendo
+  // analisada. Em producao coincidia; em qualquer outro caso, nao.
+  let atr = null;
+  try{
+    const aa = atrCalc(V.map(c=>c.high), V.map(c=>c.low), V.map(c=>c.close), 14);
+    atr = aa[aa.length-1];
+  }catch(e){}
+  const folga = atr ? atr*0.5 : Math.abs(extremo2)*0.002;
+  const stopTecnico = alta ? extremo2 - folga : extremo2 + folga;
+  const stopRegra   = pj ? pj.invalida_em : null;
+
+  const preco = V[n].close;
+  const alvo = pj ? pj.alvos['1.618'] : null;
+  // A ENTRADA E O NIVEL DE ROMPIMENTO enquanto o gatilho nao disparou. Medir
+  // o R:R do preco atual num setup ainda armado infla o retorno e encolhe o
+  // risco: e um numero que descreve um trade que voce nao vai fazer.
+  const entrada = disparado ? preco : nivel;
+  const rr = (alvo != null && stopTecnico != null && entrada !== stopTecnico)
+    ? +(Math.abs(alvo - entrada) / Math.abs(entrada - stopTecnico)).toFixed(2) : null;
+
+  return {
+    lado:L, estado: disparado ? 'disparado' : armado ? 'armado' : 'formando',
+    armado, disparado, checks,
+    contagem: {confianca:l.confianca, grau:l.grau, retracao:retr},
+    nivel: {preco:+nivel, rompeu, de: est ? 'ultimo topo menor dentro da correcao'
+                                          : 'topo da onda 1 (sem estrutura interna na correcao)'},
+    volume: {acordou, pressao: pressao==null?null:+pressao.toFixed(1)},
+    stopTecnico: +stopTecnico, stopRegra: stopRegra==null?null:+stopRegra,
+    alvos: pj ? pj.alvos : null, rr, entrada:+entrada,
+    porque: disparado ? 'contagem, volume e estrutura alinhados'
+          : armado ? 'armado — falta o rompimento com volume'
+          : 'ainda nao armou',
+  };
+}
+window.gatilhoOnda3 = gatilhoOnda3;
+
+function renderGatilho3(){
+  const box = document.getElementById('g3-box');
+  const cnt = document.getElementById('g3-count');
+  if(!box) return;
+  const lado = (typeof modoOperacao !== 'undefined' && modoOperacao === 'vendedor')
+             ? 'venda' : 'compra';
+  let g = null;
+  try{ g = gatilhoOnda3(lado); }catch(e){}
+  const esc = t => String(t).replace(/[&<>]/g, x=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[x]));
+  const nf = v => (v==null||!isFinite(v)) ? '--'
+    : Number(v).toLocaleString('pt-BR',{maximumFractionDigits:2});
+  if(!g || !g.checks){
+    if(cnt){ cnt.textContent = '--'; cnt.style.color='var(--t3)'; }
+    box.innerHTML = '<div style="font-size:9px;color:var(--t3);line-height:1.45;">'
+      + esc(g ? g.porque : 'carregando') + '.</div>';
+    return;
+  }
+  const cor = g.disparado ? 'var(--green)' : g.armado ? 'var(--goldd)' : 'var(--t3)';
+  const rot = g.disparado ? 'DISPAROU' : g.armado ? 'ARMADO' : 'FORMANDO';
+  const ok = g.checks.filter(c=>c.ok).length;
+  if(cnt){ cnt.textContent = ok + '/' + g.checks.length; cnt.style.color = cor; }
+
+  let h = '<div style="font-size:11px;font-weight:800;color:'+cor+';">' + rot
+        + ' <span style="font-size:9px;font-weight:600;color:var(--t3);">onda 3 de '
+        + esc(g.lado) + '</span></div>';
+  h += '<div style="font-size:9px;color:var(--t2);margin:3px 0 5px;line-height:1.45;">'
+     + esc(g.porque) + '.</div>';
+  g.checks.forEach(c => {
+    h += '<div style="font-size:9px;color:'+(c.ok?'var(--green)':'var(--t3)')+';'
+       + 'display:flex;gap:5px;align-items:baseline;">'
+       + '<span style="width:9px;flex:none;">'+(c.ok?'&#10004;':'&#9633;')+'</span>'
+       + '<span><b>'+esc(c.nome)+'</b> <span style="color:var(--t3);">'+esc(c.txt||'')+'</span></span>'
+       + '</div>';
+  });
+  // O ROMPIMENTO e O VOLUME, que sao o gatilho em si
+  h += '<div style="font-size:9px;margin-top:4px;color:'+(g.nivel.rompeu?'var(--green)':'var(--t3)')+';">'
+     + (g.nivel.rompeu?'&#10004;':'&#9633;') + ' rompimento de <b>' + nf(g.nivel.preco)
+     + '</b> <span style="color:var(--t3);">&mdash; ' + esc(g.nivel.de) + '</span></div>';
+  h += '<div style="font-size:9px;color:'+(g.volume.acordou?'var(--green)':'var(--t3)')+';">'
+     + (g.volume.acordou?'&#10004;':'&#9633;') + ' volume acordando'
+     + (g.volume.pressao!=null ? ' <span style="color:var(--t3);">(pressao '
+        + (g.volume.pressao>=0?'+':'') + g.volume.pressao + '%, precisa de '
+        + (g.lado==='compra'?'+':'-') + G3_ACORDA + '%)</span>' : '') + '</div>';
+
+  // OS DOIS STOPS. A diferenca entre eles e a decisao de risco, e ela tem que
+  // ser explicita: o barato pode te tirar sem a tese morrer, o caro so e
+  // atingido quando a contagem realmente acabou.
+  if(g.stopTecnico != null){
+    h += '<div style="font-size:8px;color:var(--t3);letter-spacing:.5px;margin-top:6px;">'
+       + 'OS DOIS STOPS</div>';
+    h += '<div style="font-size:9px;color:var(--t2);">tecnico <b>' + nf(g.stopTecnico)
+       + '</b> <span style="color:var(--t3);">&mdash; o extremo da onda 2; barato, mas pode'
+       + ' te tirar sem a contagem morrer</span></div>';
+    if(g.stopRegra != null)
+      h += '<div style="font-size:9px;color:var(--t2);">de regra <b>' + nf(g.stopRegra)
+         + '</b> <span style="color:var(--t3);">&mdash; inicio da onda 1; caro, mas so bate'
+         + ' quando a contagem acabou de verdade</span></div>';
+  }
+  if(g.alvos){
+    h += '<div style="font-size:9px;color:var(--t2);margin-top:4px;">alvos: <b>'
+       + nf(g.alvos['1.618']) + '</b> (1,618) &middot; ' + nf(g.alvos['2.000'])
+       + ' &middot; ' + nf(g.alvos['2.618']) + '</div>';
+    if(g.rr != null){
+      const corRR = g.rr >= 2 ? 'var(--green)' : g.rr >= 1 ? 'var(--goldd)' : 'var(--red)';
+      h += '<div style="font-size:9px;color:'+corRR+';font-weight:700;">risco/retorno '
+         + g.rr + ':1 <span style="color:var(--t3);font-weight:600;">de '
+         + nf(g.entrada) + (g.disparado ? ' (preco atual)' : ' (o rompimento)')
+         + ' ate o alvo 1,618, contra o stop tecnico</span>'
+         + (g.rr < 1 ? ' &mdash; alvo mais perto que o stop, isso nao compensa' : '') + '</div>';
+    }
+  }
+  box.innerHTML = h;
+}
+window.renderGatilho3 = renderGatilho3;
+
 // ── A COMUNICACAO ────────────────────────────────────────────────────────
 // O painel e escrito na ordem em que a decisao acontece: primeiro o veredito,
 // depois a frase do que falta, depois a lista item a item. Quem esta com a mao
@@ -5790,6 +6034,7 @@ function iniciaForca(){
     try{ renderPadrao(); }catch(e){}        // o portao: le o mercado e responde "ja da?"
     try{ renderLocalizacao(); }catch(e){}   // e quanto pode entrar, que e o que protege a banca
     try{ renderReversao(); }catch(e){}      // o portao da virada, que o de continuacao nunca aprova
+    try{ renderGatilho3(); }catch(e){}      // e o QUANDO da continuacao: a entrada da onda 3
   },2000);
 }
 
