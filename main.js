@@ -3792,17 +3792,23 @@ function desenhaBolhasMulti(sym){
 
   // o brilho antes das bolhas, e antes da saida por falta de fluxo: o marco sai
   // do volume da propria vela e existe mesmo sem o corte agressor
+  // O PAINEL, NAO O CONTAINER. A tela da bolha cobre o container inteiro,
+  // mas o desenho da lib ocupa so o que sobra depois da escala de preco (a
+  // direita) e do eixo do tempo (embaixo). Recortar pelo container deixava a
+  // bolha pintar em cima dos dois — as bolinhas por cima dos numeros.
   let altMini = mc.el.clientHeight || 4000;
-  try{ altMini -= ts.height() || 0; }catch(e){}
+  let largMini = mc.el.clientWidth || 4000;
+  try{ altMini  -= ts.height() || 0; }catch(e){}
+  try{ largMini -= mc.chart.priceScale('right').width() || 0; }catch(e){}
 
   mc.bctx.save();
   mc.bctx.beginPath();
-  mc.bctx.rect(0, 0, mc.el.clientWidth, altMini);
+  mc.bctx.rect(0, 0, largMini, altMini);
   mc.bctx.clip();
 
-  try{ pintaBrilhoMarcos(mc.bctx, mc.el.clientWidth, mc.candles, mc.marcos||{}, null, t2, p2, altMini); }catch(e){}
+  try{ pintaBrilhoMarcos(mc.bctx, largMini, mc.candles, mc.marcos||{}, null, t2, p2, altMini); }catch(e){}
   if(bolhasLigadas && mc.bolhas.alvos.length)
-    pintaBolhas(mc.bctx, mc.el.clientWidth, mc.bolhas.alvos, mc.bolhas.corte, mc.candles, t2, p2, altMini);
+    pintaBolhas(mc.bctx, largMini, mc.bolhas.alvos, mc.bolhas.corte, mc.candles, t2, p2, altMini);
   mc.bctx.restore();
 }
 window.desenhaBolhasMulti = desenhaBolhasMulti;
@@ -3878,15 +3884,37 @@ async function openMultiCharts(){
     el.insertBefore(bcv, el.firstChild);
     const bctx = bcv.getContext('2d');
 
-    // as telas que a lib cria entram depois do canvas; z-index 1 pra ficarem
-    // por cima dele
-    try{ [...el.querySelectorAll('canvas')].forEach(c=>{
-      if(c!==bcv){ c.style.position=c.style.position||'relative'; c.style.zIndex='1'; }
-    }); }catch(e){}
+    // A CAMADA VAI NO INVOLUCRO, nao nas telas. A lib usa z-index proprio
+    // entre as telas dela (1 no painel, 2 na mira) e cria telas novas quando
+    // quer — mexer numa por uma achatava essa ordem e deixava de fora toda
+    // tela criada depois. Subindo so o involucro, a ordem interna dela fica
+    // intacta e tudo que ela criar ja nasce por cima da bolha.
+    try{
+      const inv = el.querySelector('.tv-lightweight-charts') || el.lastElementChild;
+      if(inv && inv !== bcv){ inv.style.position = 'relative'; inv.style.zIndex = '1'; }
+    }catch(e){}
 
+    // O DESLOCAMENTO ERA AQUI. O applyOptions muda o tamanho do grafico, mas a
+    // lib so refaz o layout dela no quadro seguinte: medir timeToCoordinate no
+    // mesmo tique devolvia a coordenada do tamanho VELHO, e a bolha ficava
+    // desencontrada da vela. E como redimensionar nao muda o intervalo visivel,
+    // nenhum subscribe disparava depois pra corrigir — ficava torto ate a
+    // pessoa arrastar o grafico.
+    //
+    // Dois quadros: no primeiro a lib aplica o tamanho, no segundo as
+    // coordenadas ja sao as novas.
     const ro=new ResizeObserver(()=>{
-      mchart.applyOptions({width:el.clientWidth,height:el.clientHeight});
-      dimensionaCanvasMulti(sym);
+      const w = el.clientWidth, h = el.clientHeight;
+      if(w < 2 || h < 2) return;          // grade fechando: medida nao vale
+      mchart.applyOptions({width:w, height:h});
+      if(multiCharts[sym] && multiCharts[sym].reajuste)
+        cancelAnimationFrame(multiCharts[sym].reajuste);
+      const id = requestAnimationFrame(()=>requestAnimationFrame(()=>{
+        if(!multiCharts[sym]) return;
+        multiCharts[sym].reajuste = null;
+        dimensionaCanvasMulti(sym);
+      }));
+      if(multiCharts[sym]) multiCharts[sym].reajuste = id;
     });
     ro.observe(el);
     multiCharts[sym]={chart:mchart,series,ma,candles:[],ro,noMore:false,loadingMore:false,live:null,
@@ -3976,6 +4004,8 @@ function closeMultiCharts(){
   for(const sym of MULTI_SYMS){
     if(multiCharts[sym]){
       try{multiCharts[sym].ro.disconnect();}catch(e){}
+      // o reajuste pendente rodaria num grafico ja removido
+      try{ if(multiCharts[sym].reajuste) cancelAnimationFrame(multiCharts[sym].reajuste); }catch(e){}
       try{multiCharts[sym].chart.remove();}catch(e){}
       delete multiCharts[sym];
     }
