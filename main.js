@@ -3415,6 +3415,227 @@ function renderGatilho3(){
 }
 window.renderGatilho3 = renderGatilho3;
 
+
+// ══════════════════════════════════════════════════════
+// ANALISE FRACTAL — o movimento de 1m esta DENTRO de um movimento maior
+// ══════════════════════════════════════════════════════
+// Eu tinha enquadrado errado. Disse que os limiares estavam calibrados pra 15m
+// e nao pra 1m, como se o problema fosse escolher o timeframe certo. Nao e:
+// uma queda de 1m nao APAGA o que o macro esta fazendo, ela acontece dentro
+// dele. Ler um sem o outro e o erro, e nenhum ajuste de limiar conserta isso.
+//
+// Elliott ja diz isso desde sempre — onda dentro de onda — e o motor
+// reconstruido ja le tres graus de pivo. Mas graus dentro do MESMO timeframe
+// nao e a mesma coisa que graus entre timeframes. Aqui a mesma leitura roda em
+// varias escalas e, principalmente, elas sao RELACIONADAS.
+//
+// A pergunta que isto responde nao e "o que cada tempo diz". E:
+//
+//   o que estou vendo agora e uma CORRECAO dentro de uma tendencia maior,
+//   ou e a tendencia maior virando?
+//
+// Sao situacoes opostas com a mesma aparencia no grafico pequeno, e a diferenca
+// muda tudo — inclusive ONDE O STOP PERTENCE. Se o movimento pequeno e uma
+// correcao dentro do grande, o stop nao pertence a estrutura pequena: ser
+// stopado ali e ser tirado do trade estando certo. Foi mais ou menos o que
+// aconteceu quando voce trocou de lado.
+
+const FRACTAL_TFS = ['1m','5m','15m','1h','4h','1d'];
+let fractalCache = null, fractalQuando = 0, fractalCarregando = false;
+const FRACTAL_VALIDADE = 90000;   // 90s: rede, nao pode rodar no timer de 2s
+
+// A leitura estrutural de UM timeframe. Deliberadamente a mesma que o resto do
+// app usa — se cada escala fosse medida com regra diferente, compara-las nao
+// significaria nada.
+function leituraDeEscala(velas, tf){
+  if(!velas || velas.length < 60) return {tf, ok:false, motivo:'poucas velas'};
+  const closes = velas.map(c=>c.close);
+  const e8 = ema(closes,8), e16 = ema(closes,16), e200 = ema(closes,200);
+  const atr = atrCalc(velas.map(c=>c.high), velas.map(c=>c.low), closes, 14);
+  const n = closes.length-1;
+  const a8 = maAngleDeg(e8, atr, n, 5), a16 = maAngleDeg(e16, atr, n, 5);
+  const ang = (a8!=null && a16!=null) ? (a8+a16)/2 : null;
+  const acima200 = (e200[n]!=null) ? closes[n] > e200[n] : null;
+  let el = null;
+  try{ el = leituraElliott(velas); }catch(e){}
+  // temperatura do fluxo recente desta escala
+  let frio = null;
+  try{
+    let neu=0, tot=0;
+    for(let i=Math.max(0,n-20); i<n; i++){
+      const c = velas[i].compra||0, v = velas[i].venda||0;
+      if(c+v <= 0) continue;
+      tot++; if(Math.abs(c-v)/(c+v) < 0.10) neu++;
+    }
+    if(tot >= 8) frio = Math.round(neu/tot*100);
+  }catch(e){}
+  const dir = ang == null ? null : (ang > 3 ? 'alta' : ang < -3 ? 'baixa' : 'lateral');
+  return {tf, ok:true, angulo: ang==null?null:+ang.toFixed(1), direcao:dir, acima200,
+          frio, preco:closes[n],
+          elliott: el ? {tipo:el.tipo, onde:el.onde, direcao:el.direcao,
+                         confianca:el.confianca} : null};
+}
+
+async function carregaFractal(sym){
+  if(fractalCarregando) return fractalCache;
+  if(fractalCache && Date.now()-fractalQuando < FRACTAL_VALIDADE
+     && fractalCache.sym === sym) return fractalCache;
+  fractalCarregando = true;
+  const escalas = [];
+  try{
+    for(const tf of FRACTAL_TFS){
+      try{
+        const d = await fetchCandles(sym, tf, 320);
+        if(d && d.length) escalas.push(leituraDeEscala(d, tf));
+        else escalas.push({tf, ok:false, motivo:'sem dados'});
+      }catch(e){ escalas.push({tf, ok:false, motivo:'falhou'}); }
+    }
+    fractalCache = {sym, escalas, quando:Date.now()};
+    fractalQuando = Date.now();
+  } finally { fractalCarregando = false; }
+  return fractalCache;
+}
+
+// ── A RELACAO ENTRE AS ESCALAS, que e o ponto todo
+// Nao basta listar o que cada tempo diz — isso o Multi-TF ja fazia. O que
+// interessa e como o pequeno se encaixa no grande.
+function alinhamentoFractal(cache){
+  if(!cache || !cache.escalas) return null;
+  const ok = cache.escalas.filter(e=>e.ok && e.direcao);
+  if(ok.length < 2) return null;
+  // do menor pro maior, na ordem de FRACTAL_TFS
+  const micro = ok[0], macro = ok[ok.length-1];
+  const alta = e => e.direcao === 'alta';
+  const conta = d => ok.filter(e=>e.direcao===d).length;
+  const nAlta = conta('alta'), nBaixa = conta('baixa'), nLat = conta('lateral');
+
+  // qual escala MANDA: a de maior confianca com contagem impulsiva
+  let manda = null;
+  ok.forEach(e => {
+    if(!e.elliott || e.elliott.tipo !== 'impulso') return;
+    if(!manda || e.elliott.confianca > manda.elliott.confianca) manda = e;
+  });
+
+  // a classificacao que importa
+  let situacao, explica;
+  const microDir = micro.direcao, macroDir = macro.direcao;
+  if(microDir === 'lateral' || macroDir === 'lateral'){
+    situacao = 'indefinido';
+    explica = 'uma das pontas esta lateral — sem encaixe pra ler.';
+  }else if(microDir === macroDir){
+    situacao = 'alinhado';
+    explica = 'o movimento pequeno vai no mesmo sentido do grande. E o encaixe '
+            + 'mais confortavel: o micro esta empurrando junto, nao contra.';
+  }else{
+    // micro contra o macro: correcao ou virada? o fluxo frio decide
+    const microFrio = micro.frio != null && micro.frio >= 40;
+    if(microFrio){
+      situacao = 'correcao';
+      explica = 'o movimento pequeno vai CONTRA o grande e vem frio ('
+              + micro.frio + '% das velas disputadas): tem cara de correcao dentro '
+              + 'da tendencia maior, nao de virada. Operar o micro aqui e operar '
+              + 'contra o grau maior.';
+    }else{
+      situacao = 'conflito';
+      explica = 'o movimento pequeno vai contra o grande E vem com agressao '
+              + (micro.frio!=null ? '(so '+micro.frio+'% de velas disputadas)' : '')
+              + ': pode ser o comeco de uma virada do grau maior, ou so um '
+              + 'movimento forte demais pra ser correcao. E a leitura mais '
+              + 'perigosa das tres, porque as duas saidas sao plausiveis.';
+    }
+  }
+  return {micro, macro, situacao, explica, manda,
+          nAlta, nBaixa, nLat, total:ok.length, escalas:ok};
+}
+window.carregaFractal = carregaFractal;
+window.alinhamentoFractal = alinhamentoFractal;
+window.leituraDeEscala = leituraDeEscala;
+
+const FRACTAL_COR = {
+  alinhado:   {cor:'var(--green)', rot:'ALINHADO'},
+  correcao:   {cor:'var(--goldd)', rot:'CORRECAO DENTRO DA TENDENCIA'},
+  conflito:   {cor:'var(--red)',   rot:'CONFLITO ENTRE ESCALAS'},
+  indefinido: {cor:'var(--t3)',    rot:'INDEFINIDO'},
+};
+
+function renderFractal(){
+  const box = document.getElementById('frac-box');
+  const cnt = document.getElementById('frac-count');
+  if(!box) return;
+  const sym = (typeof currentSym!=='undefined') ? currentSym : 'BTCUSDT';
+  // dispara o carregamento e desenha o que ja tem; rede nao pode segurar o
+  // timer de 2s dos outros paineis
+  carregaFractal(sym).then(()=>{ try{ desenhaFractal(); }catch(e){} });
+  desenhaFractal();
+
+  function desenhaFractal(){
+    const c = fractalCache;
+    if(!c || c.sym !== sym){
+      if(cnt) cnt.textContent = '...';
+      box.innerHTML = '<div style="font-size:9px;color:var(--t3);">Lendo as escalas...</div>';
+      return;
+    }
+    const al = alinhamentoFractal(c);
+    const esc = t => String(t).replace(/[&<>]/g, x=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[x]));
+    if(!al){
+      if(cnt) cnt.textContent = '--';
+      box.innerHTML = '<div style="font-size:9px;color:var(--t3);">Sem escalas suficientes.</div>';
+      return;
+    }
+    const cfg = FRACTAL_COR[al.situacao] || FRACTAL_COR.indefinido;
+    if(cnt){ cnt.textContent = al.nAlta + '↑ ' + al.nBaixa + '↓'; cnt.style.color = cfg.cor; }
+
+    let h = '<div style="font-size:11px;font-weight:800;color:'+cfg.cor+';line-height:1.3;">'
+          + cfg.rot + '</div>';
+    h += '<div style="font-size:9px;color:var(--t2);margin:3px 0 6px;line-height:1.45;">'
+       + esc(al.explica) + '</div>';
+
+    // A ESCADA. Cada linha e uma escala, do menor pro maior — e o desenho tem
+    // que deixar obvio onde a direcao troca, porque e nessa troca que mora a
+    // pergunta toda.
+    al.escalas.forEach(e => {
+      const cd = e.direcao === 'alta' ? 'var(--green)'
+               : e.direcao === 'baixa' ? 'var(--red)' : 'var(--t3)';
+      const seta = e.direcao === 'alta' ? '&uarr;' : e.direcao === 'baixa' ? '&darr;' : '&rarr;';
+      h += '<div style="display:flex;gap:6px;align-items:baseline;font-size:9px;margin-top:1px;">'
+         + '<span style="width:26px;color:var(--t2);font-weight:700;">'+esc(e.tf)+'</span>'
+         + '<span style="width:12px;color:'+cd+';font-weight:800;">'+seta+'</span>'
+         + '<span style="width:44px;color:var(--t3);">'+(e.angulo!=null?e.angulo+'&deg;':'--')+'</span>'
+         + '<span style="flex:1;color:var(--t3);">'
+         + (e.elliott ? esc(e.elliott.tipo)+' onda '+esc(e.elliott.onde)
+                        +' ('+e.elliott.confianca+'%)' : 'sem contagem')
+         + (e.frio!=null ? ' &middot; '+e.frio+'% frio' : '')
+         + '</span></div>';
+    });
+
+    // ONDE O STOP PERTENCE — a consequencia pratica da leitura fractal, e a
+    // que teria mudado alguma coisa de verdade
+    if(al.situacao === 'correcao'){
+      h += '<div style="background:rgba(232,163,23,.10);border:1px solid var(--goldd);'
+         + 'border-radius:4px;padding:5px 7px;margin-top:6px;">'
+         + '<div style="font-size:9px;font-weight:800;color:var(--goldd);">ONDE O STOP PERTENCE</div>'
+         + '<div style="font-size:9px;color:var(--t2);line-height:1.45;margin-top:2px;">'
+         + 'Se isto e correcao dentro do ' + esc(al.macro.tf) + ', o stop nao pertence a '
+         + 'estrutura do ' + esc(al.micro.tf) + ': ser tirado ali e ser tirado do trade '
+         + '<b>estando certo</b>. Ou o stop vai na estrutura do ' + esc(al.macro.tf)
+         + ' &mdash; e ai a posicao tem que ser bem menor &mdash; ou voce nao esta '
+         + 'operando a tendencia, esta operando contra ela no tempo pequeno.'
+         + '</div></div>';
+    }
+    if(al.manda && al.manda.elliott){
+      h += '<div style="font-size:9px;color:var(--t3);margin-top:5px;line-height:1.4;">'
+         + 'a escala que manda e o <b>' + esc(al.manda.tf) + '</b>: impulso de '
+         + esc(al.manda.elliott.direcao) + ' na onda ' + esc(al.manda.elliott.onde)
+         + ' com ' + al.manda.elliott.confianca + '% &mdash; e a contagem impulsiva mais'
+         + ' forte entre as escalas.</div>';
+    }
+    h += '<div style="font-size:8px;color:var(--t3);margin-top:4px;">atualizado ha '
+       + Math.round((Date.now()-c.quando)/1000) + 's &middot; ' + al.total + ' escalas</div>';
+    box.innerHTML = h;
+  }
+}
+window.renderFractal = renderFractal;
+
 // ── A COMUNICACAO ────────────────────────────────────────────────────────
 // O painel e escrito na ordem em que a decisao acontece: primeiro o veredito,
 // depois a frase do que falta, depois a lista item a item. Quem esta com a mao
@@ -6035,6 +6256,7 @@ function iniciaForca(){
     try{ renderLocalizacao(); }catch(e){}   // e quanto pode entrar, que e o que protege a banca
     try{ renderReversao(); }catch(e){}      // o portao da virada, que o de continuacao nunca aprova
     try{ renderGatilho3(); }catch(e){}      // e o QUANDO da continuacao: a entrada da onda 3
+    try{ renderFractal(); }catch(e){}       // o encaixe entre escalas (rede propria, cache de 90s)
   },2000);
 }
 
