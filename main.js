@@ -1946,10 +1946,229 @@ function padraoAgora(){
   // caixinha marcada.
   const peso = p => ({longe:0, formando:1, vetado:1, pronto:2, liberado:3})[p.estado] || 0;
   const nota = p => peso(p)*100 + p.obrigOk*10 + p.confirmOk;
-  const foco = nota(venda) > nota(compra) ? venda : compra;
+  // O MODO MANDA quando a pessoa escolheu um. Quem ja decidiu que quer
+  // comprar precisa ver o lado da compra mesmo em 0/3 — saber que falta
+  // muito e a informacao, e nao ha nada mais facil de racionalizar do que um
+  // painel que mostrou o outro lado no momento em que voce nao queria ouvir.
+  const foco = modoOperacao === 'comprador' ? compra
+             : modoOperacao === 'vendedor'  ? venda
+             : (nota(venda) > nota(compra) ? venda : compra);
   return {compra, venda, foco, sessao:padraoSessao};
 }
 window.padraoAgora = padraoAgora;
+
+
+// ══════════════════════════════════════════════════════
+// MODOS E PROBABILIDADE — o setup do dia, com o "nao" tambem medido
+// ══════════════════════════════════════════════════════
+// Duas coisas entram aqui.
+//
+// MODO. O portao sozinho escolhe o lado mais perto de entrar, e isso esconde a
+// pergunta de quem ja decidiu o que quer fazer: "eu quero comprar — quao longe
+// eu estou?". Nos modos comprador e vendedor o painel fica travado no lado
+// escolhido, mesmo em 0/3, porque saber que falta muito E a informacao.
+//
+// PROBABILIDADE. Este e o pedaco que precisa de honestidade, entao vale
+// explicar o metodo antes do codigo.
+//
+// O numero NAO sai de peso que eu escolhi. Ele sai do historico carregado na
+// tela: reproduzo o checklist vela a vela pra tras, agrupo as velas pela mesma
+// nota que o mercado tem agora, e olho o que aconteceu DEPOIS de cada uma.
+//
+// "Aconteceu" precisa de definicao dura, senao vira torcida. Uso barreira
+// dupla: a partir do fechamento, o preco tocou +1 ATR antes de tocar -1 ATR
+// dentro de PADRAO_HORIZONTE velas? Isso e um acerto. Tocou o contrario
+// primeiro, erro. Nao tocou nenhum dos dois, nao conta. E a mesma pergunta que
+// um trade com alvo e stop simetricos faz.
+//
+// E — o mais importante — junto com a taxa do setup vai a TAXA BASE: a mesma
+// medicao em TODAS as velas do historico, sem filtro nenhum. Um setup que
+// acerta 55% num mercado que sobe 54% das vezes nao vale nada, e sem a taxa
+// base isso fica invisivel. A diferenca entre as duas e a unica coisa que
+// responde "esse checklist esta me ajudando ou so me dando confianca?".
+//
+// Duas limitacoes ditas na cara: o historico e o que esta carregado (centenas
+// de velas, nao anos), e a replay usa so as condicoes que da pra reconstruir
+// vela a vela — EMA200, empilhamento, agressao, RSI, CVD e mercado seco. Os
+// tempos maiores e a contagem de ondas ficam de fora porque nao existe versao
+// deles "no indice i". Entao a probabilidade mede o NUCLEO do padrao, nao o
+// padrao inteiro, e o painel diz isso.
+
+const PADRAO_HORIZONTE = 12;    // velas a frente
+const PADRAO_BARREIRA  = 1.0;   // em ATR, simetrica
+const PADRAO_AMOSTRA_MIN = 20;  // abaixo disso nao se afirma nada
+
+let modoOperacao = 'auto';      // 'auto' | 'comprador' | 'vendedor'
+window.modoOperacao = modoOperacao;
+
+// As series que a replay precisa, montadas de uma vez so. Custa uma varredura
+// do historico; sem cache isso rodava a cada 2 segundos no timer do painel.
+let probCache = null, probCacheChave = '';
+function seriesDaReplay(){
+  if(!candles || candles.length < 120) return null;
+  const chave = candles.length + '|' + candles[candles.length-1].time + '|' + currentSym + '|' + currentTF;
+  if(probCacheChave === chave && probCache) return probCache;
+  const closes = candles.map(c=>c.close), highs = candles.map(c=>c.high), lows = candles.map(c=>c.low);
+  const S = {
+    closes, highs, lows,
+    ema200: ema(closes, 200),
+    ema8:   ema(closes, 8),
+    ema16:  ema(closes, 16),
+    ma89:   sma(closes, 89),
+    rsi:    rsiCalc(closes, 14),
+    atr:    atrCalc(highs, lows, closes, 14),
+    cvd:    serieCVD(candles),
+    seco:   (ultimaExaustao && ultimaExaustao.length === candles.length) ? ultimaExaustao : null,
+  };
+  probCache = S; probCacheChave = chave;
+  return S;
+}
+
+// O checklist reduzido no indice i. Devolve quantas fecharam e se ha veto —
+// mesmas regras do painel, so que na versao que existe no passado.
+function notaNoIndice(i, lado, S){
+  if(i < 200 || i >= candles.length) return null;
+  const preco = S.closes[i];
+  let n = 0, total = 0;
+
+  // EMA200
+  total++;
+  if(S.ema200[i] != null){
+    const acima = preco > S.ema200[i];
+    if(lado === 'compra' ? acima : !acima) n++;
+  }
+  // empilhamento
+  total++;
+  const e8=S.ema8[i], e16=S.ema16[i], m89=S.ma89[i], e200=S.ema200[i];
+  if([e8,e16,m89,e200].every(v=>v!=null && isFinite(v))){
+    const teto=Math.max(m89,e200), piso=Math.min(m89,e200);
+    const lib = (e8>teto&&e16>teto) ? 'alta' : (e8<piso&&e16<piso) ? 'baixa' : null;
+    if(lib === (lado==='compra' ? 'alta' : 'baixa')) n++;
+  }
+  // agressao da vela
+  total++;
+  const fl = fluxoPorVela[candles[i].time];
+  if(fl){
+    const t = (fl.compra||0)+(fl.venda||0);
+    if(t > 0){
+      const p = (fl.compra-fl.venda)/t*100;
+      if(lado === 'compra' ? p >= 10 : p <= -10) n++;
+    }
+  }
+  // RSI com espaco
+  total++;
+  const r = S.rsi[i];
+  if(r != null){
+    if(lado === 'compra' ? (r>=45 && r<70) : (r<=55 && r>30)) n++;
+  }
+  // CVD acompanhando (inclinacao das ultimas 20)
+  total++;
+  if(i >= 20){
+    const sub = S.cvd[i] > S.cvd[i-20];
+    if(lado === 'compra' ? sub : !sub) n++;
+  }
+  // veto: mercado seco
+  const veto = !!(S.seco && S.seco[i] > 0.5);
+  // veto: RSI em extremo
+  const vetoRsi = r != null && (lado==='compra' ? r>=75 : r<=25);
+  return {n, total, veto: veto || vetoRsi};
+}
+
+// A BARREIRA DUPLA. A partir do fechamento de i, o que veio primeiro dentro do
+// horizonte: o alvo ou o stop? Sem barreira, "deu certo" viraria "o preco
+// estava mais alto N velas depois", que ignora tudo que aconteceu no meio —
+// inclusive o stop que teria tirado voce do trade.
+function desfecho(i, lado, S){
+  const atr = S.atr[i];
+  if(atr == null || !isFinite(atr) || atr <= 0) return null;
+  const base = S.closes[i];
+  const alvo = lado === 'compra' ? base + atr*PADRAO_BARREIRA : base - atr*PADRAO_BARREIRA;
+  const stop = lado === 'compra' ? base - atr*PADRAO_BARREIRA : base + atr*PADRAO_BARREIRA;
+  const ate = Math.min(candles.length-1, i + PADRAO_HORIZONTE);
+  for(let j=i+1; j<=ate; j++){
+    const bateuAlvo = lado === 'compra' ? S.highs[j] >= alvo : S.lows[j]  <= alvo;
+    const bateuStop = lado === 'compra' ? S.lows[j]  <= stop : S.highs[j] >= stop;
+    // os dois na mesma vela: nao da pra saber a ordem dentro dela, entao
+    // descarto em vez de chutar a favor
+    if(bateuAlvo && bateuStop) return null;
+    if(bateuAlvo) return 1;
+    if(bateuStop) return 0;
+  }
+  return null;   // nao resolveu no horizonte: fora da amostra
+}
+
+function probabilidadeSetup(lado){
+  const S = seriesDaReplay();
+  if(!S) return null;
+  const agora = notaNoIndice(candles.length-2, lado, S);   // a ultima FECHADA
+  if(!agora) return null;
+
+  let amostraSetup = 0, acertoSetup = 0;   // nota atual ou melhor, sem veto
+  let amostraCheia = 0, acertoCheia = 0;   // padrao COMPLETO, sem veto
+  let amostraBase  = 0, acertoBase  = 0;   // tudo, sem filtro nenhum
+  let amostraVeto  = 0, acertoVeto  = 0;   // qualificaria, mas o veto estava ativo
+
+  // o fim do laco respeita o horizonte: vela sem futuro suficiente nao tem
+  // desfecho, e incluir metade delas enviesaria pro que ja aconteceu
+  const fim = candles.length - 1 - PADRAO_HORIZONTE;
+  for(let i=200; i<fim; i++){
+    const d = desfecho(i, lado, S);
+    if(d == null) continue;
+    amostraBase++; acertoBase += d;
+    const nt = notaNoIndice(i, lado, S);
+    if(!nt) continue;
+    // O BALDE DO VETO SO VALE COMPARADO COM IGUAL. Medido sobre todas as velas
+    // ele misturava mercado nenhum com setup bom e chegava a parecer MELHOR que
+    // o setup — o que so dizia que os dois baldes nao falavam da mesma coisa.
+    // Aqui ele e: as velas que teriam qualificado, e o veto barrou.
+    if(nt.veto){
+      if(nt.n >= agora.n){ amostraVeto++; acertoVeto += d; }
+      continue;
+    }
+    if(nt.n >= agora.n)     { amostraSetup++; acertoSetup += d; }
+    if(nt.n === nt.total)   { amostraCheia++; acertoCheia += d; }
+  }
+
+  const taxa = (a,b) => b > 0 ? +(a/b*100).toFixed(1) : null;
+  const vant = (a,b) => (b >= PADRAO_AMOSTRA_MIN && amostraBase > 0)
+    ? +((a/b - acertoBase/amostraBase)*100).toFixed(1) : null;
+  return {
+    lado,
+    nota: agora.n, notaTotal: agora.total, vetoAgora: agora.veto,
+    horizonte: PADRAO_HORIZONTE, barreira: PADRAO_BARREIRA, amostraMin: PADRAO_AMOSTRA_MIN,
+    setup: {amostra:amostraSetup, taxa:taxa(acertoSetup, amostraSetup), vantagem:vant(acertoSetup, amostraSetup)},
+    // O SETUP DO DIA de verdade: o que aconteceu quando o padrao fechou
+    // INTEIRO. Com a nota atual baixa, o balde de cima e quase o mercado todo e
+    // nao diz nada sobre o padrao — este diz.
+    completo: {amostra:amostraCheia, taxa:taxa(acertoCheia, amostraCheia), vantagem:vant(acertoCheia, amostraCheia)},
+    base:  {amostra:amostraBase,  taxa:taxa(acertoBase,  amostraBase)},
+    veto:  {amostra:amostraVeto,  taxa:taxa(acertoVeto,  amostraVeto), vantagem:vant(acertoVeto, amostraVeto)},
+    vantagem: vant(acertoSetup, amostraSetup),
+    confiavel: amostraSetup >= PADRAO_AMOSTRA_MIN,
+    confiavelCheio: amostraCheia >= PADRAO_AMOSTRA_MIN,
+  };
+}
+window.probabilidadeSetup = probabilidadeSetup;
+
+function trocaModo(){
+  const ordem = ['auto','comprador','vendedor'];
+  modoOperacao = ordem[(ordem.indexOf(modoOperacao)+1) % ordem.length];
+  window.modoOperacao = modoOperacao;
+  const b = document.getElementById('btn-modo');
+  if(b){
+    b.textContent = modoOperacao === 'auto' ? '◈ Auto'
+                  : modoOperacao === 'comprador' ? '▲ Comprador' : '▼ Vendedor';
+    b.classList.toggle('on', modoOperacao !== 'auto');
+    b.style.color = modoOperacao === 'comprador' ? 'var(--green)'
+                  : modoOperacao === 'vendedor'  ? 'var(--red)' : '';
+  }
+  try{ renderPadrao(); }catch(e){}
+  if(typeof showInfoToast === 'function')
+    showInfoToast('MODO', modoOperacao === 'auto'
+      ? 'o painel segue o lado mais perto de entrar'
+      : 'painel travado no lado ' + modoOperacao);
+}
+window.trocaModo = trocaModo;
 
 // ── A COMUNICACAO ────────────────────────────────────────────────────────
 // O painel e escrito na ordem em que a decisao acontece: primeiro o veredito,
@@ -2008,6 +2227,73 @@ function renderPadrao(){
              f.linhas.filter(l=>l.classe==='confirmacao'), false);
   h += grupo('VETOS &mdash; matam o padrao completo',
              f.linhas.filter(l=>l.classe==='veto'), true);
+
+  // ── A PROBABILIDADE, e o "nao" medido junto
+  // A taxa do setup sozinha engana: num mercado que sobe, quase todo filtro
+  // parece bom. Por isso a taxa base vem na linha de baixo e a diferenca entre
+  // as duas vem destacada — e ela que diz se o checklist esta ajudando ou so
+  // dando confianca.
+  try{
+    const pb = probabilidadeSetup(f.lado);
+    if(pb){
+      h += '<div style="margin-top:7px;padding-top:5px;border-top:1px solid var(--bd);">';
+      if(!pb.confiavel){
+        h += '<div style="font-size:9px;color:var(--t3);">amostra insuficiente pra afirmar'
+           + ' probabilidade (' + pb.setup.amostra + ' casos no historico carregado; '
+           + 'preciso de ' + 20 + '). Carregue mais historico no botao Tudo.</div>';
+      }else{
+        const v = pb.vantagem;
+        const corDe = x => x == null ? 'var(--t3)' : x >= 5 ? 'var(--green)'
+                          : x <= -5 ? 'var(--red)' : 'var(--goldd)';
+        h += '<div style="font-size:9px;color:var(--t3);letter-spacing:.5px;">'
+           + 'PROBABILIDADE &mdash; ' + pb.horizonte + ' velas, alvo e stop em '
+           + pb.barreira + ' ATR</div>';
+        // 1) O SETUP DO DIA: o padrao COMPLETO. E o numero que responde "quando
+        //    isso fecha, o que costuma acontecer?". Vem primeiro porque e o unico
+        //    que fala do padrao; o balde da nota atual, com nota baixa, e quase o
+        //    mercado inteiro e nao diz nada sobre ele.
+        if(pb.confiavelCheio){
+          const vc = pb.completo.vantagem;
+          h += '<div style="font-size:11px;font-weight:800;color:'+corDe(vc)+';margin-top:3px;">'
+             + pb.completo.taxa + '% <span style="font-size:9px;font-weight:600;color:var(--t3);">'
+             + 'quando o padrao fecha inteiro (' + pb.completo.amostra + ' casos)</span></div>';
+          h += '<div style="font-size:9px;color:'+corDe(vc)+';font-weight:700;">'
+             + (vc>0?'+':'') + vc + ' vs entrar sem olhar</div>';
+        }else{
+          h += '<div style="font-size:9px;color:var(--t3);margin-top:3px;">'
+             + 'padrao completo: so ' + pb.completo.amostra + ' casos no historico'
+             + ' &mdash; poucos pra afirmar taxa</div>';
+        }
+        // 2) ONDE VOCE ESTA AGORA
+        h += '<div style="font-size:9px;color:var(--t2);margin-top:4px;">na nota de agora ('
+           + pb.nota + '/' + pb.notaTotal + ') ou melhor: <b style="color:'+corDe(v)+';">'
+           + pb.setup.taxa + '%</b> em ' + pb.setup.amostra + ' casos</div>';
+        // 3) A REFERENCIA que impede o numero de cima de enganar
+        h += '<div style="font-size:9px;color:var(--t2);">sem filtro nenhum: <b>'
+           + pb.base.taxa + '%</b> (' + pb.base.amostra + ' casos)</div>';
+        if(v != null && v > -5 && v < 5){
+          h += '<div style="font-size:9px;color:var(--t3);margin-top:2px;line-height:1.4;">'
+             + 'Vantagem dentro do ruido: neste historico o checklist nao esta separando'
+             + ' nada nesta nota. Isso e informacao, nao defeito &mdash; e o sinal de nao'
+             + ' forcar entrada aqui.</div>';
+        }
+        // 4) O QUE O VETO SALVOU: mesmas velas que qualificariam, mas vetadas
+        if(pb.veto.amostra >= pb.amostraMin && pb.veto.taxa != null){
+          const vv = pb.veto.vantagem;
+          h += '<div style="font-size:9px;color:'+(vv!=null&&vv<0?'var(--green)':'var(--red)')+';margin-top:2px;">'
+             + 'vetadas (qualificariam, mas tinham veto): ' + pb.veto.taxa + '% em '
+             + pb.veto.amostra + ' casos'
+             + (vv!=null ? ' &mdash; ' + (vv<0 ? 'o veto esta te poupando' : 'o veto esta te custando') : '')
+             + '</div>';
+        }
+      }
+      h += '<div style="font-size:8px;color:var(--t3);margin-top:3px;line-height:1.4;">'
+         + 'medido no historico carregado, so com o nucleo do checklist'
+         + ' (EMA200, empilhamento, agressao, RSI, CVD, seco). Tempos maiores e ondas'
+         + ' ficam de fora: nao ha versao deles vela a vela.</div>';
+      h += '</div>';
+    }
+  }catch(e){}
 
   // O CONTADOR DA SESSAO. E o numero que corrige a mao pesada: ver que em duas
   // horas houve 4 padroes e 1 liberacao muda o que voce faz com a quinta.
