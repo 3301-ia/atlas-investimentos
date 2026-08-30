@@ -18,7 +18,7 @@
   <link rel="stylesheet" media="print" onload="this.media='all';this.onload=null"
         href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap">
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap"></noscript>
-  <link rel="stylesheet" href="./style.css?v=10">
+  <link rel="stylesheet" href="./style.css?v=11">
 </head>
 <body>
 <div id="vectra-splash">
@@ -957,6 +957,12 @@
             <div class="sp-sec"><span>PADRAO DE POSICIONAMENTO</span><span class="sp-sec-val" id="padrao-count">--</span></div>
             <div id="padrao-box" style="padding:6px 9px;"><div style="font-size:9px;color:var(--t3);">Lendo o mercado...</div></div>
 
+            <!-- LOCALIZACAO E RISCO: "esta barato?" e "onde eu erro?" sao a
+                 mesma pergunta. E o tamanho da posicao e a unica coisa aqui
+                 que protege a banca de um unico trade. -->
+            <div class="sp-sec"><span>LOCALIZACAO &amp; RISCO</span><span class="sp-sec-val" id="local-count">--</span></div>
+            <div id="local-box" style="padding:6px 9px;"><div style="font-size:9px;color:var(--t3);">Carregando historico...</div></div>
+
             <!-- RSI HEATMAP: todos os ativos da sua lista, de uma vez -->
             <div class="sp-sec"><span>RSI HEATMAP</span><span class="sp-sec-val" id="rsi-heat-updated">--</span></div>
             <div class="rsi-heat-legend">
@@ -1369,7 +1375,7 @@
      o que o main.js espera pra iniciar, e os onclick do HTML so disparam no
      clique, bem depois. -->
 <script defer src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
-<script defer src="./main.js?v=10"></script>
+<script defer src="./main.js?v=11"></script>
 </body>
 
 </html>
