@@ -2570,11 +2570,48 @@ function renderPadrao(){
     return;
   }
   const f = p.foco;
-  const cfg = PADRAO_CORES[f.estado] || PADRAO_CORES.longe;
+  // FALTANDO UMA OBRIGATORIA, O ROTULO E "NAO ENTRA" — nao "formando".
+  // "Formando" se le como "quase la", e "quase la" e exatamente a leitura que
+  // faz alguem entrar faltando uma. O portao so tem dois estados que importam:
+  // passou ou nao passou.
+  let cfg = PADRAO_CORES[f.estado] || PADRAO_CORES.longe;
+  if(f.obrigOk < f.obrigTotal && f.estado !== 'vetado')
+    cfg = {cor:'var(--red)', rot:'NAO ENTRA &mdash; falta ' + (f.obrigTotal-f.obrigOk)
+           + ' obrigatoria' + ((f.obrigTotal-f.obrigOk)===1?'':'s')};
   const esc = t => String(t).replace(/[&<>]/g, x=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[x]));
   if(cnt){ cnt.textContent = f.obrigOk + '/' + f.obrigTotal; cnt.style.color = cfg.cor; }
 
-  let h = '<div style="font-size:11px;font-weight:800;color:'+cfg.cor+';">'
+  // ── O AVISO DE DISCORDANCIA ──────────────────────────────────────────
+  // Este bloco existe por causa de um erro de projeto meu. O modo travado foi
+  // feito pra responder "quao longe estou do que eu quero", mas do jeito que
+  // ficou ele escondia o outro lado numa linha cinza no rodape E calculava a
+  // probabilidade pro lado TRAVADO. Ou seja: quem estava num short certo abria
+  // o painel no modo comprador e via o checklist, a frase e a probabilidade
+  // todos falando de compra — o painel virou maquina de confirmar o que a
+  // pessoa ja queria, que e o oposto do que ele deveria fazer.
+  //
+  // Agora, quando o lado escolhido esta atras do outro, isso vem em vermelho no
+  // TOPO, antes de qualquer numero.
+  let h = '';
+  const outroL = f.lado === 'compra' ? p.venda : p.compra;
+  const forcaDe = x => ({longe:0, formando:1, vetado:0, pronto:3, liberado:4})[x.estado]*10
+                       + x.obrigOk*2 + x.confirmOk;
+  const discorda = modoOperacao !== 'auto' && forcaDe(outroL) > forcaDe(f);
+  if(discorda){
+    h += '<div style="background:rgba(242,54,69,.12);border:1px solid var(--red);'
+       + 'border-radius:4px;padding:5px 7px;margin-bottom:6px;">'
+       + '<div style="font-size:10px;font-weight:800;color:var(--red);">'
+       + 'O MERCADO ESTA DO OUTRO LADO</div>'
+       + '<div style="font-size:9px;color:var(--t2);line-height:1.45;margin-top:2px;">'
+       + esc(outroL.lado) + ' esta em <b>' + outroL.obrigOk + '/' + outroL.obrigTotal
+       + '</b> obrigatorias e ' + outroL.confirmOk + ' confirmacoes; '
+       + esc(f.lado) + ', em <b>' + f.obrigOk + '/' + f.obrigTotal + '</b> e '
+       + f.confirmOk + '. Voce esta no <b>modo ' + esc(modoOperacao) + '</b> &mdash; o que'
+       + ' vem abaixo e o lado que voce escolheu, nao o lado em que o mercado esta.'
+       + '</div></div>';
+  }
+
+  h += '<div style="font-size:11px;font-weight:800;color:'+cfg.cor+';">'
         + cfg.rot + ' <span style="font-size:9px;font-weight:600;color:var(--t3);">'
         + esc(f.lado) + '</span></div>';
   h += '<div style="font-size:9px;color:var(--t2);margin:4px 0 6px;line-height:1.45;">'
@@ -2612,6 +2649,10 @@ function renderPadrao(){
   // dando confianca.
   try{
     const pb = probabilidadeSetup(f.lado);
+    // O OUTRO LADO TAMBEM. Mostrar so a probabilidade do lado focado foi o
+    // mesmo erro do banner: o numero mais facil de acreditar era calculado pro
+    // lado escolhido, e o lado oposto nao tinha numero nenhum pra comparar.
+    const pbOutro = probabilidadeSetup(outroL.lado);
     if(pb){
       h += '<div style="margin-top:7px;padding-top:5px;border-top:1px solid var(--bd);">';
       if(!pb.confiavel){
@@ -2663,6 +2704,15 @@ function renderPadrao(){
              + (vv!=null ? ' &mdash; ' + (vv<0 ? 'o veto esta te poupando' : 'o veto esta te custando') : '')
              + '</div>';
         }
+      }
+      if(pbOutro && pbOutro.confiavel && pb.confiavel){
+        const melhorOutro = pbOutro.setup.taxa > pb.setup.taxa;
+        h += '<div style="font-size:9px;margin-top:3px;color:'
+           + (melhorOutro ? 'var(--red)' : 'var(--t3)') + ';">'
+           + 'o lado ' + esc(outroL.lado) + ', na nota dele, da <b>' + pbOutro.setup.taxa
+           + '%</b> em ' + pbOutro.setup.amostra + ' casos'
+           + (melhorOutro ? ' &mdash; <b>melhor que o lado que voce esta vendo</b>' : '')
+           + '</div>';
       }
       h += '<div style="font-size:8px;color:var(--t3);margin-top:3px;line-height:1.4;">'
          + 'medido no historico carregado, so com o nucleo do checklist'
