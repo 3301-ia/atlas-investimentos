@@ -2547,6 +2547,298 @@ function trocaModo(){
 }
 window.trocaModo = trocaModo;
 
+
+// ══════════════════════════════════════════════════════
+// LOCALIZACAO E RISCO — "esta barato?" e "onde eu erro?" sao a MESMA pergunta
+// ══════════════════════════════════════════════════════
+// Nao existe preco barato em abstrato. Barato e uma posicao em relacao a uma
+// referencia, e so vira decisao quando vem junto do preco em que voce estaria
+// errado. Se voce nao consegue nomear esse preco, nao tem entrada barata — tem
+// esperanca, e esperanca nao tem stop.
+//
+// Entao este painel responde tres coisas, nesta ordem, porque e a ordem em que
+// a decisao acontece de verdade:
+//
+//   1. ESTICAMENTO — o preco esta longe ou perto da propria media, medido em
+//      ATR (nao em %, porque 3% no ouro e 3% numa alt sao coisas diferentes) e
+//      comparado com o proprio historico do ativo. "Barato" vira percentil:
+//      esteve mais esticado que isto em X% das velas.
+//
+//   2. ONDE VOCE ESTARIA ERRADO — o nivel estrutural abaixo (ou acima) mais
+//      proximo: fundo confirmado, EMA200, nivel de fibo, inicio da onda 1.
+//      Nao e um numero redondo nem uma porcentagem fixa; e um lugar onde a
+//      tese morre.
+//
+//   3. QUANTO PODE ENTRAR — dado esse stop e o seu limite de risco, o tamanho
+//      maximo. E aqui esta a troca que ninguem quer aceitar: stop longe =
+//      posicao pequena. A saida NAO e aproximar o stop pra caber mais posicao,
+//      porque isso so muda onde voce vai ser stopado, nao se vai.
+//
+// E ha um quarto item que so este app consegue dar: barato COM VOLUME FRIO e
+// correcao; barato COM VENDA AGREDINDO e faca caindo. O mesmo desconto, duas
+// coisas opostas.
+
+const RISCO_CHAVE = 'atlas_risco';
+let riscoCfg = {banca:null, pct:1.0};
+try{
+  const g = localStorage.getItem(RISCO_CHAVE);
+  if(g) riscoCfg = Object.assign(riscoCfg, JSON.parse(g));
+}catch(e){}
+function salvaRisco(){ try{ localStorage.setItem(RISCO_CHAVE, JSON.stringify(riscoCfg)); }catch(e){} }
+
+// Quao esticado o preco esta da EMA200, em ATR, e o percentil disso no proprio
+// historico. Em ATR porque e a unidade que torna ativos comparaveis; em
+// percentil porque "longe" so significa alguma coisa contra o proprio passado.
+function esticamento(){
+  if(!candles || candles.length < 220) return null;
+  const closes = candles.map(c=>c.close);
+  const e200 = ema(closes, 200);
+  const atrA = atrCalc(candles.map(c=>c.high), candles.map(c=>c.low), closes, 14);
+  const n = candles.length - 1;
+  if(e200[n] == null || !(atrA[n] > 0)) return null;
+  const agora = (closes[n] - e200[n]) / atrA[n];
+  const serie = [];
+  for(let i=210;i<=n;i++){
+    if(e200[i] == null || !(atrA[i] > 0)) continue;
+    serie.push((closes[i] - e200[i]) / atrA[i]);
+  }
+  if(serie.length < 50) return null;
+  const abaixo = serie.filter(v => v < agora).length;
+  return {
+    atrs: +agora.toFixed(2),
+    pct: +((closes[n]/e200[n] - 1)*100).toFixed(2),
+    // 0 = mais barato que ja esteve; 100 = mais caro
+    percentil: Math.round(abaixo / serie.length * 100),
+    amostra: serie.length,
+    ema200: e200[n], atr: atrA[n],
+  };
+}
+
+// Os candidatos a stop. Cada um vem com o MOTIVO, porque stop sem motivo e
+// numero redondo, e numero redondo e onde todo mundo poe o stop.
+function niveisDeInvalidacao(lado){
+  if(!candles || candles.length < 60) return [];
+  const n = candles.length - 1;
+  const preco = candles[n].close;
+  const compra = lado === 'compra';
+  const out = [];
+  // PESO POR TIPO, nao so por distancia. Um fundo confirmado e um lugar onde a
+  // estrutura quebra; um nivel de fibo que por acaso caiu 0,5% abaixo do preco
+  // nao e — e ancorar o stop nele da uma distancia curta que nao tem nada a ver
+  // com onde a tese morre. Ordenar so pelo mais proximo escolhia justamente o
+  // pior ancoradouro sempre que houvesse um fibo por perto.
+  const poe = (p, porque, peso) => {
+    if(p == null || !isFinite(p)) return;
+    // so serve o que esta do lado certo: stop de compra fica ABAIXO
+    if(compra ? p < preco : p > preco) out.push({preco:+p, porque, peso:peso||9});
+  };
+
+  // fundo/topo confirmado mais recente — o lugar onde a estrutura quebra
+  try{
+    const {altos, baixos} = achaPivos(candles, 8);
+    const lista = compra ? baixos : altos;
+    const ult = lista[lista.length-1];
+    if(ult != null) poe(compra ? candles[ult].low : candles[ult].high,
+                        compra ? 'ultimo fundo confirmado' : 'ultimo topo confirmado', 1);
+  }catch(e){}
+  // a EMA200, que e a linha que o proprio checklist usa como obrigatoria
+  try{ if(ultimasEmas && ultimasEmas.ema200) poe(ultimasEmas.ema200, 'EMA200 — a obrigatoria do checklist', 3); }catch(e){}
+  // o inicio da onda 1: se o preco passa dali, a contagem morre por regra
+  try{
+    const l = elliottAtual();
+    const pj = l && projecaoOnda3(l);
+    if(pj) poe(pj.invalida_em, 'inicio da onda 1 — passar dali mata a contagem', 2);
+  }catch(e){}
+  // niveis de fibo tracados
+  try{
+    if(fibState && fibState.targets) fibState.targets.forEach(t=>{
+      if(t && t.price) poe(t.price, 'nivel de fibo ' + t.lv, 4);
+    });
+  }catch(e){}
+  // primeiro o ancoradouro mais forte; dentro do mesmo tipo, o mais proximo
+  out.sort((a,b)=> (a.peso - b.peso) || (compra ? b.preco - a.preco : a.preco - b.preco));
+  return out;
+}
+
+// Tamanho maximo pela unica conta que importa: quanto voce aceita perder
+// dividido por quanto a distancia ate o stop custa por unidade.
+function tamanhoPermitido(preco, stop){
+  if(!riscoCfg.banca || !(riscoCfg.banca > 0)) return null;
+  if(preco == null || stop == null || preco === stop) return null;
+  const risco = riscoCfg.banca * (riscoCfg.pct/100);
+  const distUnit = Math.abs(preco - stop);
+  const unidades = risco / distUnit;
+  return {
+    risco: +risco.toFixed(2),
+    unidades: +unidades.toFixed(6),
+    // exposicao = tamanho da posicao em dinheiro. Quase sempre e MUITO maior
+    // que o risco, e e por confundir os dois que se quebra conta.
+    exposicao: +(unidades * preco).toFixed(2),
+    alavancagem: +((unidades * preco) / riscoCfg.banca).toFixed(2),
+  };
+}
+
+function localizacao(lado){
+  const est = esticamento();
+  if(!candles || !candles.length) return null;
+  const n = candles.length - 1;
+  const preco = candles[n].close;
+  const cands = niveisDeInvalidacao(lado);
+  const escolhido = cands[0] || null;
+  let stop = null;
+  if(escolhido && est){
+    // uma folga de meio ATR alem do nivel: stop EM cima do nivel e onde a
+    // liquidez vai buscar, e ser stopado no pavio da vela que valida a tese e
+    // o pior jeito de estar certo
+    const folga = est.atr * 0.5;
+    const p = lado === 'compra' ? escolhido.preco - folga : escolhido.preco + folga;
+    stop = {preco:+p.toFixed(6), nivel:escolhido.preco, porque:escolhido.porque,
+            distPct: +(Math.abs(preco - p)/preco*100).toFixed(2),
+            distAtr: +(Math.abs(preco - p)/est.atr).toFixed(2)};
+  }
+  const tam = stop ? tamanhoPermitido(preco, stop.preco) : null;
+  return {lado, preco, esticamento:est, candidatos:cands.slice(0,4), stop, tamanho:tam,
+          risco:{banca:riscoCfg.banca, pct:riscoCfg.pct}};
+}
+window.localizacao = localizacao;
+window.esticamento = esticamento;
+
+// A leitura de "barato ou caro" em UMA frase, com o volume decidindo se o
+// desconto e correcao ou faca caindo.
+function frasePreco(loc){
+  const e = loc && loc.esticamento;
+  if(!e) return 'sem historico suficiente pra dizer se esta caro ou barato.';
+  const p = e.percentil;
+  const onde = p <= 10 ? 'muito barato' : p <= 30 ? 'barato'
+             : p >= 90 ? 'muito caro'   : p >= 70 ? 'caro' : 'no meio da faixa';
+  let t = 'O preco esta <b>' + onde + '</b> contra a propria EMA200: '
+        + (e.atrs>=0?'+':'') + e.atrs + ' ATR (' + (e.pct>=0?'+':'') + e.pct + '%). '
+        + 'Em ' + e.amostra + ' velas, ele esteve mais barato que isto em apenas '
+        + p + '% do tempo.';
+  // O DESCONTO SO VALE COM O VOLUME JUNTO. Barato com venda agredindo nao e
+  // desconto, e o mercado te avisando que ainda tem vendedor.
+  try{
+    const fn = fluxoNeutro(20);
+    const f = forcaDoFluxo(20);
+    if(fn && f){
+      if(p <= 30 && fn.pct >= 45){
+        t += ' <b>E um desconto com volume frio:</b> ' + fn.pct + '% das velas recentes'
+          + ' sairam disputadas — o vendedor nao esta agredindo, esta faltando comprador.'
+          + ' E o que se espera de correcao.';
+      }else if(p <= 30 && f.pressao <= -15){
+        t += ' <b>Mas o desconto vem com venda agredindo</b> (' + f.pressao.toFixed(1)
+          + '%): isso nao e correcao, e faca caindo. Barato ai costuma ficar mais barato.';
+      }else if(p >= 70 && f.pressao >= 15){
+        t += ' E a alta vem com comprador agredindo (' + f.pressao.toFixed(1)
+          + '%): caro com forca, que e diferente de caro e parado.';
+      }
+    }
+  }catch(e2){}
+  return t;
+}
+
+function renderLocalizacao(){
+  const box = document.getElementById('local-box');
+  const cnt = document.getElementById('local-count');
+  if(!box) return;
+  const lado = (typeof modoOperacao !== 'undefined' && modoOperacao === 'vendedor')
+             ? 'venda' : 'compra';
+  const loc = localizacao(lado);
+  if(!loc){
+    if(cnt) cnt.textContent = '--';
+    box.innerHTML = '<div style="font-size:9px;color:var(--t3);">Carregando historico...</div>';
+    return;
+  }
+  const nf = v => (v==null||!isFinite(v)) ? '--'
+    : Number(v).toLocaleString('pt-BR',{maximumFractionDigits: Math.abs(v)>=100?2:6});
+  const esc = t => String(t).replace(/[&<>]/g, x=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[x]));
+  const e = loc.esticamento;
+  const corP = !e ? 'var(--t3)' : e.percentil <= 30 ? 'var(--green)'
+             : e.percentil >= 70 ? 'var(--red)' : 'var(--goldd)';
+  if(cnt){ cnt.textContent = e ? e.percentil + '%' : '--'; cnt.style.color = corP; }
+
+  let h = '<div style="font-size:9px;color:var(--t2);line-height:1.45;">'
+        + frasePreco(loc) + '</div>';
+
+  // ── ONDE VOCE ESTARIA ERRADO
+  if(loc.stop){
+    h += '<div style="font-size:8px;color:var(--t3);letter-spacing:.5px;margin-top:7px;">'
+       + 'ONDE VOCE ESTARIA ERRADO</div>';
+    h += '<div style="font-size:11px;font-weight:800;color:var(--red);">'
+       + nf(loc.stop.preco) + '</div>';
+    h += '<div style="font-size:9px;color:var(--t2);line-height:1.4;">'
+       + esc(loc.stop.porque) + ' em ' + nf(loc.stop.nivel)
+       + ', com meio ATR de folga &mdash; stop <i>em cima</i> do nivel e onde a liquidez'
+       + ' vai buscar.</div>';
+    h += '<div style="font-size:9px;color:var(--t3);">distancia: <b>' + loc.stop.distPct
+       + '%</b> (' + loc.stop.distAtr + ' ATR)</div>';
+    if(loc.candidatos.length > 1){
+      h += '<div style="font-size:9px;color:var(--t3);margin-top:2px;">outros niveis: '
+         + loc.candidatos.slice(1).map(c=>nf(c.preco)+' ('+esc(c.porque)+')').join(', ')
+         + '</div>';
+    }
+  }else{
+    h += '<div style="font-size:9px;color:var(--red);margin-top:7px;line-height:1.45;">'
+       + '<b>Nao ha nivel estrutural pra ancorar o stop deste lado.</b> Sem lugar onde a'
+       + ' tese morre, nao ha entrada &mdash; ha aposta.</div>';
+  }
+
+  // ── QUANTO PODE ENTRAR
+  h += '<div style="font-size:8px;color:var(--t3);letter-spacing:.5px;margin-top:7px;">'
+     + 'QUANTO PODE ENTRAR</div>';
+  h += '<div style="display:flex;gap:4px;align-items:center;margin-top:2px;">'
+     + '<span style="font-size:9px;color:var(--t3);">banca</span>'
+     + '<input id="risco-banca" type="number" step="any" placeholder="0.00"'
+     + ' value="' + (riscoCfg.banca!=null?riscoCfg.banca:'') + '"'
+     + ' style="width:78px;font-size:10px;padding:2px 4px;background:var(--bg2);'
+     + 'border:1px solid var(--bd);border-radius:3px;color:var(--t1);">'
+     + '<span style="font-size:9px;color:var(--t3);">risco</span>'
+     + '<input id="risco-pct" type="number" step="0.1" min="0.1" max="100"'
+     + ' value="' + riscoCfg.pct + '"'
+     + ' style="width:48px;font-size:10px;padding:2px 4px;background:var(--bg2);'
+     + 'border:1px solid var(--bd);border-radius:3px;color:var(--t1);">'
+     + '<span style="font-size:9px;color:var(--t3);">%</span></div>';
+
+  if(loc.tamanho){
+    const t = loc.tamanho;
+    h += '<div style="font-size:11px;font-weight:800;color:var(--green);margin-top:3px;">'
+       + nf(t.unidades) + ' <span style="font-size:9px;font-weight:600;color:var(--t3);">'
+       + 'unidades no maximo</span></div>';
+    h += '<div style="font-size:9px;color:var(--t2);">exposicao <b>' + nf(t.exposicao)
+       + '</b> &middot; risco real <b>' + nf(t.risco) + '</b> ('
+       + loc.risco.pct + '% da banca)</div>';
+    if(t.alavancagem > 1.05){
+      h += '<div style="font-size:9px;color:var(--goldd);">isso e ' + t.alavancagem
+         + 'x a banca em exposicao &mdash; o risco continua ' + loc.risco.pct
+         + '%, mas so enquanto o stop for respeitado.</div>';
+    }
+    // A TROCA QUE NINGUEM QUER ACEITAR, dita em numero
+    if(loc.stop && loc.stop.distPct > 3){
+      h += '<div style="font-size:9px;color:var(--t3);margin-top:2px;line-height:1.4;">'
+         + 'O stop esta longe (' + loc.stop.distPct + '%), entao a posicao tem que ser'
+         + ' pequena. Aproximar o stop pra caber mais posicao nao reduz risco &mdash;'
+         + ' so muda o stop pra um lugar onde o mercado passa sem a tese estar errada.</div>';
+    }
+  }else if(!riscoCfg.banca){
+    h += '<div style="font-size:9px;color:var(--t3);margin-top:3px;line-height:1.45;">'
+       + 'Informe a banca acima e ele calcula o tamanho maximo. O valor fica so no seu'
+       + ' navegador &mdash; nao sai daqui, nao vai pra servidor nenhum.</div>';
+  }
+  box.innerHTML = h;
+
+  const bind = (id, chave, conv) => {
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.addEventListener('change', () => {
+      const v = conv(el.value);
+      riscoCfg[chave] = v; salvaRisco(); renderLocalizacao();
+    });
+  };
+  bind('risco-banca','banca', v => { const n = parseFloat(v); return isFinite(n)&&n>0 ? n : null; });
+  bind('risco-pct','pct',    v => { const n = parseFloat(v); return isFinite(n)&&n>0&&n<=100 ? n : 1.0; });
+}
+window.renderLocalizacao = renderLocalizacao;
+
 // ── A COMUNICACAO ────────────────────────────────────────────────────────
 // O painel e escrito na ordem em que a decisao acontece: primeiro o veredito,
 // depois a frase do que falta, depois a lista item a item. Quem esta com a mao
@@ -5164,6 +5456,7 @@ function iniciaForca(){
     try{ renderConsolidacao(); }catch(e){}   // mesma cadencia, mesmo motivo
     try{ renderElliott(); }catch(e){}       // idem: contagem cacheada, custo zero
     try{ renderPadrao(); }catch(e){}        // o portao: le o mercado e responde "ja da?"
+    try{ renderLocalizacao(); }catch(e){}   // e quanto pode entrar, que e o que protege a banca
   },2000);
 }
 
