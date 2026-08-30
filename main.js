@@ -2044,7 +2044,11 @@ window.renderElliott = renderElliott;
 // liberado" depois de duas horas e o dado que corrige a mao pesada.
 
 const PADRAO_ESPERA = 3;        // avaliacoes seguidas prontas antes de liberar
-const PADRAO_CONFIRMA_MIN = 3;  // quantas confirmacoes das 5
+// Com Elliott saindo pra neutro sobraram 4 confirmacoes, entao exigir 3 passou
+// de 60% pra 75% das disponiveis. E um aperto real, e proposital: menos
+// caixinhas em jogo significa que cada uma pesa mais, e o portao nao deveria
+// afrouxar so porque um item saiu da conta.
+const PADRAO_CONFIRMA_MIN = 3;  // quantas confirmacoes das 4
 
 // Cada regra devolve {ok, txt, falta}. 'falta' e o que ainda precisa
 // acontecer, escrito pra ser lido no meio de uma frase.
@@ -2121,28 +2125,22 @@ const PADRAO_REGRAS = [
                        : 'RSI ja esticado pra baixo (' + c.rsi.toFixed(1) + ')'))};
    }},
 
-  {id:'estrutura', classe:'confirmacao', nome:'contagem de ondas sem violacao',
+  // ── DADO NEUTRO
+  // Elliott aparece, mas NAO conta. A contagem so viraria confirmacao se
+  // tivesse numero atras dizendo que ela separa acerto de erro — e ela ainda
+  // nao tem. Deixar um indicador imaturo pesando numa decisao e o jeito mais
+  // silencioso de piorar um checklist: ele parece mais completo e decide pior.
+  // O log mede a contagem em paralelo; se ela mostrar separacao com amostra,
+  // sobe pra confirmacao com o numero na mao.
+  {id:'estrutura', classe:'neutro', nome:'contagem de ondas (informativo)',
    testa(c, lado){
-     if(!c.elliott) return {ok:false, txt:'sem contagem'};
-     if(c.elliott.violacoes.length)
-       return {ok:false, txt:'contagem violada', falta:'a contagem de Elliott esta violada'};
-     const mesmo = (c.elliott.direcao === 'alta') === (lado === 'compra');
-     if(!mesmo) return {ok:false, txt:'impulso de ' + c.elliott.direcao,
-       falta:'o impulso contado vai pro outro lado'};
-     // Zigzag e correcao, nao impulso: a perna a favor dentro dele e repique,
-     // nao tendencia. Nao confirma entrada no sentido do movimento maior.
-     if(c.elliott.tipo === 'zigzag')
-       return {ok:false, txt:'zigzag (correcao) na onda ' + c.elliott.onde,
-         falta:'a estrutura ai e corretiva, nao impulsiva'};
-     // onda 5 e o fim do impulso, nao o comeco
-     if(c.elliott.onde === '5') return {ok:false, txt:'onda 5 — fim do impulso',
-       falta:'a contagem esta na onda 5, que e onde o impulso acaba'};
-     // confianca baixa nao confirma nada
-     if(c.elliott.confianca != null && c.elliott.confianca < 60)
-       return {ok:false, txt:'contagem fraca (' + c.elliott.confianca + '%)',
-         falta:'a contagem so tem ' + c.elliott.confianca + '% de confianca'};
-     return {ok:true, txt:'onda ' + c.elliott.onde + ' de ' + c.elliott.direcao
-                          + ' (' + c.elliott.confianca + '%)'};
+     if(!c.elliott) return {ok:false, txt:'sem contagem que se sustente'};
+     const t = c.elliott.tipo + ' de ' + c.elliott.direcao + ', onda ' + c.elliott.onde
+             + ' (' + c.elliott.confianca + '%)';
+     const aFavor = (c.elliott.direcao === 'alta') === (lado === 'compra')
+                    && c.elliott.tipo === 'impulso';
+     // 'ok' aqui so pinta o texto; nao entra em conta nenhuma
+     return {ok:aFavor, txt:t + (aFavor ? ' — a favor' : ' — nao a favor')};
    }},
 
   // ── VETOS
@@ -2246,6 +2244,7 @@ function avaliaPadrao(lado, ctx){
 
   const obrig   = linhas.filter(l=>l.classe==='obrigatoria');
   const confirm = linhas.filter(l=>l.classe==='confirmacao');
+  const neutros = linhas.filter(l=>l.classe==='neutro');
   const vetos   = linhas.filter(l=>l.classe==='veto');
   const obrigOk   = obrig.filter(l=>l.ok).length;
   const confirmOk = confirm.filter(l=>l.ok).length;
@@ -2304,7 +2303,7 @@ function avaliaPadrao(lado, ctx){
     }
   }
 
-  return {lado, estado, frase, linhas, obrigOk, obrigTotal:obrig.length,
+  return {lado, estado, frase, linhas, neutros, obrigOk, obrigTotal:obrig.length,
           confirmOk, confirmTotal:confirm.length, confirmMin:PADRAO_CONFIRMA_MIN,
           vetos:vetoAtivo.map(v=>v.nome), prontoHa:est.prontoHa, ctx:c};
 }
@@ -3108,15 +3107,19 @@ function probabilidadeReversao(lado){
 }
 window.probabilidadeReversao = probabilidadeReversao;
 
+// OS DOIS LADOS SEMPRE. Mostrar so o lado do modo era o mesmo erro do painel
+// travado: reversao de compra e reversao de venda sao a mesma maquinaria com o
+// sinal trocado, e o mercado nao escolhe um lado pra caber no painel. O que
+// esta mais perto vem primeiro e em destaque; o outro vem logo abaixo, com
+// numero, nunca escondido.
 function renderReversao(){
   const box = document.getElementById('rev-box');
   const cnt = document.getElementById('rev-count');
   if(!box) return;
-  const lado = (typeof modoOperacao !== 'undefined' && modoOperacao === 'vendedor')
-             ? 'venda' : 'compra';
-  let o = null;
-  try{ o = oportunidadeExtrema(lado); }catch(e){}
-  if(!o){
+  let oC = null, oV = null;
+  try{ oC = oportunidadeExtrema('compra'); }catch(e){}
+  try{ oV = oportunidadeExtrema('venda');  }catch(e){}
+  if(!oC && !oV){
     if(cnt) cnt.textContent = '--';
     box.innerHTML = '<div style="font-size:9px;color:var(--t3);">Carregando...</div>';
     return;
@@ -3124,30 +3127,53 @@ function renderReversao(){
   const esc = t => String(t).replace(/[&<>]/g, x=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[x]));
   const nf = v => (v==null||!isFinite(v)) ? '--'
     : Number(v).toLocaleString('pt-BR',{maximumFractionDigits:2});
-  const cor = o.completo ? 'var(--green)' : o.obrigOk >= 2 ? 'var(--goldd)' : 'var(--t3)';
-  if(cnt){ cnt.textContent = o.obrigOk + '/' + o.obrigTotal; cnt.style.color = cor; }
+  const nota = o => o ? (o.completo?100:0) + o.obrigOk*10 + o.confOk : -1;
+  const principal = nota(oV) > nota(oC) ? oV : oC;
+  const outro     = principal === oC ? oV : oC;
 
-  let h = '<div style="font-size:11px;font-weight:800;color:'+cor+';">'
-        + (o.completo ? 'OPORTUNIDADE' : o.obrigOk >= 2 ? 'QUASE' : 'SEM SETUP')
-        + ' <span style="font-size:9px;font-weight:600;color:var(--t3);">reversao de '
-        + esc(o.lado) + '</span></div>';
+  // grava a aparicao de cada lado no log, na borda
+  try{
+    if(oC) registraSinal('reversao', 'compra', oC.completo, {obrig:oC.obrigOk, conf:oC.confOk});
+    if(oV) registraSinal('reversao', 'venda',  oV.completo, {obrig:oV.obrigOk, conf:oV.confOk});
+  }catch(e){}
+
+  const cor = o => o.completo ? 'var(--green)' : o.obrigOk >= 2 ? 'var(--goldd)' : 'var(--t3)';
+  const rot = o => o.completo ? 'OPORTUNIDADE' : o.obrigOk >= 2 ? 'QUASE' : 'SEM SETUP';
+  if(cnt){
+    cnt.textContent = 'C ' + (oC?oC.obrigOk:'-') + '/3  V ' + (oV?oV.obrigOk:'-') + '/3';
+    cnt.style.color = cor(principal);
+  }
+  let h = '<div style="font-size:11px;font-weight:800;color:'+cor(principal)+';">'
+        + rot(principal) + ' <span style="font-size:9px;font-weight:600;color:var(--t3);">'
+        + 'reversao de ' + esc(principal.lado) + '</span></div>';
   h += '<div style="font-size:9px;color:var(--t2);margin:3px 0 5px;line-height:1.45;">'
-     + esc(o.frase) + '</div>';
-  o.linhas.forEach(l => {
+     + esc(principal.frase) + '</div>';
+  principal.linhas.forEach(l => {
     h += '<div style="font-size:9px;color:'+(l.ok?'var(--green)':'var(--t3)')+';'
        + 'display:flex;gap:5px;align-items:baseline;">'
        + '<span style="width:9px;flex:none;">' + (l.ok?'&#10004;':'&#9633;') + '</span>'
        + '<span><b>'+esc(l.nome)+'</b> <span style="color:var(--t3);">'+esc(l.txt||'')+'</span></span>'
        + '</div>';
   });
-  if(o.stopNatural != null){
+  if(principal.stopNatural != null){
     h += '<div style="font-size:9px;color:var(--t2);margin-top:5px;">stop natural: <b>'
-       + nf(o.stopNatural) + '</b> <span style="color:var(--t3);">'
+       + nf(principal.stopNatural) + '</b> <span style="color:var(--t3);">'
        + '&mdash; o extremo do proprio choque. E dele que vem a vantagem deste setup:'
        + ' o stop e curto porque o extremo esta logo ali.</span></div>';
   }
+  // ── O OUTRO LADO, sempre visivel
+  if(outro){
+    h += '<div style="margin-top:6px;padding-top:5px;border-top:1px solid var(--bd);'
+       + 'font-size:9px;color:'+cor(outro)+';">'
+       + '<b>' + rot(outro) + '</b> <span style="color:var(--t3);">reversao de '
+       + esc(outro.lado) + ' &mdash; ' + outro.obrigOk + '/' + outro.obrigTotal
+       + ' obrigatorias, ' + outro.confOk + '/' + outro.confTotal + ' confirmacoes</span></div>';
+    if(outro.completo)
+      h += '<div style="font-size:9px;color:var(--red);">os dois lados fecharam ao mesmo'
+         + ' tempo &mdash; isso e contradicao, nao oportunidade dupla: nao opere nenhum.</div>';
+  }
   try{
-    const pb = probabilidadeReversao(lado);
+    const pb = probabilidadeReversao(principal.lado);
     if(pb && pb.confiavel){
       const v = pb.vantagem;
       const c = v == null ? 'var(--t3)' : v >= 5 ? 'var(--green)' : v <= -5 ? 'var(--red)' : 'var(--goldd)';
@@ -3163,8 +3189,7 @@ function renderReversao(){
          + 'apareceu <b>' + pb.aparicoes + '</b> vez(es) em ' + pb.varridas + ' velas'
          + (pb.varridas ? ' (' + (pb.aparicoes/pb.varridas*100).toFixed(1) + '%)' : '')
          + ' &mdash; poucas pra afirmar taxa. <b>Isso e raridade, nao defeito:</b> as tres'
-         + ' obrigatorias juntas sao um evento, e e por isso que quando aparece vale'
-         + ' olhar. Carregue mais historico no botao Tudo pra medir.</div>';
+         + ' obrigatorias juntas sao um evento. Carregue mais historico no botao Tudo.</div>';
     }
   }catch(e){}
   box.innerHTML = h;
@@ -3344,17 +3369,36 @@ function renderGatilho3(){
   const box = document.getElementById('g3-box');
   const cnt = document.getElementById('g3-count');
   if(!box) return;
-  const lado = (typeof modoOperacao !== 'undefined' && modoOperacao === 'vendedor')
-             ? 'venda' : 'compra';
-  let g = null;
-  try{ g = gatilhoOnda3(lado); }catch(e){}
+  // OS DOIS LADOS, pelo mesmo motivo da reversao: o gatilho da onda 3 existe
+  // pra impulso de alta e de baixa, e esconder um deles atras do modo era
+  // exatamente o defeito que te tirou de um short certo.
+  let gC = null, gV = null;
+  try{ gC = gatilhoOnda3('compra'); }catch(e){}
+  try{ gV = gatilhoOnda3('venda');  }catch(e){}
+  try{
+    if(gC) registraSinal('onda3', 'compra', gC.disparado, {rr:gC.rr, conf:gC.contagem && gC.contagem.confianca});
+    if(gV) registraSinal('onda3', 'venda',  gV.disparado, {rr:gV.rr, conf:gV.contagem && gV.contagem.confianca});
+  }catch(e){}
+  const grau = x => !x ? -1 : (x.disparado?100:x.armado?50:0)
+                     + (x.checks ? x.checks.filter(c=>c.ok).length : 0);
+  const g = grau(gV) > grau(gC) ? gV : gC;
+  const gOutro = (g === gC) ? gV : gC;
+  const lado = g ? g.lado : 'compra';
   const esc = t => String(t).replace(/[&<>]/g, x=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[x]));
   const nf = v => (v==null||!isFinite(v)) ? '--'
     : Number(v).toLocaleString('pt-BR',{maximumFractionDigits:2});
   if(!g || !g.checks){
+    // Mesmo sem contagem em lado nenhum, os DOIS motivos aparecem. Sair aqui
+    // mostrando so um lado era o mesmo defeito de novo, so que na saida de erro
+    // — que e justamente onde ninguem olha.
     if(cnt){ cnt.textContent = '--'; cnt.style.color='var(--t3)'; }
-    box.innerHTML = '<div style="font-size:9px;color:var(--t3);line-height:1.45;">'
-      + esc(g ? g.porque : 'carregando') + '.</div>';
+    let hv = '';
+    [gC, gV].forEach(x => {
+      if(!x) return;
+      hv += '<div style="font-size:9px;color:var(--t3);line-height:1.45;margin-top:2px;">'
+          + '<b>onda 3 de ' + esc(x.lado) + ':</b> ' + esc(x.porque) + '.</div>';
+    });
+    box.innerHTML = hv || '<div style="font-size:9px;color:var(--t3);">carregando.</div>';
     return;
   }
   const cor = g.disparado ? 'var(--green)' : g.armado ? 'var(--goldd)' : 'var(--t3)';
@@ -3410,6 +3454,19 @@ function renderGatilho3(){
          + ' ate o alvo 1,618, contra o stop tecnico</span>'
          + (g.rr < 1 ? ' &mdash; alvo mais perto que o stop, isso nao compensa' : '') + '</div>';
     }
+  }
+  if(gOutro && gOutro.checks){
+    const okO = gOutro.checks.filter(c=>c.ok).length;
+    const cO = gOutro.disparado ? 'var(--green)' : gOutro.armado ? 'var(--goldd)' : 'var(--t3)';
+    h += '<div style="margin-top:6px;padding-top:5px;border-top:1px solid var(--bd);'
+       + 'font-size:9px;color:'+cO+';"><b>'
+       + (gOutro.disparado?'DISPAROU':gOutro.armado?'ARMADO':'FORMANDO')
+       + '</b> <span style="color:var(--t3);">onda 3 de ' + esc(gOutro.lado)
+       + ' &mdash; ' + okO + '/' + gOutro.checks.length + '</span></div>';
+  }else if(gOutro){
+    h += '<div style="margin-top:6px;padding-top:5px;border-top:1px solid var(--bd);'
+       + 'font-size:9px;color:var(--t3);">onda 3 de ' + esc(gOutro.lado) + ': '
+       + esc(gOutro.porque) + '</div>';
   }
   box.innerHTML = h;
 }
@@ -3636,6 +3693,229 @@ function renderFractal(){
 }
 window.renderFractal = renderFractal;
 
+
+// ══════════════════════════════════════════════════════
+// LOG DE APARICOES E DESFECHOS — os dados frios de verdade
+// ══════════════════════════════════════════════════════
+// Tudo que o app mede hoje e historico de PRECO. Isso responde "o que costuma
+// acontecer depois desta configuracao", mas nao responde "o que aconteceu
+// depois dos sinais que ESTE app deu, neste ativo, neste tempo, com estes
+// limiares". A segunda pergunta e a unica que corrige a ferramenta, e ela so
+// tem resposta se as aparicoes forem gravadas na hora em que acontecem.
+//
+// O metodo e o mesmo de sempre, de proposito: barreira dupla, +1 ATR contra
+// -1 ATR, horizonte fixo. Se cada painel medisse com regra diferente eles nao
+// poderiam ser comparados entre si — e comparar e o ponto.
+//
+// GRAVA NA BORDA DE SUBIDA, nao a cada leitura: um sinal que fica ativo por
+// 30 velas e UMA aparicao, nao 30. Sem isso a amostra encheria de copias do
+// mesmo evento e a taxa perderia significado.
+//
+// E o mais importante: ELLIOTT ENTRA AQUI COMO DADO NEUTRO. Ele e gravado
+// junto de cada aparicao, mas nao decide nada. Se depois de algumas centenas
+// de casos a contagem mostrar que separa acerto de erro, ela sobe pra
+// confirmacao com numero atras. Se nao mostrar, fica como esta. E o unico jeito
+// honesto de promover um indicador: pelo dado, nao pela reputacao.
+
+const LOG_CHAVE = 'atlas_log_sinais';
+const LOG_MAX = 400;
+const LOG_HORIZONTE = 12;
+const LOG_BARREIRA = 1.0;
+
+let logSinais = [];
+try{
+  const g = localStorage.getItem(LOG_CHAVE);
+  if(g) logSinais = JSON.parse(g) || [];
+}catch(e){ logSinais = []; }
+let logBordas = {};   // tipo|lado -> estava ativo na leitura anterior?
+
+function salvaLog(){
+  try{
+    if(logSinais.length > LOG_MAX) logSinais = logSinais.slice(-LOG_MAX);
+    localStorage.setItem(LOG_CHAVE, JSON.stringify(logSinais));
+  }catch(e){}
+}
+
+// O retrato de Elliott no momento da aparicao. Neutro: vai junto, nao pesa.
+function elliottNeutro(){
+  try{
+    const l = elliottAtual();
+    if(!l) return {contagem:null};
+    return {contagem:{tipo:l.tipo, onde:l.onde, direcao:l.direcao,
+                      confianca:l.confianca, grau:l.grau, comFluxo:!!l.temFluxo}};
+  }catch(e){ return {contagem:null}; }
+}
+
+function registraSinal(tipo, lado, ativo, extra){
+  const chave = tipo + '|' + lado + '|' + currentSym + '|' + currentTF;
+  const antes = !!logBordas[chave];
+  logBordas[chave] = !!ativo;
+  if(!ativo || antes) return null;   // so na borda de subida
+  if(!candles || candles.length < 30) return null;
+  const n = candles.length - 1;
+  let atr = null;
+  try{
+    const a = atrCalc(candles.map(c=>c.high), candles.map(c=>c.low), candles.map(c=>c.close), 14);
+    atr = a[a.length-1];
+  }catch(e){}
+  if(!(atr > 0)) return null;
+  const reg = {
+    id: Date.now() + '-' + Math.random().toString(36).slice(2,7),
+    quando: Date.now(), velaTime: candles[n].time,
+    sym: currentSym, tf: currentTF,
+    tipo, lado, preco: candles[n].close, atr,
+    elliott: elliottNeutro().contagem,   // dado neutro, presente
+    extra: extra || null,
+    desfecho: null, resolvido: null,
+  };
+  logSinais.push(reg);
+  salvaLog();
+  return reg;
+}
+
+// Resolve o que ja tem futuro suficiente. Roda junto do render, mas so mexe no
+// que ainda esta pendente e no ativo/tempo atuais — nao da pra resolver um
+// sinal de 4h com as velas de 1m na tela.
+function resolveLog(){
+  if(!candles || candles.length < 5) return 0;
+  let mudou = 0;
+  logSinais.forEach(r => {
+    if(r.desfecho != null) return;
+    if(r.sym !== currentSym || r.tf !== currentTF) return;
+    const i0 = candles.findIndex(c => c.time === r.velaTime);
+    if(i0 < 0) return;
+    const compra = r.lado === 'compra';
+    const alvo = compra ? r.preco + r.atr*LOG_BARREIRA : r.preco - r.atr*LOG_BARREIRA;
+    const stop = compra ? r.preco - r.atr*LOG_BARREIRA : r.preco + r.atr*LOG_BARREIRA;
+    const ate = Math.min(candles.length-1, i0 + LOG_HORIZONTE);
+    for(let j=i0+1; j<=ate; j++){
+      const bAlvo = compra ? candles[j].high >= alvo : candles[j].low  <= alvo;
+      const bStop = compra ? candles[j].low  <= stop : candles[j].high >= stop;
+      if(bAlvo && bStop){ r.desfecho = 'ambiguo'; r.resolvido = Date.now(); mudou++; return; }
+      if(bAlvo){ r.desfecho = 'acerto'; r.resolvido = Date.now(); mudou++; return; }
+      if(bStop){ r.desfecho = 'erro';   r.resolvido = Date.now(); mudou++; return; }
+    }
+    // horizonte cumprido sem tocar nenhuma barreira
+    if(ate - i0 >= LOG_HORIZONTE){ r.desfecho = 'neutro'; r.resolvido = Date.now(); mudou++; }
+  });
+  if(mudou) salvaLog();
+  return mudou;
+}
+
+// Estatistica por tipo de sinal, e — o pedaco que interessa pro Elliott — a
+// mesma estatistica FATIADA pela contagem, pra medir se ela separa alguma coisa.
+function estatisticasLog(filtroSym, filtroTf){
+  const rs = logSinais.filter(r =>
+    (!filtroSym || r.sym === filtroSym) && (!filtroTf || r.tf === filtroTf));
+  const porTipo = {};
+  rs.forEach(r => {
+    const k = r.tipo + ' ' + r.lado;
+    const g = porTipo[k] || (porTipo[k] = {aparicoes:0, acertos:0, erros:0, pendentes:0, outros:0});
+    g.aparicoes++;
+    if(r.desfecho === 'acerto') g.acertos++;
+    else if(r.desfecho === 'erro') g.erros++;
+    else if(r.desfecho == null) g.pendentes++;
+    else g.outros++;
+  });
+  Object.values(porTipo).forEach(g => {
+    const dec = g.acertos + g.erros;
+    g.decididos = dec;
+    g.taxa = dec > 0 ? +(g.acertos/dec*100).toFixed(1) : null;
+  });
+  // ELLIOTT COMO DADO NEUTRO, medido: os sinais que tinham contagem a favor
+  // acertaram mais que os que nao tinham?
+  const comContagem = {aFavor:{a:0,e:0}, contra:{a:0,e:0}, semContagem:{a:0,e:0}};
+  rs.forEach(r => {
+    if(r.desfecho !== 'acerto' && r.desfecho !== 'erro') return;
+    const c = r.elliott;
+    let balde;
+    if(!c) balde = comContagem.semContagem;
+    else if(c.direcao === (r.lado === 'compra' ? 'alta' : 'baixa')) balde = comContagem.aFavor;
+    else balde = comContagem.contra;
+    if(r.desfecho === 'acerto') balde.a++; else balde.e++;
+  });
+  const tx = b => (b.a+b.e) > 0 ? +(b.a/(b.a+b.e)*100).toFixed(1) : null;
+  return {total:rs.length, porTipo,
+    elliott:{
+      aFavor:{n:comContagem.aFavor.a+comContagem.aFavor.e, taxa:tx(comContagem.aFavor)},
+      contra:{n:comContagem.contra.a+comContagem.contra.e, taxa:tx(comContagem.contra)},
+      sem:{n:comContagem.semContagem.a+comContagem.semContagem.e, taxa:tx(comContagem.semContagem)},
+    }};
+}
+function limpaLog(){ logSinais = []; logBordas = {}; salvaLog();
+  try{ renderLog(); }catch(e){}
+  if(typeof showInfoToast==='function') showInfoToast('LOG','registro apagado'); }
+window.registraSinal = registraSinal;
+window.resolveLog = resolveLog;
+window.estatisticasLog = estatisticasLog;
+window.limpaLog = limpaLog;
+window.logSinais = logSinais;
+
+function renderLog(){
+  const box = document.getElementById('log-box');
+  const cnt = document.getElementById('log-count');
+  if(!box) return;
+  try{ resolveLog(); }catch(e){}
+  const st = estatisticasLog();
+  const esc = t => String(t).replace(/[&<>]/g, x=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[x]));
+  if(cnt){ cnt.textContent = st.total || '0'; cnt.style.color = st.total ? 'var(--t1)' : 'var(--t3)'; }
+  if(!st.total){
+    box.innerHTML = '<div style="font-size:9px;color:var(--t3);line-height:1.45;">'
+      + 'Nenhuma aparicao gravada ainda. Cada vez que um painel armar ou disparar, ele'
+      + ' grava o que estava dizendo e, ' + LOG_HORIZONTE + ' velas depois, o que aconteceu'
+      + ' (mesma barreira de ' + LOG_BARREIRA + ' ATR dos outros paineis). Em algumas'
+      + ' semanas isto vira a sua taxa base, no seu ativo e no seu tempo.</div>';
+    return;
+  }
+  let h = '';
+  const chaves = Object.keys(st.porTipo).sort();
+  chaves.forEach(k => {
+    const g = st.porTipo[k];
+    const c = g.taxa == null ? 'var(--t3)' : g.taxa >= 55 ? 'var(--green)'
+            : g.taxa <= 45 ? 'var(--red)' : 'var(--goldd)';
+    h += '<div style="font-size:9px;display:flex;gap:6px;align-items:baseline;margin-top:2px;">'
+       + '<span style="flex:1;color:var(--t2);"><b>'+esc(k)+'</b></span>'
+       + '<span style="color:var(--t3);">'+g.aparicoes+' apar.</span>'
+       + '<span style="width:58px;text-align:right;color:'+c+';font-weight:700;">'
+       + (g.taxa!=null ? g.taxa+'% ('+g.decididos+')' : g.pendentes+' pend.')
+       + '</span></div>';
+  });
+  // ── ELLIOTT COMO DADO NEUTRO, e a medicao que decide se ele merece subir
+  const el = st.elliott;
+  if(el.aFavor.n + el.contra.n + el.sem.n > 0){
+    h += '<div style="font-size:8px;color:var(--t3);letter-spacing:.5px;margin-top:7px;">'
+       + 'ELLIOTT COMO DADO NEUTRO</div>';
+    const lin = (rot, b) => '<div style="font-size:9px;display:flex;gap:6px;">'
+       + '<span style="flex:1;color:var(--t3);">'+rot+'</span>'
+       + '<span style="color:var(--t2);">' + (b.taxa!=null ? '<b>'+b.taxa+'%</b>' : '--')
+       + ' <span style="color:var(--t3);">em '+b.n+'</span></span></div>';
+    h += lin('contagem a favor', el.aFavor);
+    h += lin('contagem contra',  el.contra);
+    h += lin('sem contagem',     el.sem);
+    const dif = (el.aFavor.taxa != null && el.contra.taxa != null)
+              ? +(el.aFavor.taxa - el.contra.taxa).toFixed(1) : null;
+    const bastante = el.aFavor.n >= 30 && el.contra.n >= 30;
+    h += '<div style="font-size:9px;color:var(--t3);margin-top:3px;line-height:1.45;">'
+       + (dif == null ? 'Ainda nao da pra comparar os baldes.'
+          : !bastante ? 'Diferenca de <b>' + (dif>0?'+':'') + dif + '</b> pontos, mas com'
+              + ' amostra pequena demais pra valer &mdash; precisa de 30 de cada lado.'
+          : Math.abs(dif) < 8
+            ? 'Diferenca de apenas ' + dif + ' pontos: <b>a contagem nao esta separando'
+              + ' acerto de erro.</b> Ela continua como dado neutro, e esse e o resultado'
+              + ' honesto &mdash; nao um defeito.'
+            : 'Diferenca de <b>' + (dif>0?'+':'') + dif + '</b> pontos com amostra suficiente:'
+              + ' a contagem <b>esta</b> separando. Aqui ela ja teria numero pra virar'
+              + ' confirmacao no checklist.')
+       + '</div>';
+  }
+  h += '<div style="margin-top:6px;font-size:8px;color:var(--t3);line-height:1.4;">'
+     + 'barreira de ' + LOG_BARREIRA + ' ATR em ' + LOG_HORIZONTE + ' velas &middot; grava so'
+     + ' na borda (um sinal ativo por 30 velas e UMA aparicao) &middot; fica no seu navegador'
+     + ' <span onclick="limpaLog()" style="cursor:pointer;color:var(--red);">[apagar]</span></div>';
+  box.innerHTML = h;
+}
+window.renderLog = renderLog;
+
 // ── A COMUNICACAO ────────────────────────────────────────────────────────
 // O painel e escrito na ordem em que a decisao acontece: primeiro o veredito,
 // depois a frase do que falta, depois a lista item a item. Quem esta com a mao
@@ -3730,6 +4010,24 @@ function renderPadrao(){
              f.linhas.filter(l=>l.classe==='confirmacao'), false);
   h += grupo('VETOS &mdash; matam o padrao completo',
              f.linhas.filter(l=>l.classe==='veto'), true);
+  // NEUTRO: presente e visivel, mas explicitamente fora da conta. Mostrar sem
+  // dizer que nao conta seria pior do que nao mostrar.
+  const nts = f.linhas.filter(l=>l.classe==='neutro');
+  if(nts.length){
+    h += '<div style="font-size:8px;color:var(--t3);letter-spacing:.5px;margin-top:5px;">'
+       + 'NEUTRO &mdash; aparece, nao decide</div>';
+    nts.forEach(l => {
+      h += '<div style="font-size:9px;color:var(--t3);display:flex;gap:5px;align-items:baseline;">'
+         + '<span style="width:9px;flex:none;">&middot;</span>'
+         + '<span><b>'+esc(l.nome)+'</b> '+esc(l.txt||'')+'</span></div>';
+    });
+  }
+
+  // registra no log os dois lados do portao, na borda de liberacao
+  try{
+    registraSinal('padrao', 'compra', p.compra.estado === 'liberado', {conf:p.compra.confirmOk});
+    registraSinal('padrao', 'venda',  p.venda.estado  === 'liberado', {conf:p.venda.confirmOk});
+  }catch(e){}
 
   // ── A PROBABILIDADE, e o "nao" medido junto
   // A taxa do setup sozinha engana: num mercado que sobe, quase todo filtro
@@ -6257,6 +6555,7 @@ function iniciaForca(){
     try{ renderReversao(); }catch(e){}      // o portao da virada, que o de continuacao nunca aprova
     try{ renderGatilho3(); }catch(e){}      // e o QUANDO da continuacao: a entrada da onda 3
     try{ renderFractal(); }catch(e){}       // o encaixe entre escalas (rede propria, cache de 90s)
+    try{ renderLog(); }catch(e){}           // e o registro do que os paineis disseram, com desfecho
   },2000);
 }
 
