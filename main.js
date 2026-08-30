@@ -4728,7 +4728,14 @@ function retornoNa200(velasOpt){
 
   // stop atras da 89, com folga; alvo = o extremo de onde ele veio
   const folga = atr * 0.5;
-  const stop = compra ? S.ma89[n] - folga : S.ma89[n] + folga;
+  // STOP NO EXTREMO DA REJEICAO, nao na media. "MA89 menos meio ATR" nao e
+  // tecnico — e uma media com folga. O ponto onde a tese morre e o extremo do
+  // pavio que rejeitou: passou dali, a rejeicao falhou e nao ha o que defender.
+  // Fica mais perto, o que significa mais posicao pelo mesmo risco.
+  const stop = (velaRejeicao != null)
+    ? (compra ? S.lows[velaRejeicao]  - atr*0.15
+              : S.highs[velaRejeicao] + atr*0.15)
+    : (compra ? S.ma89[n] - folga : S.ma89[n] + folga);
   // o alvo e "de volta pro extremo de onde veio", mas com o pico limitado a
   // 5 ATR: um pico absurdo (ATR minusculo perto do movimento) faria o R:R
   // virar ficcao, e R:R inflado e o numero que convence alguem a entrar
@@ -4942,6 +4949,259 @@ function renderMagnetismo(){
   box.innerHTML = h;
 }
 window.renderMagnetismo = renderMagnetismo;
+
+
+// ══════════════════════════════════════════════════════
+// STOP TECNICO E PRE-STOP — antecipar o cruzamento 8/16
+// ══════════════════════════════════════════════════════
+// O stop que eu tinha posto era "MA89 menos meio ATR". Isso nao e tecnico, e uma
+// media com folga: o preco pode passar dali sem nada ter acontecido, e pode
+// invalidar a tese muito antes de chegar la.
+//
+// Stop tecnico e um lugar onde a TESE MORRE. No trampolim a tese e "a 89
+// rejeitou": se o preco passa do extremo do pavio que rejeitou, a rejeicao
+// falhou — nao ha mais nada pra defender. Esse ponto e mais perto e mais duro
+// que a media, o que muda tudo no tamanho da posicao.
+//
+// E vem o PRE-STOP, que e a parte que voce descreveu e que nao existia: em vez
+// de descobrir que errou quando o stop bate, olhar o cruzamento das EMA 8/16 no
+// 3m se aproximando. As duas convergindo contra a posicao e o aviso; o
+// cruzamento e a confirmacao. Da pra projetar quantas velas faltam no ritmo
+// atual — nao e previsao, e extrapolacao de uma reta, e o painel diz isso.
+//
+// Os tres tempos tem papeis diferentes e nao se misturam:
+//   3m  — o AVISO. Cruzamento continuo, e o primeiro lugar onde vira.
+//   15m — a TENDENCIA que precisa se manter. Se ela virar, nao e mais pre-stop.
+//   1h  — o VIES. Nao dispara nada; diz se voce esta a favor ou contra a mare.
+
+const PRESTOP_TFS = {aviso:'3m', tendencia:'15m', vies:'1h'};
+let preStopCache = null, preStopQuando = 0, preStopCarregando = false;
+const PRESTOP_VALIDADE = 30000;   // 30s: vela de 3m dura 180s
+
+// A relacao entre as duas medias rapidas, e pra onde ela esta indo.
+function relacao816(velas){
+  if(!velas || velas.length < 40) return null;
+  const closes = velas.map(c=>c.close);
+  const e8 = ema(closes,8), e16 = ema(closes,16);
+  const atrA = atrCalc(velas.map(c=>c.high), velas.map(c=>c.low), closes, 14);
+  const n = closes.length-1;
+  if(e8[n]==null || e16[n]==null || !(atrA[n]>0)) return null;
+  const gap = (e8[n]-e16[n]) / atrA[n];           // em ATR, comparavel entre tempos
+  const K = 5;
+  const gapAntes = (e8[n-K]!=null && e16[n-K]!=null && atrA[n-K]>0)
+    ? (e8[n-K]-e16[n-K]) / atrA[n-K] : null;
+  const passo = gapAntes==null ? null : (gap - gapAntes)/K;   // ATR por vela
+  // PROJECAO: quantas velas ate o gap chegar a zero, no ritmo atual. Extrapolar
+  // uma reta nao e prever — e dizer o que acontece se nada mudar, que e uma
+  // afirmacao bem mais modesta e e a unica honesta aqui.
+  let velasAteCruzar = null;
+  if(passo != null && Math.abs(passo) > 1e-6){
+    const v = -gap / passo;
+    if(v > 0 && v < 60) velasAteCruzar = Math.round(v*10)/10;
+  }
+  return {
+    lado: gap >= 0 ? 'alta' : 'baixa',
+    gap: +gap.toFixed(3), passo: passo==null?null:+passo.toFixed(4),
+    convergindo: passo != null && (gap > 0 ? passo < 0 : passo > 0),
+    velasAteCruzar,
+    e8:e8[n], e16:e16[n], atr:atrA[n], preco:closes[n],
+  };
+}
+window.relacao816 = relacao816;
+
+async function carregaPreStop(sym){
+  if(preStopCarregando) return preStopCache;
+  if(preStopCache && Date.now()-preStopQuando < PRESTOP_VALIDADE && preStopCache.sym === sym)
+    return preStopCache;
+  preStopCarregando = true;
+  const out = {sym, quando:Date.now()};
+  try{
+    for(const papel of Object.keys(PRESTOP_TFS)){
+      const tf = PRESTOP_TFS[papel];
+      try{
+        const d = await fetchCandles(sym, tf, 200);
+        out[papel] = d && d.length ? Object.assign({tf}, relacao816(d) || {}) : {tf, erro:true};
+      }catch(e){ out[papel] = {tf, erro:true}; }
+    }
+    preStopCache = out; preStopQuando = Date.now();
+  } finally { preStopCarregando = false; }
+  return preStopCache;
+}
+window.carregaPreStop = carregaPreStop;
+
+// ── O STOP TECNICO ───────────────────────────────────────────────────────
+// Candidatos ordenados por QUALIDADE ESTRUTURAL, nao por distancia: o extremo
+// da rejeicao e o ponto onde a tese morre; a media e so onde ela fica
+// desconfortavel. O painel mostra os dois e a diferenca de tamanho que isso da.
+function stopTecnicoTrampolim(){
+  let rt = null;
+  try{ rt = retornoNa200(); }catch(e){ return null; }
+  if(!rt || !rt.checks) return null;
+  const S = seriesMagnetismo();
+  if(!S) return null;
+  const n = S.closes.length - 1;
+  const atr = S.atr[n];
+  if(!(atr > 0)) return null;
+  const compra = rt.lado === 'compra';
+  const cands = [];
+
+  // 1) O EXTREMO DA REJEICAO — o melhor, porque e onde a tese morre
+  if(rt.velaRejeicao != null){
+    const i = rt.velaRejeicao;
+    const ext = compra ? S.lows[i] : S.highs[i];
+    cands.push({preco: ext + (compra?-1:1)*atr*0.15, ordem:1,
+      porque:'extremo do pavio que rejeitou a MA89 — passar dali e a rejeicao ter falhado'});
+  }
+  // 2) O ultimo pivo estrutural
+  try{
+    const {altos, baixos} = achaPivos(candles, 6);
+    const lista = compra ? baixos : altos;
+    const u = lista[lista.length-1];
+    if(u != null){
+      const p = compra ? candles[u].low : candles[u].high;
+      if(compra ? p < S.closes[n] : p > S.closes[n])
+        cands.push({preco: p + (compra?-1:1)*atr*0.25, ordem:2,
+          porque:'ultimo ' + (compra?'fundo':'topo') + ' confirmado — quebra de estrutura'});
+    }
+  }catch(e){}
+  // 3) A media, que era o unico ate agora
+  cands.push({preco: rt.ma89 + (compra?-1:1)*atr*0.5, ordem:3,
+    porque:'MA89 com meio ATR — o mais largo, e o menos informativo'});
+
+  const preco = S.closes[n];
+  const dist = p => +(Math.abs(preco-p)/preco*100).toFixed(2);
+  const distAtr = p => +(Math.abs(preco-p)/atr).toFixed(2);
+  // QUALIDADE ESTRUTURAL DECIDE A PREFERENCIA, MAS NAO SALVA UM CANDIDATO
+  // ABSURDO. Ordenar so pela qualidade escolheu um "ultimo topo confirmado"
+  // a 261 ATR do preco e chamou aquilo de stop tecnico. Um ponto a 66% de
+  // distancia nao e stop de coisa nenhuma — e uma nota de rodape.
+  //
+  // Este setup vive de stop curto: alem de STOP_MAX_ATR o candidato deixa de
+  // ser stop, por melhor que seja a estrutura dele.
+  const STOP_MAX_ATR = 4;
+  const comDist = cands.map(c=>Object.assign({}, c,
+    {dist:dist(c.preco), distAtr:distAtr(c.preco)}));
+  const validos = comDist.filter(c => c.distAtr <= STOP_MAX_ATR);
+  const usaveis = validos.length ? validos : [comDist.reduce((m,c)=>
+    (!m || c.distAtr < m.distAtr) ? c : m, null)];
+  usaveis.sort((a,b)=>a.ordem-b.ordem);
+  const escolhido = usaveis[0];
+  const maisLargo = usaveis.reduce((m,c)=> (!m || c.distAtr > m.distAtr) ? c : m, null);
+  return {
+    lado: rt.lado, preco, maxAtr:STOP_MAX_ATR,
+    escolhido,
+    todos: usaveis,
+    descartados: comDist.filter(c => c.distAtr > STOP_MAX_ATR)
+      .map(c=>({preco:c.preco, distAtr:c.distAtr, porque:c.porque})),
+    // so e ganho se o escolhido for mesmo MAIS PERTO que a alternativa larga
+    ganhoTamanho: (maisLargo && maisLargo !== escolhido && escolhido.distAtr > 0)
+      ? +(maisLargo.distAtr/escolhido.distAtr).toFixed(2) : null,
+  };
+}
+window.stopTecnicoTrampolim = stopTecnicoTrampolim;
+
+function renderPreStop(){
+  const box = document.getElementById('prestop-box');
+  const cnt = document.getElementById('prestop-count');
+  if(!box) return;
+  const sym = (typeof currentSym!=='undefined') ? currentSym : 'BTCUSDT';
+  carregaPreStop(sym).then(()=>{ try{ desenha(); }catch(e){} });
+  desenha();
+
+  function desenha(){
+    const esc = t => String(t).replace(/[&<>]/g, x=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[x]));
+    const nf = v => (v==null||!isFinite(v)) ? '--'
+      : Number(v).toLocaleString('pt-BR',{maximumFractionDigits:2});
+    const c = preStopCache;
+    let h = '';
+
+    // ── O STOP TECNICO
+    let st = null;
+    try{ st = stopTecnicoTrampolim(); }catch(e){}
+    if(st){
+      h += '<div style="font-size:8px;color:var(--t3);letter-spacing:.5px;">'
+         + 'STOP TECNICO &mdash; onde a tese morre</div>';
+      h += '<div style="font-size:11px;font-weight:800;color:var(--red);">'
+         + nf(st.escolhido.preco) + ' <span style="font-size:9px;font-weight:600;color:var(--t3);">'
+         + st.escolhido.dist + '% &middot; ' + st.escolhido.distAtr + ' ATR</span></div>';
+      h += '<div style="font-size:9px;color:var(--t2);line-height:1.4;">'
+         + esc(st.escolhido.porque) + '</div>';
+      if(st.descartados && st.descartados.length){
+        h += '<div style="font-size:9px;color:var(--t3);margin-top:2px;line-height:1.4;">'
+           + 'descartado por distancia: ' + st.descartados.map(d=>nf(d.preco)+' ('+d.distAtr
+             +' ATR)').join(', ') + ' &mdash; alem de ' + st.maxAtr
+           + ' ATR deixa de ser stop deste setup, por melhor que seja a estrutura.</div>';
+      }
+      if(st.todos.length > 1){
+        h += '<div style="font-size:9px;color:var(--t3);margin-top:2px;">alternativas: '
+           + st.todos.slice(1).map(t=>nf(t.preco)+' ('+t.dist+'%)').join(', ') + '</div>';
+      }
+      if(st.ganhoTamanho && st.ganhoTamanho > 1.2){
+        h += '<div style="font-size:9px;color:var(--green);margin-top:2px;line-height:1.4;">'
+           + 'O stop tecnico e <b>' + st.ganhoTamanho + 'x mais perto</b> que o da media: '
+           + 'com o mesmo risco em dinheiro, cabe ' + st.ganhoTamanho + 'x mais posicao. '
+           + 'E de onde vem a vantagem, nao de acertar mais.</div>';
+      }
+    }
+
+    // ── OS TRES TEMPOS
+    h += '<div style="font-size:8px;color:var(--t3);letter-spacing:.5px;margin-top:7px;">'
+       + 'EMA 8/16 NOS TRES PAPEIS</div>';
+    if(!c){
+      h += '<div style="font-size:9px;color:var(--t3);">lendo 3m, 15m e 1h...</div>';
+      box.innerHTML = h; return;
+    }
+    const papeis = [
+      ['aviso','3m — o aviso'], ['tendencia','15m — a tendencia'], ['vies','1h — o vies']
+    ];
+    let alerta = null;
+    papeis.forEach(([k,rot])=>{
+      const r = c[k];
+      if(!r || r.erro || r.gap == null){
+        h += '<div style="font-size:9px;color:var(--t3);">'+esc(rot)+': sem dados</div>';
+        return;
+      }
+      const cor = r.lado === 'alta' ? 'var(--green)' : 'var(--red)';
+      const seta = r.lado === 'alta' ? '&uarr;' : '&darr;';
+      h += '<div style="display:flex;gap:6px;align-items:baseline;font-size:9px;margin-top:1px;">'
+         + '<span style="width:96px;color:var(--t2);">'+esc(rot)+'</span>'
+         + '<span style="width:12px;color:'+cor+';font-weight:800;">'+seta+'</span>'
+         + '<span style="width:56px;color:var(--t3);">'+(r.gap>=0?'+':'')+r.gap+' ATR</span>'
+         + '<span style="flex:1;color:'+(r.convergindo?'var(--goldd)':'var(--t3)')+';">'
+         + (r.convergindo
+             ? 'convergindo' + (r.velasAteCruzar!=null ? ' &middot; cruza em ~'+r.velasAteCruzar+' velas' : '')
+             : 'abrindo')
+         + '</span></div>';
+      if(k==='aviso' && r.convergindo && r.velasAteCruzar != null && r.velasAteCruzar <= 4)
+        alerta = r;
+    });
+    if(cnt){
+      cnt.textContent = alerta ? '~'+alerta.velasAteCruzar+'v' : 'ok';
+      cnt.style.color = alerta ? 'var(--goldd)' : 'var(--t3)';
+    }
+
+    // ── O AVISO, quando o 3m esta prestes a cruzar
+    if(alerta){
+      h += '<div style="background:rgba(232,163,23,.12);border:1px solid var(--goldd);'
+         + 'border-radius:4px;padding:5px 7px;margin-top:6px;">'
+         + '<div style="font-size:10px;font-weight:800;color:var(--goldd);">PRE-STOP</div>'
+         + '<div style="font-size:9px;color:var(--t2);line-height:1.45;margin-top:2px;">'
+         + 'No 3m as duas medias estao convergindo e, <b>no ritmo atual</b>, cruzam em '
+         + '~' + alerta.velasAteCruzar + ' velas (' + Math.round(alerta.velasAteCruzar*3) + ' min). '
+         + 'Isso nao e previsao &mdash; e o que acontece se o ritmo nao mudar, e ele muda. '
+         + 'Serve pra voce decidir ANTES do stop, nao pra confiar no numero.'
+         + (c.tendencia && c.tendencia.lado && c.aviso && c.aviso.lado !== c.tendencia.lado
+             ? ' O 15m ainda segura o outro lado: cruzamento no 3m contra a tendencia do 15m'
+               + ' costuma ser respiro, nao virada.'
+             : ' <b>E o 15m esta do mesmo lado</b> — quando os dois viram juntos, nao e respiro.')
+         + '</div></div>';
+    }
+    h += '<div style="font-size:8px;color:var(--t3);margin-top:4px;">'
+       + 'atualizado ha ' + Math.round((Date.now()-c.quando)/1000) + 's</div>';
+    box.innerHTML = h;
+  }
+}
+window.renderPreStop = renderPreStop;
 
 // ── A COMUNICACAO ────────────────────────────────────────────────────────
 // O painel e escrito na ordem em que a decisao acontece: primeiro o veredito,
@@ -7587,6 +7847,7 @@ function iniciaForca(){
     try{ renderFractal(); }catch(e){}       // o encaixe entre escalas (rede propria, cache de 90s)
     try{ renderLog(); }catch(e){}           // e o registro do que os paineis disseram, com desfecho
     try{ renderMagnetismo(); }catch(e){}    // a 200 como ima e como trampolim
+    try{ renderPreStop(); }catch(e){}       // stop tecnico e o cruzamento 8/16 do 3m
     try{ renderSinal(); }catch(e){}         // o consolidador: uma resposta so
   },2000);
 }
