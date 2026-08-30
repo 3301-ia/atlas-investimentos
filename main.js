@@ -1653,6 +1653,392 @@ function renderElliott(){
 window.renderElliott = renderElliott;
 
 // ══════════════════════════════════════════════════════
+// PADRAO DE POSICIONAMENTO — o checklist que segura a mao
+// ══════════════════════════════════════════════════════
+// Isto nao e mais um indicador. E um PORTAO. O app inteiro ate aqui responde
+// "o que esta acontecendo"; esta secao responde uma coisa so: "ja da pra
+// entrar?" — e a resposta padrao e NAO.
+//
+// Como funciona: a cada avaliacao o motor le o mercado, marca cada regra com
+// visto ou falta, e diz em uma frase o que esta faltando. Enquanto faltar
+// qualquer obrigatoria, o portao fica fechado. Quando fecha tudo, ele ainda
+// espera PADRAO_ESPERA avaliacoes seguidas antes de liberar — condicao que
+// pisca uma vez e volta nao e padrao, e ruido.
+//
+// Tres classes de regra, e a diferenca entre elas e o coracao da coisa:
+//   OBRIGATORIA — falta uma, nao entra. Sem excecao, sem "mas dessa vez".
+//   CONFIRMACAO — precisa de N das M. Sao as que dizem se o momento e bom,
+//                 nao se e possivel.
+//   VETO        — mata o padrao mesmo com tudo o resto verde. Sao as coisas
+//                 que costumam aparecer bem no momento em que tudo parece
+//                 perfeito, que e exatamente quando se perde dinheiro.
+//
+// O contador de sessao existe pelo mesmo motivo: ver "3 padroes formados, 1
+// liberado" depois de duas horas e o dado que corrige a mao pesada.
+
+const PADRAO_ESPERA = 3;        // avaliacoes seguidas prontas antes de liberar
+const PADRAO_CONFIRMA_MIN = 3;  // quantas confirmacoes das 5
+
+// Cada regra devolve {ok, txt, falta}. 'falta' e o que ainda precisa
+// acontecer, escrito pra ser lido no meio de uma frase.
+const PADRAO_REGRAS = [
+  // ── OBRIGATORIAS
+  {id:'ema200', classe:'obrigatoria', nome:'preco do lado certo da EMA200',
+   testa(c, lado){
+     if(c.ema200 == null || c.preco == null) return {ok:false, txt:'sem EMA200 ainda'};
+     const dist = (c.preco/c.ema200 - 1) * 100;
+     const ok = lado === 'compra' ? dist > 0 : dist < 0;
+     return {ok,
+       txt: 'preco ' + (dist>=0?'acima':'abaixo') + ' da EMA200 (' + dist.toFixed(2) + '%)',
+       falta: ok ? null : 'falta ' + Math.abs(dist).toFixed(2) + '% pra cruzar a EMA200'};
+   }},
+
+  {id:'liberacao', classe:'obrigatoria', nome:'medias empilhadas',
+   testa(c, lado){
+     const alvo = lado === 'compra' ? 'alta' : 'baixa';
+     const ok = c.liberacao === alvo;
+     return {ok,
+       txt: c.liberacao ? 'empilhamento de ' + c.liberacao : 'medias embaralhadas',
+       falta: ok ? null : (c.liberacao
+         ? 'o empilhamento esta de ' + c.liberacao + ', contra o lado'
+         : 'EMA8 e EMA16 ainda nao estao as duas do mesmo lado da MA89 e da EMA200')};
+   }},
+
+  {id:'fluxo', classe:'obrigatoria', nome:'agressao do lado do trade',
+   testa(c, lado){
+     if(c.pressao == null) return {ok:false, txt:'sem fluxo agressor'};
+     const ok = lado === 'compra' ? c.pressao >= 10 : c.pressao <= -10;
+     const p = (c.pressao>=0?'+':'') + c.pressao.toFixed(1) + '%';
+     return {ok, txt: 'pressao ' + p,
+       falta: ok ? null : 'a agressao esta em ' + p + ', precisa de ' +
+              (lado==='compra' ? '+10% ou mais' : '-10% ou menos')};
+   }},
+
+  // ── CONFIRMACOES
+  {id:'direcao', classe:'confirmacao', nome:'inclinacao das medias',
+   testa(c, lado){
+     if(c.soma == null) return {ok:false, txt:'sem angulos'};
+     if(c.lateral) return {ok:false, txt:'medias lateralizadas', falta:'as medias estao sem inclinacao'};
+     const ok = lado === 'compra' ? c.soma > 0 : c.soma < 0;
+     return {ok, txt:'soma dos angulos ' + (c.soma>=0?'+':'') + c.soma.toFixed(1) + '°',
+       falta: ok ? null : 'a inclinacao aponta pro outro lado'};
+   }},
+
+  {id:'tempos', classe:'confirmacao', nome:'tempos maiores concordam',
+   testa(c, lado){
+     if(!c.tempos || !c.tempos.n) return {ok:false, txt:'Multi-TF sem leitura'};
+     const meu = lado === 'compra' ? c.tempos.alta : c.tempos.baixa;
+     const ok = meu > c.tempos.n/2;
+     return {ok, txt: meu + ' de ' + c.tempos.n + ' tempos do lado',
+       falta: ok ? null : 'so ' + meu + ' de ' + c.tempos.n + ' tempos acompanham'};
+   }},
+
+  {id:'cvd', classe:'confirmacao', nome:'CVD acompanha',
+   testa(c, lado){
+     if(!c.cvd) return {ok:false, txt:'CVD sem dados'};
+     const ok = lado === 'compra' ? c.cvd.subindo : !c.cvd.subindo;
+     return {ok, txt:'CVD ' + (c.cvd.subindo?'subindo':'caindo'),
+       falta: ok ? null : 'o acumulado do fluxo vai pro outro lado'};
+   }},
+
+  {id:'rsi', classe:'confirmacao', nome:'RSI com espaco pra andar',
+   testa(c, lado){
+     if(c.rsi == null) return {ok:false, txt:'sem RSI'};
+     const ok = lado === 'compra' ? (c.rsi >= 45 && c.rsi < 70)
+                                  : (c.rsi <= 55 && c.rsi > 30);
+     return {ok, txt:'RSI ' + c.rsi.toFixed(1),
+       falta: ok ? null : (lado==='compra'
+         ? (c.rsi < 45 ? 'RSI ainda fraco (' + c.rsi.toFixed(1) + ')'
+                       : 'RSI ja esticado (' + c.rsi.toFixed(1) + ')')
+         : (c.rsi > 55 ? 'RSI ainda forte (' + c.rsi.toFixed(1) + ')'
+                       : 'RSI ja esticado pra baixo (' + c.rsi.toFixed(1) + ')'))};
+   }},
+
+  {id:'estrutura', classe:'confirmacao', nome:'contagem de ondas sem violacao',
+   testa(c, lado){
+     if(!c.elliott) return {ok:false, txt:'sem contagem'};
+     if(c.elliott.violacoes.length)
+       return {ok:false, txt:'contagem violada', falta:'a contagem de Elliott esta violada'};
+     const mesmo = (c.elliott.direcao === 'alta') === (lado === 'compra');
+     if(!mesmo) return {ok:false, txt:'impulso de ' + c.elliott.direcao,
+       falta:'o impulso contado vai pro outro lado'};
+     // onda 5 e o fim do impulso, nao o comeco
+     if(c.elliott.onde === '5') return {ok:false, txt:'onda 5 — fim do impulso',
+       falta:'a contagem esta na onda 5, que e onde o impulso acaba'};
+     return {ok:true, txt:'onda ' + c.elliott.onde + ' de ' + c.elliott.direcao};
+   }},
+
+  // ── VETOS
+  {id:'esticado', classe:'veto', nome:'RSI em extremo',
+   testa(c, lado){
+     if(c.rsi == null) return {ok:false, txt:'--'};
+     const mau = lado === 'compra' ? c.rsi >= 75 : c.rsi <= 25;
+     return {ok:mau, txt: mau ? 'RSI em ' + c.rsi.toFixed(1) + ' — extremo' : 'RSI fora do extremo',
+       falta: mau ? 'RSI em ' + c.rsi.toFixed(1) + ': comprar aqui e pagar o topo do movimento' : null};
+   }},
+
+  {id:'seco', classe:'veto', nome:'mercado seco',
+   testa(c, lado){
+     const mau = !!(c.seco && c.seco > 0.5);
+     return {ok:mau, txt: mau ? 'mercado seco (grau ' + c.seco.toFixed(2) + ')' : 'mercado com participante',
+       falta: mau ? 'o mercado esta seco: sem volume, o movimento nao tem quem o sustente' : null};
+   }},
+
+  {id:'divergencia', classe:'veto', nome:'divergencia do CVD',
+   testa(c, lado){
+     if(!c.cvd || !c.cvd.tipo) return {ok:false, txt:'sem divergencia'};
+     const mau = lado === 'compra' ? c.cvd.tipo === 'baixista' : c.cvd.tipo === 'altista';
+     return {ok:mau, txt: mau ? 'divergencia ' + c.cvd.tipo : 'divergencia ' + c.cvd.tipo + ' (a favor)',
+       falta: mau ? 'ha divergencia ' + c.cvd.tipo + ' do CVD contra a entrada' : null};
+   }},
+];
+
+// A leitura do mercado, montada uma vez e passada pra todas as regras. Se um
+// dado nao existe ele fica null e a regra correspondente simplesmente nao
+// fecha — nunca chuta.
+function contextoPadrao(){
+  const c = {};
+  if(typeof candles === 'undefined' || !candles || candles.length < 60) return null;
+  const n = candles.length;
+  c.preco = candles[n-1].close;
+  try{ c.ema200 = ultimasEmas ? ultimasEmas.ema200 : null; }catch(e){ c.ema200 = null; }
+  try{ c.liberacao = estadoLiberacao(null); }catch(e){ c.liberacao = null; }
+  try{
+    const cls = classifyDirecao(direcaoAngles||{});
+    c.soma = cls.sumAngle; c.lateral = cls.isFlat;
+  }catch(e){ c.soma = null; c.lateral = true; }
+  try{ const f = forcaDoFluxo(20); c.pressao = f ? f.pressao : null; }catch(e){ c.pressao = null; }
+  try{
+    const r = rsiCalc(candles.map(x=>x.close), 14);
+    c.rsi = r && r.length ? r[r.length-1] : null;
+  }catch(e){ c.rsi = null; }
+  try{ c.cvd = divergenciaCVD(candles, 60); }catch(e){ c.cvd = null; }
+  try{
+    const ex = ultimaExaustao||[];
+    c.seco = (ex.length === n) ? ex[n-1] : null;
+  }catch(e){ c.seco = null; }
+  try{ c.elliott = elliottAtual(); }catch(e){ c.elliott = null; }
+  // OS TEMPOS MAIORES vem do calcMTF, nao do painel Multi-TF: o calcMTF ja
+  // alimenta o score e esta pronto desde o carregamento, enquanto o mtfEstado
+  // so existe se a pessoa abriu aquele painel. Amarrar uma confirmacao a um
+  // painel aberto deixava a regra impossivel de fechar sem querer.
+  c.tempos = null;
+  try{
+    const m = calcMTF();
+    const n = m.scoreBull + m.scoreBear;
+    if(n) c.tempos = {n, alta:m.scoreBull, baixa:m.scoreBear};
+  }catch(e){}
+  if(!c.tempos) try{
+    const mt = (typeof mtfEstado!=="undefined") ? mtfEstado.filter(Boolean) : [];
+    if(mt.length){
+      const alta = mt.filter(m=>m.cls && m.cls.sumAngle > 0).length;
+      c.tempos = {n:mt.length, alta, baixa:mt.length-alta};
+    }
+  }catch(e){}
+  return c;
+}
+
+// ── O ESTADO DA SESSAO ───────────────────────────────────────────────────
+// Guardado desde que a pagina abriu, porque a pergunta que corrige a mao
+// pesada e "quantos padroes eu vi hoje, e quantos de fato liberaram".
+const padraoSessao = {
+  inicio: Date.now(),
+  lados: {
+    compra: {estado:'longe', prontoHa:0, desde:{}, liberadoEm:null},
+    venda:  {estado:'longe', prontoHa:0, desde:{}, liberadoEm:null},
+  },
+  historico: [],   // {lado, quando, preco, estado}
+  formados: 0, liberados: 0, vetados: 0,
+};
+window.padraoSessao = padraoSessao;
+
+function avaliaPadrao(lado, ctx){
+  const c = ctx || contextoPadrao();
+  if(!c) return null;
+  const est = padraoSessao.lados[lado];
+  const linhas = PADRAO_REGRAS.map(rg => {
+    let r;
+    try{ r = rg.testa(c, lado); }catch(e){ r = {ok:false, txt:'erro na leitura'}; }
+    // 'desde' e quando a regra virou verde e ficou — serve pra dizer ha
+    // quanto tempo a peca esta no lugar
+    if(r.ok && !est.desde[rg.id]) est.desde[rg.id] = Date.now();
+    if(!r.ok) est.desde[rg.id] = null;
+    return {id:rg.id, classe:rg.classe, nome:rg.nome,
+            ok:r.ok, txt:r.txt, falta:r.falta||null, desde:est.desde[rg.id]||null};
+  });
+
+  const obrig   = linhas.filter(l=>l.classe==='obrigatoria');
+  const confirm = linhas.filter(l=>l.classe==='confirmacao');
+  const vetos   = linhas.filter(l=>l.classe==='veto');
+  const obrigOk   = obrig.filter(l=>l.ok).length;
+  const confirmOk = confirm.filter(l=>l.ok).length;
+  const vetoAtivo = vetos.filter(l=>l.ok);   // no veto, ok = a coisa ruim ESTA acontecendo
+
+  const completo = obrigOk === obrig.length && confirmOk >= PADRAO_CONFIRMA_MIN;
+  let estado;
+  if(vetoAtivo.length)      estado = 'vetado';
+  else if(completo)         estado = 'pronto';
+  else if(obrigOk > 0 || confirmOk > 0) estado = 'formando';
+  else                      estado = 'longe';
+
+  // A ESPERA. Padrao que fecha e abre no mesmo minuto nao e padrao. So libera
+  // depois de PADRAO_ESPERA avaliacoes seguidas fechado.
+  if(estado === 'pronto'){
+    est.prontoHa++;
+    if(est.prontoHa >= PADRAO_ESPERA) estado = 'liberado';
+  }else{
+    est.prontoHa = 0;
+  }
+
+  const antes = est.estado;
+  est.estado = estado;
+  if(antes !== estado){
+    if(estado === 'pronto')   padraoSessao.formados++;
+    if(estado === 'vetado')   padraoSessao.vetados++;
+    if(estado === 'liberado'){
+      padraoSessao.liberados++;
+      est.liberadoEm = Date.now();
+      padraoSessao.historico.push({lado, quando:Date.now(), preco:c.preco, estado:'liberado'});
+      if(padraoSessao.historico.length > 40) padraoSessao.historico.shift();
+    }
+  }
+
+  // A FRASE. E o que a pessoa le antes de clicar, entao ela diz o que ja esta
+  // no lugar e o que falta, nessa ordem, com numero.
+  let frase;
+  if(vetoAtivo.length){
+    frase = 'VETADO: ' + vetoAtivo.map(v=>v.falta||v.txt).join('; ') + '.';
+  }else if(estado === 'liberado'){
+    frase = 'Padrao de ' + lado + ' completo e sustentado por ' + est.prontoHa
+          + ' leituras: ' + obrigOk + '/' + obrig.length + ' obrigatorias e '
+          + confirmOk + '/' + confirm.length + ' confirmacoes.';
+  }else if(estado === 'pronto'){
+    frase = 'Fechou tudo, aguardando confirmar (' + est.prontoHa + ' de '
+          + PADRAO_ESPERA + ' leituras). Nao entre antes de fechar a espera.';
+  }else{
+    const faltas = obrig.filter(l=>!l.ok).map(l=>l.falta||l.txt);
+    const prontas = linhas.filter(l=>l.ok && l.classe!=='veto').map(l=>l.txt);
+    if(faltas.length){
+      frase = (prontas.length ? prontas.slice(0,2).join(', ') + ' — mas ' : 'Falta: ')
+            + faltas.join('; ') + '.';
+    }else{
+      frase = 'Obrigatorias fechadas, faltam confirmacoes: ' + confirmOk + ' de '
+            + PADRAO_CONFIRMA_MIN + ' necessarias.';
+    }
+  }
+
+  return {lado, estado, frase, linhas, obrigOk, obrigTotal:obrig.length,
+          confirmOk, confirmTotal:confirm.length, confirmMin:PADRAO_CONFIRMA_MIN,
+          vetos:vetoAtivo.map(v=>v.nome), prontoHa:est.prontoHa, ctx:c};
+}
+window.avaliaPadrao = avaliaPadrao;
+
+// Os dois lados de uma vez, reaproveitando o mesmo contexto — sao ~10 leituras
+// de indicador, nao faz sentido montar duas vezes.
+function padraoAgora(){
+  const c = contextoPadrao();
+  if(!c) return null;
+  const compra = avaliaPadrao('compra', c);
+  const venda  = avaliaPadrao('venda',  c);
+  // O FOCO E O LADO MAIS PERTO DE ENTRAR. So o estado nao basta: com os dois
+  // 'formando' o desempate caia sempre na compra, e o painel mostrava 0/3
+  // enquanto a venda estava em 3/3. Empatou o estado, ganha quem tem mais
+  // caixinha marcada.
+  const peso = p => ({longe:0, formando:1, vetado:1, pronto:2, liberado:3})[p.estado] || 0;
+  const nota = p => peso(p)*100 + p.obrigOk*10 + p.confirmOk;
+  const foco = nota(venda) > nota(compra) ? venda : compra;
+  return {compra, venda, foco, sessao:padraoSessao};
+}
+window.padraoAgora = padraoAgora;
+
+// ── A COMUNICACAO ────────────────────────────────────────────────────────
+// O painel e escrito na ordem em que a decisao acontece: primeiro o veredito,
+// depois a frase do que falta, depois a lista item a item. Quem esta com a mao
+// coçando le a primeira linha e ja sabe a resposta.
+const PADRAO_CORES = {
+  longe:    {cor:'var(--t3)',    rot:'FORA DE PADRAO'},
+  formando: {cor:'var(--goldd)', rot:'FORMANDO'},
+  pronto:   {cor:'var(--goldd)', rot:'PRONTO — AGUARDANDO'},
+  liberado: {cor:'var(--green)', rot:'LIBERADO'},
+  vetado:   {cor:'var(--red)',   rot:'VETADO'},
+};
+
+function renderPadrao(){
+  const box = document.getElementById('padrao-box');
+  const cnt = document.getElementById('padrao-count');
+  if(!box) return;
+  const p = padraoAgora();
+  if(!p){
+    if(cnt) cnt.textContent = '--';
+    box.innerHTML = '<div style="font-size:9px;color:var(--t3);">Lendo o mercado...</div>';
+    return;
+  }
+  const f = p.foco;
+  const cfg = PADRAO_CORES[f.estado] || PADRAO_CORES.longe;
+  const esc = t => String(t).replace(/[&<>]/g, x=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[x]));
+  if(cnt){ cnt.textContent = f.obrigOk + '/' + f.obrigTotal; cnt.style.color = cfg.cor; }
+
+  let h = '<div style="font-size:11px;font-weight:800;color:'+cfg.cor+';">'
+        + cfg.rot + ' <span style="font-size:9px;font-weight:600;color:var(--t3);">'
+        + esc(f.lado) + '</span></div>';
+  h += '<div style="font-size:9px;color:var(--t2);margin:4px 0 6px;line-height:1.45;">'
+     + esc(f.frase) + '</div>';
+
+  const marca = l => l.ok ? '&#10004;' : '&#9633;';
+  const grupo = (titulo, itens, invertido) => {
+    if(!itens.length) return '';
+    let g = '<div style="font-size:8px;color:var(--t3);letter-spacing:.5px;margin-top:5px;">'
+          + titulo + '</div>';
+    itens.forEach(l => {
+      // no veto, ok = a coisa ruim esta acontecendo, entao a cor inverte
+      const bom = invertido ? !l.ok : l.ok;
+      g += '<div style="font-size:9px;color:'+(bom?'var(--green)':'var(--t3)')+';'
+         + 'display:flex;gap:5px;align-items:baseline;">'
+         + '<span style="width:9px;flex:none;">'
+         + (invertido ? (l.ok?'&#10007;':'&#183;') : marca(l)) + '</span>'
+         + '<span><b>'+esc(l.nome)+'</b> <span style="color:var(--t3);">'+esc(l.txt||'')+'</span></span>'
+         + '</div>';
+    });
+    return g;
+  };
+  h += grupo('OBRIGATORIAS &mdash; falta uma, nao entra',
+             f.linhas.filter(l=>l.classe==='obrigatoria'), false);
+  h += grupo('CONFIRMACOES &mdash; precisa de '+f.confirmMin+' de '+f.confirmTotal
+             +' (tem '+f.confirmOk+')',
+             f.linhas.filter(l=>l.classe==='confirmacao'), false);
+  h += grupo('VETOS &mdash; matam o padrao completo',
+             f.linhas.filter(l=>l.classe==='veto'), true);
+
+  // O CONTADOR DA SESSAO. E o numero que corrige a mao pesada: ver que em duas
+  // horas houve 4 padroes e 1 liberacao muda o que voce faz com a quinta.
+  const s = p.sessao;
+  const mins = Math.round((Date.now()-s.inicio)/60000);
+  h += '<div style="margin-top:7px;padding-top:5px;border-top:1px solid var(--bd);'
+     + 'font-size:9px;color:var(--t3);">'
+     + 'nesta sessao (' + mins + ' min): <b>' + s.formados + '</b> formados &middot; '
+     + '<b style="color:var(--green);">' + s.liberados + '</b> liberados &middot; '
+     + '<b style="color:var(--red);">' + s.vetados + '</b> vetados</div>';
+  // e o outro lado, resumido, pra nao esconder que ele existe
+  const outro = f.lado === 'compra' ? p.venda : p.compra;
+  h += '<div style="font-size:9px;color:var(--t3);margin-top:3px;">'
+     + esc(outro.lado) + ': ' + (PADRAO_CORES[outro.estado]||PADRAO_CORES.longe).rot.toLowerCase()
+     + ' (' + outro.obrigOk + '/' + outro.obrigTotal + ')</div>';
+  box.innerHTML = h;
+
+  // O AVISO. So na virada pra liberado, e so uma vez por virada: alerta que
+  // repete vira ruido e a pessoa para de ler justamente o que importa.
+  if(f.estado === 'liberado' && renderPadrao._ultimo !== f.lado+f.estado){
+    if(typeof showInfoToast === 'function')
+      showInfoToast('PADRAO', 'padrao de ' + f.lado + ' liberado — ' + f.obrigOk + '/'
+                    + f.obrigTotal + ' obrigatorias, ' + f.confirmOk + ' confirmacoes');
+  }
+  if(f.estado === 'liberado') renderPadrao._ultimo = f.lado+f.estado;
+  else if(renderPadrao._ultimo && !renderPadrao._ultimo.startsWith(f.lado)) renderPadrao._ultimo = null;
+  else if(f.estado !== 'liberado') renderPadrao._ultimo = null;
+}
+window.renderPadrao = renderPadrao;
+
+// ══════════════════════════════════════════════════════
 // MARCOS DE VOLUME — a maior vela do dia, da semana e do mes
 // ══════════════════════════════════════════════════════
 // A bolha diz quanto foi o volume de cada vela. Isto aqui diz outra coisa:
@@ -4064,6 +4450,7 @@ function iniciaForca(){
     try{ renderForca(); }catch(e){}
     try{ renderConsolidacao(); }catch(e){}   // mesma cadencia, mesmo motivo
     try{ renderElliott(); }catch(e){}       // idem: contagem cacheada, custo zero
+    try{ renderPadrao(); }catch(e){}        // o portao: le o mercado e responde "ja da?"
   },2000);
 }
 
@@ -9762,7 +10149,17 @@ async function openMtfCharts() {
     const n=i+1;
     const el=document.getElementById("mtf-chart-"+n);
     if(!el) continue;
+    // autoSize: a celula do Multi-TF nascia com o tamanho que o container
+    // tinha NA CRIACAO e nunca mais mudava — sem ResizeObserver e sem
+    // width/height, a lib mede uma vez e para. Encolhendo a janela o
+    // container ia pra 360x327 e o desenho continuava 490x382: transbordava a
+    // celula e entrava na vizinha. Era isso o "deslocando".
+    //
+    // autoSize liga o ResizeObserver interno da propria lib, que e o caminho
+    // certo aqui: nao ha canvas nosso pra sincronizar como no Multi, entao nao
+    // precisa do reajuste em dois quadros.
     const chart=LightweightCharts.createChart(el,{
+      autoSize:true,
       layout:{background:{color:"transparent"},textColor:"#8b9bb4"},
       grid:{vertLines:{color:"rgba(255,255,255,0.02)"},horzLines:{color:"rgba(255,255,255,0.02)"}},
       timeScale:{timeVisible:true}
