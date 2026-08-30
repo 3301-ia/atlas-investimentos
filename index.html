@@ -18,7 +18,7 @@
   <link rel="stylesheet" media="print" onload="this.media='all';this.onload=null"
         href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap">
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap"></noscript>
-  <link rel="stylesheet" href="./style.css?v=5">
+  <link rel="stylesheet" href="./style.css?v=6">
 </head>
 <body>
 <div id="vectra-splash">
@@ -454,6 +454,7 @@
       </select>
       <button class="btn" id="btn-fullhist" onclick="loadFullHistory()" title="Carrega todo o historico disponivel, pra analisar tendencia macro">🕰 Tudo</button>
       <button class="btn on" id="btn-bolhas" onclick="toggleBolhas()" title="Bolhas dos negocios grandes: verde = comprador agrediu, vermelho = vendedor. O tamanho e por faixa de notional, com teto pra nao poluir o grafico">● Bolhas</button>
+      <button class="btn" id="btn-elliott" onclick="toggleElliott()" title="Marca a contagem de ondas de Elliott nos pivos: 1-2-3-4-5, com o nivel que invalida a contagem">〰 Elliott</button>
       <button class="btn" id="btn-multi" onclick="toggleMultiView()" title="Abre BTC, ETH, XAU e XAG juntos na mesma tela">🔲 Multi</button>
       <button class="btn" id="btn-mtf" onclick="toggleMtfView()" title="Abre 4 timeframes diferentes para o ativo selecionado">⏱ Multi-TF</button>
       <button class="btn" id="btn-validador" onclick="toggleValidatorPanel()" title="Valida todos os ativos da lista com o checklist ATLAS (Score + EMAs + StochRSI)">🛡 Validador</button>
@@ -1075,6 +1076,12 @@
             <div class="sp-sec"><span>BINANCE x DERIV</span><span class="sp-sec-val" id="consolida-count">--</span></div>
             <div id="consolida-box" style="padding:6px 9px;"><div style="font-size:9px;color:var(--t3);">Carregando...</div></div>
 
+            <!-- ELLIOTT: contagem de ondas com as tres regras conferidas uma
+                 a uma. O que vale aqui nao e o rotulo, e o nivel que INVALIDA:
+                 a onda 2 nao pode passar do inicio da onda 1. -->
+            <div class="sp-sec"><span>ELLIOTT</span><span class="sp-sec-val" id="elliott-count">--</span></div>
+            <div id="elliott-box" style="padding:6px 9px;"><div style="font-size:9px;color:var(--t3);">Sem pivos suficientes.</div></div>
+
             <!-- CONTRA-ARGUMENTO: tudo aqui do lado diz por que entrar. Esta
                  secao diz o que pesa contra — e o que evita operacao ruim. -->
             <div class="sp-sec"><span>CONTRA-ARGUMENTO</span><span class="sp-sec-val" id="contra-count" style="color:var(--red);">--</span></div>
@@ -1355,7 +1362,7 @@
      o que o main.js espera pra iniciar, e os onclick do HTML so disparam no
      clique, bem depois. -->
 <script defer src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
-<script defer src="./main.js?v=5"></script>
+<script defer src="./main.js?v=6"></script>
 </body>
 
 </html>
