@@ -2078,11 +2078,13 @@ const PADRAO_REGRAS = [
   {id:'fluxo', classe:'obrigatoria', nome:'agressao do lado do trade',
    testa(c, lado){
      if(c.pressao == null) return {ok:false, txt:'sem fluxo agressor'};
-     const ok = lado === 'compra' ? c.pressao >= 10 : c.pressao <= -10;
+     const corte = c.cortePressao != null ? c.cortePressao : 10;
+     const ok = lado === 'compra' ? c.pressao >= corte : c.pressao <= -corte;
      const p = (c.pressao>=0?'+':'') + c.pressao.toFixed(1) + '%';
-     return {ok, txt: 'pressao ' + p,
+     return {ok, txt: 'pressao ' + p + ' (corte ' + corte + '% neste tempo)',
        falta: ok ? null : 'a agressao esta em ' + p + ', precisa de ' +
-              (lado==='compra' ? '+10% ou mais' : '-10% ou menos')};
+              (lado==='compra' ? '+' : '-') + corte + '% — o corte sai da'
+              + ' distribuicao do proprio ' + (typeof currentTF!=='undefined'?currentTF:'tempo')};
    }},
 
   // ── CONFIRMACOES
@@ -2171,6 +2173,20 @@ const PADRAO_REGRAS = [
 // A leitura do mercado, montada uma vez e passada pra todas as regras. Se um
 // dado nao existe ele fica null e a regra correspondente simplesmente nao
 // fecha — nunca chuta.
+// Os cortes do tempo que esta na tela, cacheados: percorrer o historico a cada
+// 2 segundos pra recalcular percentil seria desperdicio, e eles so mudam
+// quando entra vela.
+let limAtual = null, limAtualChave = '';
+function limiaresAtuais(){
+  if(!candles || candles.length < 60) return null;
+  const ch = candles.length + '|' + candles[candles.length-1].time + '|' + currentSym + '|' + currentTF;
+  if(limAtualChave === ch) return limAtual;
+  try{ limAtual = limiaresDoTempo(candles); }catch(e){ limAtual = null; }
+  limAtualChave = ch;
+  return limAtual;
+}
+window.limiaresAtuais = limiaresAtuais;
+
 function contextoPadrao(){
   const c = {};
   if(typeof candles === 'undefined' || !candles || candles.length < 60) return null;
@@ -2183,6 +2199,11 @@ function contextoPadrao(){
     c.soma = cls.sumAngle; c.lateral = cls.isFlat;
   }catch(e){ c.soma = null; c.lateral = true; }
   try{ const f = forcaDoFluxo(20); c.pressao = f ? f.pressao : null; }catch(e){ c.pressao = null; }
+  // O CORTE VEM DO TEMPO, nao de constante. 10% de agressao numa vela de 1m e
+  // rotina; numa vela diaria e evento. O mesmo numero descrevendo coisas
+  // opostas era o erro que aparecia assim que se olhava mais de um tempo.
+  c.limiares = limiaresAtuais();
+  c.cortePressao = (c.limiares && c.limiares.temFluxo) ? c.limiares.pressao : 10;
   try{
     const r = rsiCalc(candles.map(x=>x.close), 14);
     c.rsi = r && r.length ? r[r.length-1] : null;
@@ -2923,11 +2944,18 @@ function choqueAbsorvido(lado){
   if(vols.length < 20) return null;
   const medio = vols.reduce((a,b)=>a+b,0)/vols.length;
   if(!(medio > 0)) return null;
+  let corteChoque = medio * REV_CHOQUE_VOL;
+  try{
+    const L = limiaresAtuais();
+    if(L && L.temFluxo && L.choqueVol > 0) corteChoque = L.choqueVol;
+  }catch(e){}
   for(let i=ultima-1; i>=Math.max(0, ultima-REV_CHOQUE_JANELA); i--){
     const c = candles[i], f = fluxoPorVela[c.time];
     if(!c || !f) continue;
     const tot = (f.compra||0)+(f.venda||0);
-    if(tot < medio * REV_CHOQUE_VOL) continue;
+    // corte do proprio tempo (percentil 95), com piso — REV_CHOQUE_VOL vira
+    // so o fallback pra quando nao ha fluxo suficiente pra medir
+    if(tot < corteChoque) continue;
     const agr = tot > 0 ? (f.compra-f.venda)/tot : 0;
     // pra comprar, o choque tem que ser VENDEDOR (o ultimo empurrao)
     if(compra ? agr > -0.10 : agr < 0.10) continue;
@@ -3318,7 +3346,9 @@ function gatilhoOnda3(lado, velasOpt){
     }
     if(cc + vv > 0){
       pressao = (cc - vv)/(cc + vv)*100;
-      acordou = alta ? pressao >= G3_ACORDA : pressao <= -G3_ACORDA;
+      let corteAcorda = G3_ACORDA;
+      try{ const L = limiaresAtuais(); if(L && L.temFluxo) corteAcorda = L.acorda; }catch(e){}
+      acordou = alta ? pressao >= corteAcorda : pressao <= -corteAcorda;
     }
   }catch(e){}
 
@@ -3497,6 +3527,107 @@ window.renderGatilho3 = renderGatilho3;
 // stopado ali e ser tirado do trade estando certo. Foi mais ou menos o que
 // aconteceu quando voce trocou de lado.
 
+
+// ══════════════════════════════════════════════════════
+// LIMIARES DINAMICOS — o corte sai do proprio tempo grafico
+// ══════════════════════════════════════════════════════
+// Eu venho avisando a sessao inteira que os numeros fixos (10% de pressao, 2,2x
+// de volume, 12% pra "volume acordando") eram escolha minha e nao medicao. Num
+// timeframe so isso passa; olhando varios ao mesmo tempo vira erro grosseiro:
+// 10% de agressao numa vela de 1m e ruido de rotina, e numa vela de 1d e um
+// evento. O mesmo numero descrevendo coisas opostas.
+//
+// A correcao nao e ter uma tabela de constantes por timeframe — seria a mesma
+// arbitrariedade multiplicada por seis. E fazer o corte sair da DISTRIBUICAO
+// do proprio tempo: "acima do percentil 80 do que ESTE tempo costuma fazer".
+// Assim o 1m se calibra sozinho no 1m e o diario no diario, e some uma camada
+// inteira de chute meu.
+//
+// Piso e teto continuam existindo pra evitar o absurdo: num mercado morto o
+// percentil 80 pode ser praticamente zero, e ai tudo viraria sinal.
+
+function percentil(arr, p){
+  const v = arr.filter(x => x != null && isFinite(x)).sort((a,b)=>a-b);
+  if(!v.length) return null;
+  const i = Math.min(v.length-1, Math.max(0, Math.round((p/100) * (v.length-1))));
+  return v[i];
+}
+
+// Os cortes deste conjunto de velas. Calculado uma vez por escala.
+function limiaresDoTempo(velas){
+  if(!velas || velas.length < 60) return null;
+  const press = [], vols = [];
+  velas.forEach(c => {
+    const cp = c.compra||0, vd = c.venda||0, t = cp+vd;
+    if(t <= 0) return;
+    press.push(Math.abs(cp-vd)/t*100);
+    vols.push(t);
+  });
+  const temFluxo = press.length >= 40;
+  const medVol = vols.length ? vols.reduce((a,b)=>a+b,0)/vols.length : 0;
+  const p95 = percentil(vols, 95);
+  return {
+    temFluxo,
+    // pressao que conta como "um lado dominando" neste tempo
+    // Percentil 75 = "esta no quartil mais desequilibrado que ESTE tempo
+    // costuma produzir". Muda o significado da regra, e pra melhor: deixa de
+    // ser "10% de desequilibrio" (numero meu) e passa a ser raridade relativa.
+    // O teto e so anti-absurdo — quando ele encosta, quem manda e o teto e nao
+    // a medicao, entao ele fica bem acima do que dado real costuma dar.
+    pressao: temFluxo ? Math.min(45, Math.max(8, +(percentil(press, 75)||10).toFixed(1))) : 10,
+    // pressao que conta como "o volume acordou"
+    acorda:  temFluxo ? Math.min(55, Math.max(10, +(percentil(press, 85)||12).toFixed(1))) : 12,
+    // avisa quando o teto/piso e que decidiu, em vez da distribuicao
+    saturado: temFluxo && ((percentil(press,75)||0) > 45 || (percentil(press,75)||99) < 8),
+    // choque de volume: percentil 95 do proprio tempo, com piso de 1,8x a media
+    choqueVol: (p95 && medVol > 0) ? Math.max(p95, medVol*1.8) : (medVol*2.2 || 0),
+    choqueRazao: (p95 && medVol > 0) ? +(Math.max(p95, medVol*1.8)/medVol).toFixed(2) : 2.2,
+    medVol,
+    amostra: press.length,
+  };
+}
+window.limiaresDoTempo = limiaresDoTempo;
+window.percentil = percentil;
+
+// ── OS PORTOES EM QUALQUER ESCALA ────────────────────────────────────────
+// A mesma leitura reduzida do checklist, rodando sobre um array de velas
+// qualquer — e com os cortes vindo do limiaresDoTempo daquela escala. E o que
+// permite responder "e nos outros tempos?" sem duplicar a logica nem fingir que
+// o corte do 15m serve pro 1m.
+function portoesDaEscala(velas, lim){
+  if(!velas || velas.length < 220) return null;
+  const L = lim || limiaresDoTempo(velas);
+  const closes = velas.map(c=>c.close);
+  const e8=ema(closes,8), e16=ema(closes,16), m89=sma(closes,89), e200=ema(closes,200);
+  const rsi = rsiCalc(closes,14);
+  const cvd = serieCVD(velas);
+  const n = closes.length-1;
+  const preco = closes[n];
+  // pressao das ultimas 20 velas fechadas
+  let cp=0, vd=0;
+  for(let i=Math.max(0,n-20); i<n; i++){ cp += velas[i].compra||0; vd += velas[i].venda||0; }
+  const pressao = (cp+vd) > 0 ? (cp-vd)/(cp+vd)*100 : null;
+
+  const avalia = (lado) => {
+    const compra = lado === 'compra';
+    const itens = [];
+    const teto = Math.max(m89[n], e200[n]), piso = Math.min(m89[n], e200[n]);
+    const lib = ([e8[n],e16[n],m89[n],e200[n]].every(v=>v!=null&&isFinite(v)))
+      ? (e8[n]>teto&&e16[n]>teto ? 'alta' : e8[n]<piso&&e16[n]<piso ? 'baixa' : null) : null;
+    itens.push({id:'ema200', ok: e200[n]!=null && (compra ? preco>e200[n] : preco<e200[n])});
+    itens.push({id:'pilha',  ok: lib === (compra?'alta':'baixa')});
+    itens.push({id:'fluxo',  ok: pressao!=null && (compra ? pressao >= L.pressao : pressao <= -L.pressao)});
+    itens.push({id:'rsi',    ok: rsi[n]!=null && (compra ? (rsi[n]>=45&&rsi[n]<70) : (rsi[n]<=55&&rsi[n]>30))});
+    itens.push({id:'cvd',    ok: n>=20 && (compra ? cvd[n]>cvd[n-20] : cvd[n]<cvd[n-20])});
+    return {lado, ok:itens.filter(i=>i.ok).length, total:itens.length, itens};
+  };
+  return {compra:avalia('compra'), venda:avalia('venda'),
+          pressao: pressao==null?null:+pressao.toFixed(1),
+          rsi: rsi[n]==null?null:+rsi[n].toFixed(1),
+          limiares:L};
+}
+window.portoesDaEscala = portoesDaEscala;
+
 const FRACTAL_TFS = ['1m','5m','15m','1h','4h','1d'];
 let fractalCache = null, fractalQuando = 0, fractalCarregando = false;
 const FRACTAL_VALIDADE = 90000;   // 90s: rede, nao pode rodar no timer de 2s
@@ -3527,8 +3658,12 @@ function leituraDeEscala(velas, tf){
     if(tot >= 8) frio = Math.round(neu/tot*100);
   }catch(e){}
   const dir = ang == null ? null : (ang > 3 ? 'alta' : ang < -3 ? 'baixa' : 'lateral');
+  // OS PORTOES DESTA ESCALA, com os cortes saindo da propria escala. Mesmas
+  // velas que ja foram buscadas pro fractal: nenhuma requisicao a mais.
+  let portoes = null, lim = null;
+  try{ lim = limiaresDoTempo(velas); portoes = portoesDaEscala(velas, lim); }catch(e){}
   return {tf, ok:true, angulo: ang==null?null:+ang.toFixed(1), direcao:dir, acima200,
-          frio, preco:closes[n],
+          frio, preco:closes[n], portoes, limiares:lim,
           elliott: el ? {tipo:el.tipo, onde:el.onde, direcao:el.direcao,
                          confianca:el.confianca} : null};
 }
@@ -3650,20 +3785,57 @@ function renderFractal(){
     // A ESCADA. Cada linha e uma escala, do menor pro maior — e o desenho tem
     // que deixar obvio onde a direcao troca, porque e nessa troca que mora a
     // pergunta toda.
+    // A MATRIZ. Uma linha por escala: direcao, e quantos portoes fecharam de
+    // cada lado NAQUELE tempo, com o corte daquele tempo. E a resposta direta
+    // pra "e nos outros graficos?" sem trocar de timeframe na mao.
+    h += '<div style="display:flex;gap:6px;font-size:8px;color:var(--t3);'
+       + 'letter-spacing:.5px;margin-top:5px;">'
+       + '<span style="width:26px;">TF</span><span style="width:12px;"></span>'
+       + '<span style="width:40px;">ANG</span>'
+       + '<span style="width:52px;">C / V</span>'
+       + '<span style="flex:1;">CONTAGEM</span></div>';
     al.escalas.forEach(e => {
       const cd = e.direcao === 'alta' ? 'var(--green)'
                : e.direcao === 'baixa' ? 'var(--red)' : 'var(--t3)';
       const seta = e.direcao === 'alta' ? '&uarr;' : e.direcao === 'baixa' ? '&darr;' : '&rarr;';
-      h += '<div style="display:flex;gap:6px;align-items:baseline;font-size:9px;margin-top:1px;">'
-         + '<span style="width:26px;color:var(--t2);font-weight:700;">'+esc(e.tf)+'</span>'
+      const pc = e.portoes ? e.portoes.compra.ok : null;
+      const pv = e.portoes ? e.portoes.venda.ok  : null;
+      const tot = e.portoes ? e.portoes.compra.total : 5;
+      const corN = (v) => v == null ? 'var(--t3)' : v >= tot-1 ? 'var(--green)'
+                        : v >= tot-2 ? 'var(--goldd)' : 'var(--t3)';
+      const atual = (typeof currentTF!=='undefined' && e.tf === currentTF);
+      h += '<div style="display:flex;gap:6px;align-items:baseline;font-size:9px;margin-top:1px;'
+         + (atual ? 'background:var(--bg2);border-radius:3px;' : '') + '">'
+         + '<span style="width:26px;color:'+(atual?'var(--t1)':'var(--t2)')+';font-weight:700;">'
+         + esc(e.tf) + (atual?'*':'') + '</span>'
          + '<span style="width:12px;color:'+cd+';font-weight:800;">'+seta+'</span>'
-         + '<span style="width:44px;color:var(--t3);">'+(e.angulo!=null?e.angulo+'&deg;':'--')+'</span>'
+         + '<span style="width:40px;color:var(--t3);">'+(e.angulo!=null?e.angulo+'&deg;':'--')+'</span>'
+         + '<span style="width:56px;">'
+         + '<span style="color:var(--t3);font-size:8px;">C</span>'
+         + '<b style="color:'+corN(pc)+';">'+(pc==null?'-':pc)+'</b>'
+         + '<span style="color:var(--t3);font-size:8px;"> V</span>'
+         + '<b style="color:'+corN(pv)+';">'+(pv==null?'-':pv)+'</b>'
+         + '<span style="color:var(--t3);font-size:8px;">/'+tot+'</span></span>'
          + '<span style="flex:1;color:var(--t3);">'
-         + (e.elliott ? esc(e.elliott.tipo)+' onda '+esc(e.elliott.onde)
+         + (e.elliott ? esc(e.elliott.tipo)+' '+esc(e.elliott.onde)
                         +' ('+e.elliott.confianca+'%)' : 'sem contagem')
          + (e.frio!=null ? ' &middot; '+e.frio+'% frio' : '')
          + '</span></div>';
     });
+    // O CORTE DINAMICO do tempo que esta na tela, dito em numero: e o que
+    // mostra que 10% de agressao no 1m e no 1d nao sao a mesma coisa.
+    const naTela = al.escalas.find(e => e.tf === currentTF);
+    if(naTela && naTela.limiares && naTela.limiares.temFluxo){
+      const L = naTela.limiares;
+      h += '<div style="font-size:8px;color:var(--t3);margin-top:4px;line-height:1.4;">'
+         + 'cortes calculados no proprio ' + esc(currentTF) + ': dominio a partir de <b>'
+         + L.pressao + '%</b> de agressao, volume acordando em <b>' + L.acorda
+         + '%</b>, choque acima de <b>' + L.choqueRazao + 'x</b> a media &mdash; percentis'
+         + ' deste tempo, nao numero fixo.'
+         + (L.saturado ? ' <span style="color:var(--goldd);">O corte encostou no limite'
+            + ' de seguranca: aqui quem decidiu foi o limite, nao a medicao.</span>' : '')
+         + '</div>';
+    }
 
     // ONDE O STOP PERTENCE — a consequencia pratica da leitura fractal, e a
     // que teria mudado alguma coisa de verdade
