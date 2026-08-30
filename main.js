@@ -1957,6 +1957,62 @@ function toggleTrampolim(){
 }
 window.toggleTrampolim = toggleTrampolim;
 
+// ── A BARRA DE DESENHO: RECOLHER E ESCONDER ──────────────────────────────
+// Sao duas coisas diferentes e vale separar, porque resolvem problemas
+// diferentes:
+//   RECOLHER a barra — os 15 botoes ficam por cima do grafico o tempo todo, no
+//   canto onde o preco costuma estar. Recolhido sobra so o punho, que continua
+//   clicavel: esconder de vez deixaria a pessoa sem caminho de volta.
+//   ESCONDER os desenhos — as linhas, fibos e retangulos somem da tela SEM
+//   serem apagados. E o que se quer quando o grafico esta cheio de tracado
+//   antigo e voce so quer ver o preco por um minuto.
+//
+// Os dois estados ficam salvos, senao cada refresh desfaz a arrumacao.
+const DESENHO_PREFS = 'atlas_desenho_ui';
+let barraRecolhida = false, desenhosVisiveis = true;
+try{
+  const g = JSON.parse(localStorage.getItem(DESENHO_PREFS) || '{}');
+  barraRecolhida = !!g.recolhida;
+  desenhosVisiveis = g.visiveis !== false;
+}catch(e){}
+function salvaDesenhoPrefs(){
+  try{ localStorage.setItem(DESENHO_PREFS,
+    JSON.stringify({recolhida:barraRecolhida, visiveis:desenhosVisiveis})); }catch(e){}
+}
+function aplicaBarraDesenho(){
+  const bar = document.getElementById('drawing-toolbar');
+  const btn = document.getElementById('tool-collapse');
+  if(bar) bar.classList.toggle('recolhida', barraRecolhida);
+  if(btn){
+    btn.innerHTML = (barraRecolhida ? '\u25B6' : '\u25C0')
+      + '<span class="tool-tip">' + (barraRecolhida ? 'Abrir a barra' : 'Recolher a barra')
+      + '</span>';
+  }
+  const olho = document.getElementById('tool-hide-draw');
+  if(olho){
+    olho.classList.toggle('olho-off', !desenhosVisiveis);
+    olho.innerHTML = (desenhosVisiveis ? '\uD83D\uDC41' : '\uD83D\uDEAB')
+      + '<span class="tool-tip">' + (desenhosVisiveis
+          ? 'Esconder os desenhos (sem apagar)' : 'Mostrar os desenhos de novo')
+      + '</span>';
+  }
+}
+function toggleBarraDesenho(){
+  barraRecolhida = !barraRecolhida;
+  salvaDesenhoPrefs(); aplicaBarraDesenho();
+}
+function toggleDesenhosVisiveis(){
+  desenhosVisiveis = !desenhosVisiveis;
+  salvaDesenhoPrefs(); aplicaBarraDesenho();
+  if(typeof redrawDrawings === 'function') redrawDrawings();
+  if(typeof showInfoToast === 'function')
+    showInfoToast('DESENHOS', desenhosVisiveis
+      ? 'desenhos visiveis' : 'desenhos escondidos — nada foi apagado');
+}
+window.toggleBarraDesenho = toggleBarraDesenho;
+window.toggleDesenhosVisiveis = toggleDesenhosVisiveis;
+window.aplicaBarraDesenho = aplicaBarraDesenho;
+
 function toggleElliott(){
   elliottLigado = !elliottLigado;
   const b = document.getElementById('btn-elliott');
@@ -12385,7 +12441,10 @@ function redrawDrawings(){
   if(!dCtx||!dCanvas||!chart) return;
   const r = chartRect();
   dCtx.clearRect(0,0,r.width,r.height);
-  const arr = drawings();
+  // O OLHO esconde SO o que a pessoa desenhou. As sobreposicoes (bolhas,
+  // Elliott, trampolim) tem os botoes delas — juntar tudo num interruptor so
+  // faria o olho apagar coisa que ela nao desenhou e nao esperava perder.
+  const arr = desenhosVisiveis ? drawings() : [];
   arr.forEach(d=>{
     try{paint(d,false);}catch(e){console.warn('[draw] falha ao desenhar um item, seguindo:',e);}
   });
@@ -12576,6 +12635,9 @@ let catF='all';
 function initApp(){
   initTheme();
   carregaAlarmesManuais(); carregaFibNiveis(); carregaFontesAlarme(); carregaObservacoes();
+  // o estado da barra de desenho tambem e preferencia salva: sem aplicar aqui,
+  // cada refresh desfazia a arrumacao e a barra voltava aberta por cima do preco
+  try{ aplicaBarraDesenho(); }catch(e){}
   // Leitura de mercado da Deriv: so precisa do App ID, nao do token. Sem App
   // ID salvo o painel apenas diz isso, em vez de tentar conectar sem parar.
   // (Aqui no initApp, nao no changeSym: no changeSym so conectaria depois de
