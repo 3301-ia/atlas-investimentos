@@ -18,7 +18,7 @@
   <link rel="stylesheet" media="print" onload="this.media='all';this.onload=null"
         href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap">
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap"></noscript>
-  <link rel="stylesheet" href="./style.css?v=11">
+  <link rel="stylesheet" href="./style.css?v=12">
 </head>
 <body>
 <div id="vectra-splash">
@@ -963,6 +963,14 @@
             <div class="sp-sec"><span>LOCALIZACAO &amp; RISCO</span><span class="sp-sec-val" id="local-count">--</span></div>
             <div id="local-box" style="padding:6px 9px;"><div style="font-size:9px;color:var(--t3);">Carregando historico...</div></div>
 
+            <!-- OPORTUNIDADE EXTREMA: o portao de REVERSAO. O checklist de
+                 posicionamento exige preco do lado certo da EMA200, entao por
+                 construcao ele so libera DEPOIS da virada. Este le a virada
+                 enquanto ela acontece: medias perdendo forca, choque de volume
+                 absorvido e macro frio. -->
+            <div class="sp-sec"><span>OPORTUNIDADE EXTREMA</span><span class="sp-sec-val" id="rev-count">--</span></div>
+            <div id="rev-box" style="padding:6px 9px;"><div style="font-size:9px;color:var(--t3);">Carregando...</div></div>
+
             <!-- RSI HEATMAP: todos os ativos da sua lista, de uma vez -->
             <div class="sp-sec"><span>RSI HEATMAP</span><span class="sp-sec-val" id="rsi-heat-updated">--</span></div>
             <div class="rsi-heat-legend">
@@ -1375,7 +1383,7 @@
      o que o main.js espera pra iniciar, e os onclick do HTML so disparam no
      clique, bem depois. -->
 <script defer src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
-<script defer src="./main.js?v=11"></script>
+<script defer src="./main.js?v=12"></script>
 </body>
 
 </html>

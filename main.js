@@ -2839,6 +2839,338 @@ function renderLocalizacao(){
 }
 window.renderLocalizacao = renderLocalizacao;
 
+
+// ══════════════════════════════════════════════════════
+// OPORTUNIDADE EXTREMA — o portao de REVERSAO
+// ══════════════════════════════════════════════════════
+// O checklist de posicionamento e um portao de CONTINUACAO: ele exige preco do
+// lado certo da EMA200 e medias empilhadas, e por construçao so libera DEPOIS
+// que a virada ja aconteceu. Ele nunca vai aprovar uma entrada no fundo — nao
+// porque o fundo seja ruim, mas porque ele nao foi feito pra isso.
+//
+// Isto aqui e o outro portao, e ele le a virada enquanto ela acontece. As
+// condicoes vem da leitura de price action que se usa pra isso:
+//
+//   1. AS MEDIAS AINDA APONTAM PRA BAIXO, MAS PERDENDO FORCA. Nao e o angulo
+//      que importa, e a DERIVADA dele: a queda desacelerando. Media virando pra
+//      cima e tarde; media caindo com a mesma inclinacao e cedo. O ponto e no
+//      meio, e ele so aparece comparando o angulo de agora com o de N velas.
+//
+//   2. UM CHOQUE DE VOLUME ABSORVIDO. Vela de volume muito acima do normal, com
+//      agressao pesada de um lado, e o preco NAO indo junto — fecha longe do
+//      extremo, deixando pavio. Isso e alguem do lado passivo comendo a
+//      agressao. E o evento, nao o estado.
+//
+//   3. O MACRO FRIO. A fila de velas disputadas de que ja falamos: o vendedor
+//      parou de agredir e esta faltando comprador. Sem isso o choque e so mais
+//      uma vela grande dentro de uma queda que continua.
+//
+//   4. O PRECO NO EXTREMO da propria faixa (percentil do esticamento), porque
+//      reversao longe do extremo e so contra-tendencia cara.
+//
+//   5. DIVERGENCIA DO CVD a favor — fundo mais baixo no preco sem fundo mais
+//      baixo no fluxo.
+//
+// As tres primeiras sao obrigatorias: sem desaceleracao nao ha virada, sem
+// choque nao ha evento, e sem macro frio o choque nao significa nada. As duas
+// ultimas contam.
+//
+// AVISO QUE FAZ PARTE DA FERRAMENTA: reversao acerta menos que continuacao. O
+// que a paga e a distancia curta ate o stop (o extremo esta logo ali), nao a
+// frequencia. Por isso o painel mostra a taxa historica ao lado da taxa base —
+// se ela nao estiver acima, o sinal nao esta valendo nada naquele mercado.
+
+const REV_DESACEL_VELAS = 8;    // contra quantas velas se mede a perda de forca
+const REV_CHOQUE_VOL = 2.2;     // quantas vezes o volume medio conta como choque
+const REV_CHOQUE_JANELA = 6;    // ha quantas velas o choque ainda vale
+const REV_ABSORCAO_CORPO = 0.45;// o fechamento tem que voltar deste tanto do range
+
+// A DERIVADA DO ANGULO. Positiva num contexto de baixa = a queda esta perdendo
+// forca. E o unico item da lista que nao existia em lugar nenhum do app.
+function perdaDeForca(lado){
+  if(!candles || candles.length < 120) return null;
+  const closes = candles.map(c=>c.close);
+  const atrA = atrCalc(candles.map(c=>c.high), candles.map(c=>c.low), closes, 14);
+  const e8 = ema(closes, 8), e16 = ema(closes, 16);
+  const n = closes.length - 1, k = REV_DESACEL_VELAS;
+  if(n - k < 30) return null;
+  const ang = (serie, i) => maAngleDeg(serie, atrA, i, 5);
+  const a8 = ang(e8, n), a8p = ang(e8, n-k);
+  const a16 = ang(e16, n), a16p = ang(e16, n-k);
+  if([a8,a8p,a16,a16p].some(v=>v==null)) return null;
+  const agora = (a8 + a16)/2, antes = (a8p + a16p)/2;
+  const compra = lado === 'compra';
+  // pra comprar: as medias ainda caem (agora < 0) mas menos que antes
+  const aindaContra = compra ? agora < 0 : agora > 0;
+  const perdendo = compra ? (agora > antes) : (agora < antes);
+  return {angulo:+agora.toFixed(1), antes:+antes.toFixed(1),
+          delta:+(agora-antes).toFixed(1),
+          aindaContra, perdendo,
+          ok: aindaContra && perdendo && Math.abs(agora - antes) >= 3};
+}
+
+// O CHOQUE ABSORVIDO. Volume muito acima do normal, agressao de um lado, e o
+// preco recusando: fecha de volta pra dentro do range. Procuro nas ultimas
+// REV_CHOQUE_JANELA velas fechadas, porque e um evento recente ou nao serve.
+function choqueAbsorvido(lado){
+  if(!candles || candles.length < 60) return null;
+  const compra = lado === 'compra';
+  const ultima = candles.length - 1;   // em formacao, fica de fora
+  const vols = [];
+  for(let i=Math.max(0,ultima-60); i<ultima; i++){
+    const f = fluxoPorVela[candles[i].time];
+    if(f) vols.push((f.compra||0)+(f.venda||0));
+  }
+  if(vols.length < 20) return null;
+  const medio = vols.reduce((a,b)=>a+b,0)/vols.length;
+  if(!(medio > 0)) return null;
+  for(let i=ultima-1; i>=Math.max(0, ultima-REV_CHOQUE_JANELA); i--){
+    const c = candles[i], f = fluxoPorVela[c.time];
+    if(!c || !f) continue;
+    const tot = (f.compra||0)+(f.venda||0);
+    if(tot < medio * REV_CHOQUE_VOL) continue;
+    const agr = tot > 0 ? (f.compra-f.venda)/tot : 0;
+    // pra comprar, o choque tem que ser VENDEDOR (o ultimo empurrao)
+    if(compra ? agr > -0.10 : agr < 0.10) continue;
+    const range = c.high - c.low;
+    if(!(range > 0)) continue;
+    // e o preco recusou: fechou de volta pra dentro
+    const volta = compra ? (c.close - c.low)/range : (c.high - c.close)/range;
+    if(volta < REV_ABSORCAO_CORPO) continue;
+    return {i, velasAtras: ultima - i, preco:c.close,
+            extremo: compra ? c.low : c.high,
+            razaoVol: +(tot/medio).toFixed(1),
+            agressao: +(agr*100).toFixed(1),
+            recusa: +(volta*100).toFixed(0)};
+  }
+  return null;
+}
+
+function oportunidadeExtrema(lado){
+  const L = lado || 'compra';
+  const forca = perdaDeForca(L);
+  const choque = choqueAbsorvido(L);
+  let frio = null, est = null, cvd = null;
+  try{ frio = fluxoNeutro(20); }catch(e){}
+  try{ est = esticamento(); }catch(e){}
+  try{ cvd = divergenciaCVD(candles, 60); }catch(e){}
+
+  const linhas = [];
+  const add = (id, classe, nome, ok, txt, falta) =>
+    linhas.push({id, classe, nome, ok:!!ok, txt, falta:falta||null});
+
+  add('desaceleracao','obrigatoria','a queda perdendo forca',
+      forca && forca.ok,
+      forca ? ('EMA8/16 em ' + forca.angulo + '° (era ' + forca.antes + '°)') : 'sem angulo',
+      forca ? (!forca.aindaContra ? 'as medias ja viraram — isto aqui e pra pegar a virada, nao depois dela'
+             : !forca.perdendo ? 'a queda ainda esta ganhando forca, nao perdendo'
+             : 'a desaceleracao ainda e pequena (' + forca.delta + '°)') : 'sem leitura de angulo');
+  add('choque','obrigatoria','choque de volume absorvido',
+      !!choque,
+      choque ? (choque.razaoVol + 'x o volume medio, agressao ' + choque.agressao
+                + '%, preco recusou ' + choque.recusa + '% do range, ha '
+                + choque.velasAtras + ' vela(s)')
+             : 'nenhum choque absorvido nas ultimas ' + REV_CHOQUE_JANELA + ' velas',
+      choque ? null : 'falta o evento: uma vela de volume alto com agressao pesada que o preco recusou');
+  add('macrofrio','obrigatoria','macro frio',
+      frio && frio.pct >= 35,
+      frio ? (frio.pct + '% das velas disputadas') : 'sem fluxo',
+      frio ? 'so ' + frio.pct + '% de velas disputadas: o agressor ainda esta ativo' : 'sem fluxo');
+  add('extremo','confirmacao','preco no extremo da faixa',
+      est && (L==='compra' ? est.percentil <= 15 : est.percentil >= 85),
+      est ? ('percentil ' + est.percentil + ' (' + est.atrs + ' ATR da EMA200)') : 'sem historico',
+      est ? 'o preco nao esta em extremo (percentil ' + est.percentil + ')' : null);
+  add('cvd','confirmacao','divergencia do CVD a favor',
+      cvd && cvd.tipo === (L==='compra' ? 'altista' : 'baixista'),
+      cvd && cvd.tipo ? ('divergencia ' + cvd.tipo) : 'sem divergencia',
+      'nao ha divergencia do CVD a favor');
+
+  const obrig = linhas.filter(l=>l.classe==='obrigatoria');
+  const conf  = linhas.filter(l=>l.classe==='confirmacao');
+  const obrigOk = obrig.filter(l=>l.ok).length;
+  const confOk  = conf.filter(l=>l.ok).length;
+  const completo = obrigOk === obrig.length && confOk >= 1;
+
+  let frase;
+  if(completo){
+    frase = 'As tres obrigatorias fecharam e ha ' + confOk + ' confirmacao(oes): '
+          + 'a queda desacelerou, houve choque absorvido e o macro esta frio. '
+          + 'Reversao acerta menos que continuacao — o que paga e o stop curto logo '
+          + 'abaixo do extremo do choque, nao a frequencia.';
+  }else{
+    const faltas = obrig.filter(l=>!l.ok).map(l=>l.falta);
+    frase = 'Falta: ' + faltas.join('; ') + '.';
+  }
+  return {lado:L, linhas, obrigOk, obrigTotal:obrig.length, confOk, confTotal:conf.length,
+          completo, frase, choque, forca,
+          // o stop natural deste setup: o extremo do proprio choque
+          stopNatural: choque ? choque.extremo : null};
+}
+window.oportunidadeExtrema = oportunidadeExtrema;
+window.perdaDeForca = perdaDeForca;
+window.choqueAbsorvido = choqueAbsorvido;
+
+// A MESMA PERGUNTA DE SEMPRE, feita pra este setup: quando ele apareceu no
+// passado, o que aconteceu? Mesma barreira dupla do outro painel — sem isso
+// aqui vira historia bonita, que e exatamente o risco de um sinal de reversao.
+let revCache = null, revCacheChave = '';
+function seriesReversao(){
+  if(!candles || candles.length < 200) return null;
+  const chave = candles.length + '|' + candles[candles.length-1].time + '|' + currentSym + '|' + currentTF;
+  if(revCacheChave === chave && revCache) return revCache;
+  const closes = candles.map(c=>c.close), highs = candles.map(c=>c.high), lows = candles.map(c=>c.low);
+  const atr = atrCalc(highs, lows, closes, 14);
+  const e8 = ema(closes, 8), e16 = ema(closes, 16);
+  const ang = new Array(closes.length).fill(null);
+  for(let i=20;i<closes.length;i++){
+    const a = maAngleDeg(e8, atr, i, 5), b2 = maAngleDeg(e16, atr, i, 5);
+    if(a != null && b2 != null) ang[i] = (a + b2)/2;
+  }
+  // notional por vela e media movel dele, pra detectar choque em qualquer indice
+  const not = candles.map(c => { const f = fluxoPorVela[c.time];
+    return f ? (f.compra||0)+(f.venda||0) : null; });
+  const agr = candles.map(c => { const f = fluxoPorVela[c.time];
+    if(!f) return null; const t=(f.compra||0)+(f.venda||0);
+    return t>0 ? (f.compra-f.venda)/t : null; });
+  revCache = {closes, highs, lows, atr, ang, not, agr};
+  revCacheChave = chave;
+  return revCache;
+}
+
+// as tres obrigatorias no indice i — a versao reconstruivel vela a vela
+function reversaoNoIndice(i, lado, S){
+  if(i < 80 || i >= candles.length) return false;
+  const compra = lado === 'compra';
+  // 1) desaceleracao
+  const a = S.ang[i], b = S.ang[i - REV_DESACEL_VELAS];
+  if(a == null || b == null) return false;
+  if(compra ? !(a < 0 && a > b) : !(a > 0 && a < b)) return false;
+  if(Math.abs(a - b) < 3) return false;
+  // 2) choque absorvido nas ultimas REV_CHOQUE_JANELA velas
+  let medio = 0, n = 0;
+  for(let j=Math.max(0,i-60); j<i; j++){ if(S.not[j] != null){ medio += S.not[j]; n++; } }
+  if(n < 20) return false;
+  medio /= n;
+  if(!(medio > 0)) return false;
+  let achou = false;
+  for(let j=i; j>Math.max(0, i-REV_CHOQUE_JANELA); j--){
+    if(S.not[j] == null || S.agr[j] == null) continue;
+    if(S.not[j] < medio*REV_CHOQUE_VOL) continue;
+    if(compra ? S.agr[j] > -0.10 : S.agr[j] < 0.10) continue;
+    const range = S.highs[j] - S.lows[j];
+    if(!(range > 0)) continue;
+    const volta = compra ? (S.closes[j]-S.lows[j])/range : (S.highs[j]-S.closes[j])/range;
+    if(volta >= REV_ABSORCAO_CORPO){ achou = true; break; }
+  }
+  if(!achou) return false;
+  // 3) macro frio nas 20 anteriores
+  let neutras = 0, tot = 0;
+  for(let j=Math.max(0,i-20); j<i; j++){
+    if(S.agr[j] == null) continue;
+    tot++; if(Math.abs(S.agr[j]) < 0.10) neutras++;
+  }
+  if(tot < 10) return false;
+  return (neutras/tot*100) >= 35;
+}
+
+function probabilidadeReversao(lado){
+  const S = seriesReversao();
+  if(!S) return null;
+  let aSetup = 0, hSetup = 0, aBase = 0, hBase = 0;
+  const fim = candles.length - 1 - PADRAO_HORIZONTE;
+  // reaproveita o desfecho do outro painel: mesma barreira, mesma definicao de
+  // acerto — se as duas medidas usassem regras diferentes elas nao poderiam ser
+  // comparadas, e comparar as duas e justamente o ponto
+  const Sd = seriesDaReplay();
+  if(!Sd) return null;
+  // Conto as APARICOES separado dos desfechos: com um setup raro, quase todas
+  // as vezes a amostra fica pequena demais pra afirmar taxa, e ai a pessoa
+  // precisa saber se ele apareceu 2 vezes ou nenhuma. Sao coisas diferentes:
+  // uma diz "e raro", a outra diz "pode estar quebrado".
+  let aparicoes = 0, varridas = 0;
+  for(let i=80; i<fim; i++){
+    varridas++;
+    const apareceu = reversaoNoIndice(i, lado, S);
+    if(apareceu) aparicoes++;
+    const d = desfecho(i, lado, Sd);
+    if(d == null) continue;
+    aBase++; hBase += d;
+    if(apareceu){ aSetup++; hSetup += d; }
+  }
+  const taxa = (a,b) => b > 0 ? +(a/b*100).toFixed(1) : null;
+  return {lado, horizonte:PADRAO_HORIZONTE, barreira:PADRAO_BARREIRA,
+          aparicoes, varridas,
+          setup:{amostra:aSetup, taxa:taxa(hSetup,aSetup)},
+          base:{amostra:aBase, taxa:taxa(hBase,aBase)},
+          vantagem: (aSetup >= 10 && aBase > 0)
+            ? +((hSetup/aSetup - hBase/aBase)*100).toFixed(1) : null,
+          confiavel: aSetup >= 10};
+}
+window.probabilidadeReversao = probabilidadeReversao;
+
+function renderReversao(){
+  const box = document.getElementById('rev-box');
+  const cnt = document.getElementById('rev-count');
+  if(!box) return;
+  const lado = (typeof modoOperacao !== 'undefined' && modoOperacao === 'vendedor')
+             ? 'venda' : 'compra';
+  let o = null;
+  try{ o = oportunidadeExtrema(lado); }catch(e){}
+  if(!o){
+    if(cnt) cnt.textContent = '--';
+    box.innerHTML = '<div style="font-size:9px;color:var(--t3);">Carregando...</div>';
+    return;
+  }
+  const esc = t => String(t).replace(/[&<>]/g, x=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[x]));
+  const nf = v => (v==null||!isFinite(v)) ? '--'
+    : Number(v).toLocaleString('pt-BR',{maximumFractionDigits:2});
+  const cor = o.completo ? 'var(--green)' : o.obrigOk >= 2 ? 'var(--goldd)' : 'var(--t3)';
+  if(cnt){ cnt.textContent = o.obrigOk + '/' + o.obrigTotal; cnt.style.color = cor; }
+
+  let h = '<div style="font-size:11px;font-weight:800;color:'+cor+';">'
+        + (o.completo ? 'OPORTUNIDADE' : o.obrigOk >= 2 ? 'QUASE' : 'SEM SETUP')
+        + ' <span style="font-size:9px;font-weight:600;color:var(--t3);">reversao de '
+        + esc(o.lado) + '</span></div>';
+  h += '<div style="font-size:9px;color:var(--t2);margin:3px 0 5px;line-height:1.45;">'
+     + esc(o.frase) + '</div>';
+  o.linhas.forEach(l => {
+    h += '<div style="font-size:9px;color:'+(l.ok?'var(--green)':'var(--t3)')+';'
+       + 'display:flex;gap:5px;align-items:baseline;">'
+       + '<span style="width:9px;flex:none;">' + (l.ok?'&#10004;':'&#9633;') + '</span>'
+       + '<span><b>'+esc(l.nome)+'</b> <span style="color:var(--t3);">'+esc(l.txt||'')+'</span></span>'
+       + '</div>';
+  });
+  if(o.stopNatural != null){
+    h += '<div style="font-size:9px;color:var(--t2);margin-top:5px;">stop natural: <b>'
+       + nf(o.stopNatural) + '</b> <span style="color:var(--t3);">'
+       + '&mdash; o extremo do proprio choque. E dele que vem a vantagem deste setup:'
+       + ' o stop e curto porque o extremo esta logo ali.</span></div>';
+  }
+  try{
+    const pb = probabilidadeReversao(lado);
+    if(pb && pb.confiavel){
+      const v = pb.vantagem;
+      const c = v == null ? 'var(--t3)' : v >= 5 ? 'var(--green)' : v <= -5 ? 'var(--red)' : 'var(--goldd)';
+      h += '<div style="margin-top:6px;padding-top:5px;border-top:1px solid var(--bd);">'
+         + '<div style="font-size:11px;font-weight:800;color:'+c+';">' + pb.setup.taxa
+         + '% <span style="font-size:9px;font-weight:600;color:var(--t3);">quando este setup'
+         + ' apareceu (' + pb.setup.amostra + ' casos)</span></div>'
+         + '<div style="font-size:9px;color:var(--t2);">sem filtro: <b>' + pb.base.taxa
+         + '%</b> &middot; <span style="color:'+c+';font-weight:700;">'
+         + (v>0?'+':'') + v + ' de vantagem</span></div></div>';
+    }else if(pb){
+      h += '<div style="font-size:9px;color:var(--t3);margin-top:6px;line-height:1.45;">'
+         + 'apareceu <b>' + pb.aparicoes + '</b> vez(es) em ' + pb.varridas + ' velas'
+         + (pb.varridas ? ' (' + (pb.aparicoes/pb.varridas*100).toFixed(1) + '%)' : '')
+         + ' &mdash; poucas pra afirmar taxa. <b>Isso e raridade, nao defeito:</b> as tres'
+         + ' obrigatorias juntas sao um evento, e e por isso que quando aparece vale'
+         + ' olhar. Carregue mais historico no botao Tudo pra medir.</div>';
+    }
+  }catch(e){}
+  box.innerHTML = h;
+}
+window.renderReversao = renderReversao;
+
 // ── A COMUNICACAO ────────────────────────────────────────────────────────
 // O painel e escrito na ordem em que a decisao acontece: primeiro o veredito,
 // depois a frase do que falta, depois a lista item a item. Quem esta com a mao
@@ -5457,6 +5789,7 @@ function iniciaForca(){
     try{ renderElliott(); }catch(e){}       // idem: contagem cacheada, custo zero
     try{ renderPadrao(); }catch(e){}        // o portao: le o mercado e responde "ja da?"
     try{ renderLocalizacao(); }catch(e){}   // e quanto pode entrar, que e o que protege a banca
+    try{ renderReversao(); }catch(e){}      // o portao da virada, que o de continuacao nunca aprova
   },2000);
 }
 
