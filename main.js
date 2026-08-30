@@ -1284,15 +1284,11 @@ window.calculaMudancaCarater = calculaMudancaCarater;
 // "maior vela do dia" — cada vela JA e um mes. Sem essa guarda toda vela do 1M
 // viraria marco dos tres de uma vez.
 const MARCO_CORES = {
-  carater: {corpo:'#E8A317', halo:'255,196,60',  nome:'mudanca de carater'},
-  semana:  {corpo:'#9AA4B0', halo:'220,228,238', nome:'maior volume da semana'},
-  mes:     {corpo:'#A855F7', halo:'190,120,255', nome:'maior volume do mes'},
+  dia:    {corpo:'#E8A317', halo:'255,196,60',  nome:'maior volume do dia'},
+  semana: {corpo:'#9AA4B0', halo:'220,228,238', nome:'maior volume da semana'},
+  mes:    {corpo:'#A855F7', halo:'190,120,255', nome:'maior volume do mes'},
 };
-// O dourado vem por ultimo na ordem de precedencia: quando a mudanca de
-// carater cai na mesma vela que um recorde de volume, e ela que manda. O
-// recorde diz "muita gente negociou"; a mudanca diz "o mercado virou", e essa
-// e a informacao mais rara das duas.
-const MARCO_ORDEM = {semana:1, mes:2, carater:3};
+const MARCO_ORDEM = {dia:1, semana:2, mes:3};
 
 function chaveDoPeriodo(timeSeg, periodo){
   const d = new Date(timeSeg*1000);
@@ -1317,9 +1313,8 @@ function volumeDaVela(c){
 function calculaMarcosVolume(velas, tfSeg){
   const marcas = {};   // indice da vela -> 'dia' | 'semana' | 'mes'
   if(!velas || velas.length < 3) return marcas;
-  // 'dia' saiu: o dourado agora e a mudanca de carater, que e evento de
-  // estrutura e nao recorde de volume. Prata e roxo continuam sendo recorde.
   const periodos = [];
+  if(tfSeg < 86400)   periodos.push('dia');
   if(tfSeg < 604800)  periodos.push('semana');
   if(tfSeg < 2592000) periodos.push('mes');
   if(!periodos.length) return marcas;
@@ -1405,7 +1400,7 @@ function pintaBrilhoMarcos(ctx, larguraCss, velas, marcas, qualificados, t2xFn, 
     const yO = p2yFn(vela.open), yC = p2yFn(vela.close);
     if(yH == null || yL == null || yO == null || yC == null) return;
     // fora da faixa de preco visivel: nao pinta (mesma razao do recorte das bolhas)
-    if(Math.max(yH,yL) < -40 || Math.min(yH,yL) > alt + 40) return;
+    if(Math.max(yH,yL) < -40 || Math.min(yH,yL) > alt) return;
 
     const cfg = MARCO_CORES[marcas[i]];
     const forte = qualificados && qualificados[i];
@@ -1551,14 +1546,33 @@ function refreshPhiRibbonAndBorders(){
 
   // a mudanca de carater entra por cima: ela ganha da semana e do mes
   mudancasCarater = calculaMudancaCarater(candles, tfToSeconds(currentTF));
-  Object.keys(mudancasCarater).forEach(k => { marcosVolume[k] = 'carater'; });
+  // A mudanca de carater nao e uma marca separada — e a LEITURA da marca.
+  // Eu tinha trocado uma pela outra, e com isso o recorde do DIA sumiu do
+  // grafico: sobravam prata (maior da semana) e roxo (maior do mes), que
+  // quase nunca caem na janela visivel. Ficava uma tela sem marca nenhuma.
+  // O dourado volta a ser o maior volume do dia, que e o que se ve; quando
+  // esse volume cai numa quebra de estrutura, ele brilha forte e o relatorio
+  // diz. O volume continua sendo a marca, a estrutura da sentido a ela.
+
+  // POSSIVEL MUDANCA DE CARATER: o recorde do dia que TAMBEM quebra estrutura.
+  //
+  // Exigir a quebra na vela exata do recorde e coincidencia demais — o volume
+  // costuma vir uma ou duas velas antes ou depois do rompimento. Aceito a
+  // quebra numa janela de 3 velas pra cada lado, que e a mesma folga do teste
+  // do RSI.
+  marcosCarater = {};
+  Object.keys(marcosVolume).forEach(k=>{
+    const i = +k;
+    for(let j=i-MARCO_JANELA_RSI; j<=i+MARCO_JANELA_RSI; j++){
+      if(mudancasCarater[j]){ marcosCarater[k] = mudancasCarater[j]; break; }
+    }
+  });
 
   marcosFortes = {};
   Object.keys(marcosVolume).forEach(k=>{
-    // a mudanca de carater ja e o evento raro: brilha forte sempre. Os
-    // recordes de volume so brilham forte quando caem em momento frio com o
-    // RSI virando.
-    if(marcosVolume[k] === 'carater' || marcoQualificado(+k, scorePerBar[+k], rsiArr))
+    // brilha forte quando o recorde e mais que recorde: ou quebrou estrutura,
+    // ou caiu em momento frio com o RSI virando
+    if(marcosCarater[k] || marcoQualificado(+k, scorePerBar[+k], rsiArr))
       marcosFortes[k]=true;
   });
 
@@ -3394,11 +3408,16 @@ function desenhaBolhasMulti(sym){
   // do volume da propria vela e existe mesmo sem o corte agressor
   let altMini = mc.el.clientHeight || 4000;
   try{ altMini -= ts.height() || 0; }catch(e){}
-  try{ pintaBrilhoMarcos(mc.bctx, mc.el.clientWidth, mc.candles, mc.marcos||{}, null, t2, p2, altMini); }catch(e){}
 
-  if(!bolhasLigadas) return;
-  if(!mc.bolhas.alvos.length) return;
-  pintaBolhas(mc.bctx, mc.el.clientWidth, mc.bolhas.alvos, mc.bolhas.corte, mc.candles, t2, p2, altMini);
+  mc.bctx.save();
+  mc.bctx.beginPath();
+  mc.bctx.rect(0, 0, mc.el.clientWidth, altMini);
+  mc.bctx.clip();
+
+  try{ pintaBrilhoMarcos(mc.bctx, mc.el.clientWidth, mc.candles, mc.marcos||{}, null, t2, p2, altMini); }catch(e){}
+  if(bolhasLigadas && mc.bolhas.alvos.length)
+    pintaBolhas(mc.bctx, mc.el.clientWidth, mc.bolhas.alvos, mc.bolhas.corte, mc.candles, t2, p2, altMini);
+  mc.bctx.restore();
 }
 window.desenhaBolhasMulti = desenhaBolhasMulti;
 
@@ -5008,7 +5027,7 @@ function pintaBolhas(ctx, larguraCss, alvos, corte, velas, t2xFn, p2yFn, alturaC
     const x = t2xFn(a.vela.time);
     if(x == null || x < -40 || x > larguraCss + 40) continue;
     const y = p2yFn(a.comprador ? a.vela.high : a.vela.low);
-    if(y == null || y < -30 || y > alt + 30) continue;
+    if(y == null || y < -30 || y > alt) continue;
 
     // Area proporcional ao volume (dai a raiz): dobrar o volume dobra a
     // mancha, nao o raio.
@@ -5132,6 +5151,19 @@ function desenhaBolhas(){
   let alturaTela = (bCanvas && bCanvas.clientHeight) || 4000;
   try{ alturaTela -= chart.timeScale().height() || 0; }catch(e){}
 
+  // REGIAO DE RECORTE, nao so um teste por bolha. Antes eu descartava a bolha
+  // cujo CENTRO caisse mais de 30px fora — mas o eixo do tempo comeca
+  // exatamente no fim do painel, entao essa folga de 30px era justamente a
+  // faixa das datas: as bolinhas apareciam em cima do "22 23 24". E mesmo com
+  // o centro dentro, o circulo e o halo podem transbordar pela borda.
+  //
+  // Com clip, o canvas simplesmente nao pinta fora do retangulo do painel,
+  // qualquer que seja o raio.
+  bCtx.save();
+  bCtx.beginPath();
+  bCtx.rect(0, 0, larguraTela, alturaTela);
+  bCtx.clip();
+
   // O BRILHO VEM PRIMEIRO, e NAO obedece ao botao de bolhas: a vela do marco ja
   // e pintada na cor do metal pelo refreshPhiRibbonAndBorders, que tambem
   // ignora esse botao. Deixar so o brilho sumir daria uma vela dourada apagada,
@@ -5140,7 +5172,7 @@ function desenhaBolhas(){
   // fonte que nao publica o lado agressor.
   try{ pintaBrilhoMarcos(bCtx, larguraTela, candles, marcosVolume, marcosFortes, t2x, p2y, alturaTela); }catch(e){}
 
-  if(!bolhasLigadas) return;
+  if(!bolhasLigadas){ bCtx.restore(); return; }
 
   // Cache so pela versao do fluxo: a lista e a mesma em qualquer zoom, o que
   // muda e quem esta na tela — e isso o t2x resolve por vela.
@@ -5148,9 +5180,9 @@ function desenhaBolhas(){
     bolhasCache = montaAlvosBolha();
     if(bolhasCache) bolhasCache.versao = fluxoVersao;
   }
-  if(!bolhasCache || !bolhasCache.alvos.length) return;
-
-  pintaBolhas(bCtx, larguraTela, bolhasCache.alvos, bolhasCache.corte, candles, t2x, p2y, alturaTela);
+  if(bolhasCache && bolhasCache.alvos.length)
+    pintaBolhas(bCtx, larguraTela, bolhasCache.alvos, bolhasCache.corte, candles, t2x, p2y, alturaTela);
+  bCtx.restore();
 }
 
 
@@ -5384,12 +5416,16 @@ function retratoDoAtivo(){
     const idx = Object.keys(mudancasCarater||{}).map(Number).sort((a,b)=>b-a);
     if(idx.length){
       const ult = idx[0], vela = candles[ult];
+      // e um recorde de periodo caiu junto com essa quebra?
+      const comRecorde = Object.keys(marcosCarater||{}).map(Number).sort((a,b)=>b-a)[0];
       r.mudanca_carater = {
         lado: mudancasCarater[ult],
         velas_atras: candles.length-1-ult,
         preco: vela ? vela.close : null,
         quando: vela ? new Date(vela.time*1000).toISOString() : null,
-        total_no_historico: idx.length
+        total_no_historico: idx.length,
+        com_recorde_de_volume: comRecorde != null,
+        recorde_velas_atras: comRecorde != null ? candles.length-1-comRecorde : null
       };
     }
   }catch(e){}
@@ -5410,7 +5446,7 @@ function retratoDoAtivo(){
         velas_atras: candles.length-1-ult,
         preco: vela ? vela.close : null,
         em_momento_frio_com_rsi: !!(marcosFortes||{})[ult],
-        total_na_tela: {carater:0, semana:0, mes:0}
+        total_na_tela: {dia:0, semana:0, mes:0}
       };
       Object.values(marcosVolume).forEach(p=>{ r.marco_volume.total_na_tela[p]++; });
     }
@@ -5935,6 +5971,15 @@ function analiseDoMercado(r){
     t += " Isso e diferente de volume grande: volume grande acontece o tempo todo dentro de uma"
       + " tendencia. A mudanca de carater acontece na virada, e e o unico ponto do grafico onde a"
       + " estrutura muda de fato. No historico carregado houve "+mc.total_no_historico+".";
+    if(mc.com_recorde_de_volume){
+      t += " <b>E o maior volume do periodo caiu junto</b> (ha "+mc.recorde_velas_atras+" velas):"
+        + " a vela dourada nao foi so a de mais dinheiro do dia, foi a que quebrou a estrutura."
+        + " E a leitura mais forte que estas duas marcas dao juntas — possivel mudanca de carater,"
+        + " nao so um dia de volume alto.";
+    }else{
+      t += " Nenhum recorde de volume caiu junto com essa quebra, o que a deixa mais fraca: a"
+        + " estrutura mudou sem que o dinheiro grande aparecesse na mesma hora.";
+    }
     if(mc.velas_atras <= 5){
       t += " <b>Foi agora</b> — ainda nao houve teste do nivel rompido, que e onde essa leitura"
         + " costuma se confirmar ou falhar.";
@@ -5945,13 +5990,12 @@ function analiseDoMercado(r){
   // 3b3) MARCO DE VOLUME — qual vela mandou no periodo
   if(r.marco_volume){
     const m = r.marco_volume;
-    const nomes = {carater:"marcada", semana:"da semana", mes:"do mes"};
-    let t = m.periodo === "carater"
-      ? "A ultima marca foi uma <b>mudanca de carater</b> ha "+m.velas_atras+" velas, em "+num(m.preco)+"."
-      : "A maior vela "+nomes[m.periodo]+" foi ha <b>"+m.velas_atras+" velas</b>, em "+num(m.preco)+".";
+    const nomes = {dia:"do dia", semana:"da semana", mes:"do mes"};
+    let t = "A maior vela "+nomes[m.periodo]+" foi ha <b>"+m.velas_atras+" velas</b>, em "
+          + num(m.preco)+".";
     const tot = m.total_na_tela;
     t += " No historico carregado ha "+tot.mes+" marco(s) de mes, "+tot.semana+" de semana e "
-      + (tot.carater||0)+" mudanca(s) de carater.";
+      + (tot.dia||0)+" de dia.";
     if(m.em_momento_frio_com_rsi){
       t += " <b>Essa caiu em momento frio, com o RSI cruzando</b> — volume grande enquanto as"
         + " medias estavam indecisas e o RSI virava. E o caso que interessa: dinheiro entrando"
@@ -7565,6 +7609,8 @@ let bCanvas, bCtx;
 let marcosVolume = {}, marcosFortes = {};
 let ultimaExaustao = [];   // por vela: mercado seco (branco) ou nao
 let mudancasCarater = {};  // indice da vela -> 'alta' | 'baixa'
+// recorde do dia que tambem quebrou estrutura: possivel mudanca de carater
+let marcosCarater = {};
 let activeTool = 'cursor';
 let drawColor = '#FFEB3B';
 let magnetOn = false;
