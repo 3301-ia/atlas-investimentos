@@ -18,7 +18,7 @@
   <link rel="stylesheet" media="print" onload="this.media='all';this.onload=null"
         href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap">
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap"></noscript>
-  <link rel="stylesheet" href="./style.css?v=24">
+  <link rel="stylesheet" href="./style.css?v=25">
 </head>
 <body>
 <div id="vectra-splash">
@@ -875,6 +875,7 @@
             <button class="tool-btn on" id="btn-bolhas" onclick="toggleBolhas()">&#9679;<span class="tool-tip">Bolhas: volume por vela, cor = quem agrediu, anel branco = absorcao</span></button>
             <button class="tool-btn" id="btn-elliott" onclick="toggleElliott()">&#12316;<span class="tool-tip">Contagem de Elliott com o nivel que a invalida</span></button>
             <button class="tool-btn" id="btn-trampolim" onclick="toggleTrampolim()">&#8961;<span class="tool-tip">Zona da EMA200, MA89 como gatilho, stop e alvo</span></button>
+            <button class="tool-btn" id="btn-rsipreco" onclick="toggleRsiPreco()">&#8478;<span class="tool-tip">RSI ao contrario: cada nivel vira uma linha de preco</span></button>
             <button class="tool-btn" id="tool-hide-draw" onclick="toggleDesenhosVisiveis()">&#128065;<span class="tool-tip">Esconder os desenhos (sem apagar)</span></button>
             <div style="position:relative;">
               <div class="tool-color" id="tool-color-sw" style="background:#FFEB3B;"></div>
@@ -984,6 +985,13 @@
                  decidir antes do stop bater. 3m avisa, 15m sustenta, 1h vies. -->
             <div class="sp-sec"><span>STOP TECNICO &amp; PRE-STOP</span><span class="sp-sec-val" id="prestop-count">--</span></div>
             <div id="prestop-box" style="padding:6px 9px;"><div style="font-size:9px;color:var(--t3);">Lendo 3m, 15m e 1h...</div></div>
+
+            <!-- RSI AO CONTRARIO: o oscilador responde "onde o indicador
+                 esta"; a pergunta util e a inversa, "a que PRECO ele chega em
+                 70?". A media de Wilder e uma recorrencia fechada, entao isso
+                 se resolve exato — nao e estimativa. -->
+            <div class="sp-sec"><span>RSI &rarr; PRECO</span><span class="sp-sec-val" id="rsipreco-count">--</span></div>
+            <div id="rsipreco-box" style="padding:6px 9px;"><div style="font-size:9px;color:var(--t3);">Calculando...</div></div>
 
             <!-- PADRAO DE POSICIONAMENTO: o unico painel que responde "ja da
                  pra entrar?". Fica no TOPO da coluna porque e a primeira
@@ -1438,7 +1446,7 @@
      o que o main.js espera pra iniciar, e os onclick do HTML so disparam no
      clique, bem depois. -->
 <script defer src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
-<script defer src="./main.js?v=24"></script>
+<script defer src="./main.js?v=25"></script>
 </body>
 
 </html>

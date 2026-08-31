@@ -5259,6 +5259,164 @@ function renderPreStop(){
 }
 window.renderPreStop = renderPreStop;
 
+
+// ══════════════════════════════════════════════════════
+// RSI AO CONTRARIO — cada nivel vira um PRECO no grafico
+// ══════════════════════════════════════════════════════
+// O RSI responde "onde o indicador esta". A pergunta util e a inversa: "a que
+// PRECO ele chega em 70?". Isso nao e estimativa — a media de Wilder e uma
+// recorrencia fechada, entao da pra resolver exatamente pra quanto o preco
+// precisa fechar. O precoParaRSI ja fazia isso pra 30 e 70 na RSI Table; aqui
+// vira uma escada inteira, desenhada onde o preco vai passar.
+//
+// Um oscilador embaixo do grafico obriga voce a traduzir "RSI 68" pra "e isso
+// e caro?" toda vez. Uma linha em 82.450 dizendo "RSI 70" nao precisa de
+// traducao — e um nivel, como qualquer outro, e da pra por alarme nele.
+//
+// A RESSALVA QUE FAZ PARTE DO NUMERO: e o preco de fechamento da PROXIMA vela.
+// A media de Wilder anda a cada fechamento, entao o nivel se move sozinho
+// mesmo com o preco parado. Vale pra vela em curso, nao pra semana que vem —
+// e por isso o rotulo carrega o tempo grafico junto.
+const RSI_NIVEIS = [30, 40, 50, 60, 70];
+const RSI_CORES = {30:'#089981', 40:'#5B9E8A', 50:'#8b95a3', 60:'#D9925A', 70:'#F23645'};
+
+function escadaRsiPreco(velas, niveis){
+  const V = velas || candles;
+  if(!V || V.length < 30) return null;
+  const closes = V.map(c=>c.close);
+  const st = rsiState(closes, 14);
+  if(!st) return null;
+  const atual = st.al === 0 ? 100 : (st.ag === 0 ? 0 : 100 - 100/(1 + st.ag/st.al));
+  const preco = closes[closes.length-1];
+  const out = [];
+  (niveis || RSI_NIVEIS).forEach(nv => {
+    const p = precoParaRSI(st.ag, st.al, preco, nv);
+    if(p == null) return;
+    out.push({rsi:nv, preco:p,
+      dist: +((p/preco - 1)*100).toFixed(2),
+      acima: p > preco});
+  });
+  out.sort((a,b)=>b.preco-a.preco);
+  return {atual:+atual.toFixed(1), preco, niveis:out, tf: (typeof currentTF!=='undefined'?currentTF:'')};
+}
+window.escadaRsiPreco = escadaRsiPreco;
+
+let rsiPrecoLigado = false;
+function pintaRsiPreco(ctx){
+  if(!rsiPrecoLigado || !ctx) return;
+  let e = null;
+  try{ e = escadaRsiPreco(); }catch(err){ return; }
+  if(!e || !e.niveis.length) return;
+  const larg = (dCanvas && dCanvas.clientWidth) || 900;
+  ctx.save();
+  ctx.font = '600 9px IBM Plex Sans, sans-serif';
+  ctx.textBaseline = 'bottom';
+  e.niveis.forEach(nv => {
+    let y = null;
+    try{ y = p2y(nv.preco); }catch(err){}
+    if(y == null || y < -40 || y > 4000) return;
+    const cor = RSI_CORES[nv.rsi] || '#8b95a3';
+    // O 50 e a linha de equilibrio, entao fica mais discreta: ela nao e alvo,
+    // e referencia. Dar o mesmo peso visual das pontas faria o grafico parecer
+    // ter cinco niveis igualmente importantes.
+    const forte = nv.rsi === 30 || nv.rsi === 70;
+    ctx.setLineDash(forte ? [] : [4,4]);
+    ctx.strokeStyle = cor;
+    ctx.globalAlpha = forte ? 0.85 : 0.45;
+    ctx.lineWidth = forte ? 1.3 : 1;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(larg, y); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+    const txt = 'RSI ' + nv.rsi + '  ' + nv.preco.toLocaleString('pt-BR',{maximumFractionDigits:2})
+              + '  (' + (nv.dist>=0?'+':'') + nv.dist + '%)';
+    ctx.textAlign = 'right';
+    const w = ctx.measureText(txt).width;
+    ctx.fillStyle = 'rgba(12,16,22,0.72)';
+    ctx.fillRect(larg - w - 12, y - 12, w + 8, 12);
+    ctx.fillStyle = cor;
+    ctx.fillText(txt, larg - 6, y - 2);
+  });
+  ctx.restore();
+}
+window.pintaRsiPreco = pintaRsiPreco;
+
+function toggleRsiPreco(){
+  rsiPrecoLigado = !rsiPrecoLigado;
+  const b = document.getElementById('btn-rsipreco');
+  if(b) b.classList.toggle('on', rsiPrecoLigado);
+  if(typeof redrawDrawings === 'function') redrawDrawings();
+  if(typeof showInfoToast === 'function')
+    showInfoToast('RSI → PRECO', rsiPrecoLigado
+      ? 'cada nivel de RSI virou uma linha de preco'
+      : 'linhas do RSI escondidas');
+}
+window.toggleRsiPreco = toggleRsiPreco;
+
+function renderRsiPreco(){
+  const box = document.getElementById('rsipreco-box');
+  const cnt = document.getElementById('rsipreco-count');
+  if(!box) return;
+  let e = null;
+  try{ e = escadaRsiPreco(); }catch(err){}
+  if(!e){
+    if(cnt) cnt.textContent = '--';
+    box.innerHTML = '<div style="font-size:9px;color:var(--t3);">Sem velas suficientes.</div>';
+    return;
+  }
+  const nf = v => Number(v).toLocaleString('pt-BR',{maximumFractionDigits:2});
+  if(cnt){
+    cnt.textContent = e.atual;
+    cnt.style.color = e.atual >= 70 ? 'var(--red)' : e.atual <= 30 ? 'var(--green)' : 'var(--t2)';
+  }
+  let h = '<div style="font-size:9px;color:var(--t3);line-height:1.4;">'
+        + 'RSI agora <b style="color:var(--t1);">' + e.atual + '</b> &middot; a que preco ele'
+        + ' chega em cada nivel no fechamento da proxima vela de ' + e.tf + '</div>';
+  e.niveis.forEach(nv => {
+    const cor = RSI_CORES[nv.rsi] || 'var(--t3)';
+    const forte = nv.rsi === 30 || nv.rsi === 70;
+    h += '<div style="display:flex;gap:6px;align-items:baseline;font-size:9px;margin-top:2px;'
+       + (forte ? 'font-weight:700;' : '') + '">'
+       + '<span style="width:44px;color:'+cor+';">RSI ' + nv.rsi + '</span>'
+       + '<span style="flex:1;color:var(--t2);">' + nf(nv.preco) + '</span>'
+       + '<span style="width:56px;text-align:right;color:'
+       + (nv.dist>=0?'var(--green)':'var(--red)') + ';">'
+       + (nv.dist>=0?'+':'') + nv.dist + '%</span>'
+       + '<span style="width:52px;text-align:right;">'
+       + '<span onclick="alarmeNoNivelRsi(' + nv.rsi + ')" style="cursor:pointer;color:var(--accent);'
+       + 'font-size:8px;">alarme</span></span>'
+       + '</div>';
+  });
+  h += '<div style="font-size:8px;color:var(--t3);margin-top:4px;line-height:1.4;">'
+     + 'E o fechamento da PROXIMA vela: a media de Wilder anda a cada fechamento, entao'
+     + ' o nivel se move sozinho mesmo com o preco parado. Serve pra vela em curso.</div>';
+  box.innerHTML = h;
+}
+window.renderRsiPreco = renderRsiPreco;
+
+// Alarme direto no nivel: e o ponto de virar o RSI em preco — se vira preco,
+// tem que dar pra por alarme, senao continua sendo so numero pra olhar.
+function alarmeNoNivelRsi(nivel){
+  let e = null;
+  try{ e = escadaRsiPreco(); }catch(err){}
+  const alvo = e && e.niveis.find(x=>x.rsi === nivel);
+  if(!alvo){
+    if(typeof showInfoToast==='function') showInfoToast('ALARMES','nao consegui resolver esse nivel agora');
+    return;
+  }
+  const preco = +Number(alvo.preco).toFixed(8);
+  if(typeof alarmesManuais === 'undefined') return;
+  if(alarmesManuais.some(a=>a.preco===preco)){
+    if(typeof showInfoToast==='function') showInfoToast('ALARMES','ja existe alarme em '+preco);
+    return;
+  }
+  alarmesManuais.push({preco, criado:Date.now(), origem:'RSI '+nivel+' ('+e.tf+')'});
+  alarmesManuais.sort((a,b)=>b.preco-a.preco);
+  try{ salvaAlarmesManuais(); }catch(err){}
+  if(typeof showInfoToast==='function')
+    showInfoToast('ALARMES','alarme em '+preco+' — onde o RSI bate '+nivel);
+}
+window.alarmeNoNivelRsi = alarmeNoNivelRsi;
+
 // ── A COMUNICACAO ────────────────────────────────────────────────────────
 // O painel e escrito na ordem em que a decisao acontece: primeiro o veredito,
 // depois a frase do que falta, depois a lista item a item. Quem esta com a mao
@@ -7904,6 +8062,7 @@ function iniciaForca(){
     try{ renderLog(); }catch(e){}           // e o registro do que os paineis disseram, com desfecho
     try{ renderMagnetismo(); }catch(e){}    // a 200 como ima e como trampolim
     try{ renderPreStop(); }catch(e){}       // stop tecnico e o cruzamento 8/16 do 3m
+    try{ renderRsiPreco(); }catch(e){}      // o RSI ao contrario: nivel vira preco
     try{ renderSinal(); }catch(e){}         // o consolidador: uma resposta so
   },2000);
 }
@@ -12454,6 +12613,8 @@ function redrawDrawings(){
   try{ pintaElliott(dCtx); }catch(e){}
   // e o trampolim, que e o setup mais espacial de todos
   if(trampolimLigado) try{ pintaTrampolim(dCtx); }catch(e){}
+  // e a escada do RSI virada em preco
+  try{ pintaRsiPreco(dCtx); }catch(e){}
   if(isDragging&&dragDraw){
     try{paint(dragDraw,true);}catch(e){}
   }
