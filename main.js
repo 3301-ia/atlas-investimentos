@@ -9618,10 +9618,15 @@ function pintaBolhas(ctx, larguraCss, alvos, corte, velas, t2xFn, p2yFn, alturaC
   // do painel de baixo — foi assim que elas apareceram espalhadas no rodape.
   const alt = (alturaCss && alturaCss > 10) ? alturaCss : 1e6;
 
-  // Com uma bolha por vela, o espaco entre velas e o teto natural do raio:
-  // metade dele e duas vizinhas encostam sem se cobrir. E o mesmo criterio que
-  // o grafico usa pra largura do candle, entao a bolha acompanha o zoom junto
-  // com ele em vez de virar mancha.
+  // O TETO DO RAIO CONTRA O ESPACO ENTRE VELAS. O comentario antigo dizia
+  // "metade dele e duas vizinhas encostam sem se cobrir" — e estava certo. O
+  // codigo e que usava 0,56, que nao e metade: duas bolhas no tamanho maximo
+  // somam 1,12 do espacamento e SE SOBREPOEM por construcao. Medido: diametro
+  // de 9,89px num espaco de 8,83px.
+  //
+  // Por isso elas viravam um cordao de contas colado, tracando o preco por
+  // cima das velas em vez de marcar vela por vela. 0,46 deixa uma folga entre
+  // vizinhas, e ai cada uma se le como uma marca e nao como um risco continuo.
   let espacamento = 12;
   try{
     const n = velas.length;
@@ -9642,7 +9647,7 @@ function pintaBolhas(ctx, larguraCss, alvos, corte, velas, t2xFn, p2yFn, alturaC
   // Abaixo do limite de legibilidade ela deixa de ser "uma por vela" e passa a
   // marcar so o que se destaca (percentil 90 ou absorcao), com raio fixo e
   // legivel. Menos marcas dizendo mais, em vez de mil dizendo nada.
-  const raioTetoBruto = Math.min(26, espacamento * 0.56);
+  const raioTetoBruto = Math.min(26, espacamento * 0.46);
   const modoEvento = raioTetoBruto < BOLHA_RAIO_LEGIVEL;
   const raioTeto = modoEvento ? BOLHA_RAIO_EVENTO : Math.max(2.2, raioTetoBruto);
 
@@ -9719,10 +9724,12 @@ function pintaBolhas(ctx, larguraCss, alvos, corte, velas, t2xFn, p2yFn, alturaC
     // nada, entao nao ha razao pra ser timida. Quando dividia o canvas de
     // desenho, na frente, precisava ser translucida pra vela aparecer por
     // baixo — e era isso que a deixava lavada.
-    ctx.fillStyle = "rgba("+g.cor+","+(g.destaque ? 0.68 : 0.42)+")";
+    // a comum recua: ela e o pano de fundo, a que se destaca e que tem que
+    // saltar. Com as duas no mesmo peso o cordao competia com o candle.
+    ctx.fillStyle = "rgba("+g.cor+","+(g.destaque ? 0.72 : 0.30)+")";
     ctx.fill();
     ctx.lineWidth = g.destaque ? 1.5 : 1;
-    ctx.strokeStyle = "rgba("+g.cor+","+(g.destaque ? 1 : 0.7)+")";
+    ctx.strokeStyle = "rgba("+g.cor+","+(g.destaque ? 1 : 0.5)+")";
     ctx.stroke();
     // ANEL BRANCO = ABSORCAO. Volume grande e agressivo que o preco recusou.
     // Deliberadamente branco e nao um tom da cor da bolha: absorcao contradiz
