@@ -730,7 +730,30 @@ function addSig(type,side,idx,price){
     const pl=(typeof placarDe==="function")?placarDe(type,side):null;
     const extra=pl&&pl.n>=3 ? "  \u00b7 "+pl.n+"x "+pl.acerto.toFixed(0)+"% "
       +(pl.mediaR>=0?"+":"")+pl.mediaR.toFixed(2)+"R" : "";
-    showToast(type,side+extra,price);
+    // ── ARBITRAGEM. Este sistema nao decide mais sozinho. O aviso sai com o
+    // veredito do consolidador junto, e sem ele a favor sai como AVISO (sem
+    // som), nao como entrada. Dois sistemas apitando criterios diferentes com
+    // o mesmo som foi o que produziu "liberado" enquanto o painel dizia nao.
+    const ladoSig = (side.includes('BUY')||side.includes('BULL')||side.includes('HIT'))
+      ? 'compra' : 'venda';
+    let ver = {ok:false, txt:''};
+    try{ ver = vereditoConsolidador(ladoSig); }catch(e){}
+    // ── ANTI-VIRADA: lado oposto logo depois do anterior fica quieto
+    let virada = false;
+    try{ virada = ehVirada(ladoSig); }catch(e){}
+    if(virada){
+      try{ showInfoToast('VIRADA CONTIDA', type+' '+side+' apareceu do lado oposto ao'
+        + ' aviso anterior em menos de '+VIRADA_VELAS+' velas — silenciado. Sinal'
+        + ' contrario logo em seguida nao e segunda chance, e o mesmo mercado'
+        + ' indeciso cobrando duas vezes.'); }catch(e){}
+    }else if(ver.ok){
+      showToast(type, side+extra+'  \u2713', price);
+      try{ marcaAviso(ladoSig); }catch(e){}
+    }else{
+      // sem som e sem cara de entrada
+      try{ showInfoToast(type+' '+side, 'apenas aviso — '+ver.txt); }catch(e){}
+      try{ marcaAviso(ladoSig); }catch(e){}
+    }
   }
   // addMarker(type,side,time,price); // Marcadores no gráfico desativados (performance extrema)
 }
@@ -4467,6 +4490,25 @@ function renderSinal(){
   }
   const viva = distanciaViva();
 
+  // PAUSADO vem antes de tudo: o painel nao deve dizer ENTRA quando a pessoa
+  // desligou os sinais, mesmo que os portoes tenham fechado. Continua medindo
+  // e gravando no log — o que para e a instrucao, nao a leitura.
+  if(typeof sinaisPausados !== 'undefined' && sinaisPausados){
+    if(cnt){ cnt.textContent = 'PAUSADO'; cnt.style.color = 'var(--red)'; }
+    let hp = '<div style="font-size:13px;font-weight:900;color:var(--red);">SINAIS PAUSADOS</div>'
+      + '<div style="font-size:9px;color:var(--t2);line-height:1.45;margin-top:3px;">'
+      + 'Nenhum aviso, som ou sinal vai sair ate voce religar no botao da barra de cima.'
+      + ' A leitura continua rodando e o log continua gravando &mdash; o que parou foi a'
+      + ' instrucao, nao a medicao.</div>';
+    if(s.entra && s.alvo){
+      hp += '<div style="font-size:9px;color:var(--t3);margin-top:4px;">'
+          + '(por baixo, o portao de ' + esc(s.alvo.porta) + ' ' + esc(s.alvo.lado)
+          + ' esta fechado agora)</div>';
+    }
+    box.innerHTML = hp;
+    return;
+  }
+
   if(s.contradicao){
     if(cnt){ cnt.textContent = 'CONFLITO'; cnt.style.color = 'var(--red)'; }
     let h = '<div style="font-size:13px;font-weight:900;color:var(--red);">NAO ENTRA</div>'
@@ -5416,6 +5458,104 @@ function alarmeNoNivelRsi(nivel){
     showInfoToast('ALARMES','alarme em '+preco+' — onde o RSI bate '+nivel);
 }
 window.alarmeNoNivelRsi = alarmeNoNivelRsi;
+
+
+// ══════════════════════════════════════════════════════
+// PAUSA GLOBAL E ARBITRAGEM ENTRE OS SISTEMAS DE SINAL
+// ══════════════════════════════════════════════════════
+// Havia DOIS sistemas de sinal rodando ao mesmo tempo sem se falar, e isso e
+// culpa minha: fui somando portoes novos sem nunca desligar nem arbitrar o
+// antigo.
+//
+//   O ANTIGO (addSig -> toast + beep): dispara pra ATLAS, FIB, DIRECAO, GOLD e
+//   companhia. O "liberado" dele checa UMA coisa: o empilhamento das medias.
+//   Nao olha fluxo, nao olha veto, nao olha taxa base, nao olha os outros
+//   tempos. E apita.
+//
+//   O NOVO (o consolidador): quatro portoes, dois lados, vetos e taxa base.
+//
+// Medido no historico carregado: o antigo tinha 27 "liberados" no mesmo momento
+// em que o consolidador dizia NAO ENTRA. Uma pessoa olhando a tela via um aviso
+// sonoro de compra liberada enquanto o painel que eu passei a sessao inteira
+// construindo dizia pra ficar de fora. Esse e o barulho, e ele custou dinheiro.
+//
+// E 106 dos 109 sinais eram "FIB compra" — TOQUE DE NIVEL, que nao e entrada
+// nenhuma, apitando com o mesmo som de um sinal de entrada.
+//
+// Tres coisas aqui: a pausa (desliga tudo), a arbitragem (o antigo passa a
+// dizer o que o novo acha) e o anti-virada (lado oposto em seguida fica quieto).
+
+const PAUSA_CHAVE = 'atlas_sinais_pausados';
+let sinaisPausados = false;
+try{ sinaisPausados = localStorage.getItem(PAUSA_CHAVE) === '1'; }catch(e){}
+
+function togglePausaSinais(){
+  sinaisPausados = !sinaisPausados;
+  try{ localStorage.setItem(PAUSA_CHAVE, sinaisPausados ? '1' : '0'); }catch(e){}
+  aplicaPausaSinais();
+  if(typeof showInfoToast === 'function'){
+    // este aviso passa mesmo pausado: e sobre a pausa, nao um sinal
+    const el = document.getElementById('toasts');
+    if(el){
+      const t = document.createElement('div');
+      t.className = 'toast';
+      t.innerHTML = '<div class="toast-hd"><span class="toast-title">SINAIS '
+        + (sinaisPausados ? 'PAUSADOS' : 'LIGADOS') + '</span></div>'
+        + '<div class="toast-msg">' + (sinaisPausados
+            ? 'nenhum aviso, som ou sinal ate voce religar'
+            : 'avisos de volta') + '</div>';
+      el.appendChild(t);
+      setTimeout(()=>{ try{ t.remove(); }catch(e){} }, 5000);
+    }
+  }
+  try{ renderSinal(); }catch(e){}
+}
+function aplicaPausaSinais(){
+  const b = document.getElementById('btn-pausa');
+  if(b){
+    b.textContent = sinaisPausados ? '⏸ SINAIS PAUSADOS' : '⏵ Sinais ativos';
+    b.classList.toggle('on', sinaisPausados);
+    b.style.color = sinaisPausados ? 'var(--red)' : '';
+    b.style.borderColor = sinaisPausados ? 'var(--red)' : '';
+  }
+  document.body.classList.toggle('sinais-pausados', sinaisPausados);
+}
+window.togglePausaSinais = togglePausaSinais;
+window.aplicaPausaSinais = aplicaPausaSinais;
+window.sinaisEstaoPausados = () => sinaisPausados;
+
+// ── ANTI-VIRADA ──────────────────────────────────────────────────────────
+// Voce foi stopado numa compra e entrou na venda logo em seguida. Nada no app
+// impedia isso — os sinais sao independentes entre si e entre os lados.
+// Um sinal do lado oposto logo depois de outro nao e uma segunda oportunidade,
+// e o mesmo mercado indeciso te cobrando duas vezes.
+const VIRADA_VELAS = 8;
+let ultimoAviso = {lado:null, quando:0, tf:null};
+function ehVirada(lado){
+  if(!ultimoAviso.lado || ultimoAviso.lado === lado) return false;
+  const tfSeg = (typeof tfToSeconds === 'function') ? tfToSeconds(currentTF) : 900;
+  return (Date.now() - ultimoAviso.quando) < VIRADA_VELAS * tfSeg * 1000;
+}
+function marcaAviso(lado){ ultimoAviso = {lado, quando:Date.now(), tf:currentTF}; }
+window.ehVirada = ehVirada;
+
+// ── A ARBITRAGEM ─────────────────────────────────────────────────────────
+// O sistema antigo nao vai mais dizer "liberado" sozinho. Ele continua
+// existindo (os sinais dele viram log e historico, e o placar depende disso),
+// mas o AVISO passa a carregar o que o consolidador acha — e sem o consolidador
+// a favor, sai sem som e marcado como aviso, nao como entrada.
+function vereditoConsolidador(lado){
+  try{
+    const s = sinalUnificado();
+    if(!s) return {ok:false, txt:'consolidador sem leitura'};
+    if(s.contradicao) return {ok:false, txt:'consolidador: os dois lados fecharam, e contradicao'};
+    if(s.entra && s.alvo && s.alvo.lado === lado)
+      return {ok:true, txt:'consolidador confirma ('+s.alvo.porta+')'};
+    if(s.entra) return {ok:false, txt:'consolidador aponta '+s.alvo.lado+', nao '+lado};
+    return {ok:false, txt:'consolidador: NAO ENTRA — falta '+(s.maisPerto?s.maisPerto.falta:'?')};
+  }catch(e){ return {ok:false, txt:'consolidador indisponivel'}; }
+}
+window.vereditoConsolidador = vereditoConsolidador;
 
 // ── A COMUNICACAO ────────────────────────────────────────────────────────
 // O painel e escrito na ordem em que a decisao acontece: primeiro o veredito,
@@ -7244,6 +7384,9 @@ function openWS(){
 // TOAST / CONTROLS
 // ══════════════════════════════════════════════════════
 function showToast(type,side,price){
+  // A PAUSA CORTA AQUI, na raiz: qualquer caminho que produza aviso de sinal
+  // passa por esta funcao, entao nao ha rota que escape.
+  if(typeof sinaisPausados !== 'undefined' && sinaisPausados) return;
   const a=document.getElementById('toasts'),t=document.createElement('div');
   // os alarmes de nivel usam a seta pra dizer o lado do cruzamento
   const isBuy=side.includes('BUY')||side.includes('BULL')||side.includes('HIT')||side.includes('\u25b2');
@@ -7251,11 +7394,14 @@ function showToast(type,side,price){
   t.innerHTML=`<div class="toast-hd"><span class="toast-title">${type} ${side}</span><button class="toast-x" onclick="this.closest('.toast').remove()">x</button></div><div class="toast-msg">${currentSym.replace('USDT','')} ${currentTF}</div><div class="toast-px">@ ${price.toFixed(2)}</div>`;
   a.appendChild(t);setTimeout(()=>{try{t.remove();}catch{}},8000);beep();
 }
-function beep(){try{const ctx=new(window.AudioContext||window.webkitAudioContext)();const o=ctx.createOscillator(),g=ctx.createGain();o.connect(g);g.connect(ctx.destination);o.frequency.value=460;g.gain.value=.09;o.start();o.stop(ctx.currentTime+.2);setTimeout(()=>ctx.close(),300);}catch{}}
+function beep(){if(typeof sinaisPausados!=='undefined'&&sinaisPausados)return;try{const ctx=new(window.AudioContext||window.webkitAudioContext)();const o=ctx.createOscillator(),g=ctx.createGain();o.connect(g);g.connect(ctx.destination);o.frequency.value=460;g.gain.value=.09;o.start();o.stop(ctx.currentTime+.2);setTimeout(()=>ctx.close(),300);}catch{}}
 function toggleAlerts(){alertsOn=!alertsOn;const b=document.getElementById('btn-alerts');b.textContent=alertsOn?'🔔 ON':'🔔 OFF';b.classList.toggle('on',alertsOn);document.getElementById('nav-alerts').classList.toggle('active',alertsOn);}
 
 // Aviso generico (nao e um sinal de trade, so uma notificacao curta na UI)
 function showInfoToast(title,msg){
+  // pausado, so passa o que for sobre a propria pausa
+  if(typeof sinaisPausados !== 'undefined' && sinaisPausados
+     && String(title||'').indexOf('SINAIS') !== 0) return;
   // Aceita as duas formas em uso: showInfoToast(titulo,mensagem) e
   // showInfoToast(mensagem). A segunda vinha de uma definicao duplicada
   // deste mesmo nome, que quebrava o arquivo inteiro por redeclaracao.
@@ -12799,6 +12945,7 @@ function initApp(){
   // o estado da barra de desenho tambem e preferencia salva: sem aplicar aqui,
   // cada refresh desfazia a arrumacao e a barra voltava aberta por cima do preco
   try{ aplicaBarraDesenho(); }catch(e){}
+  try{ aplicaPausaSinais(); }catch(e){}
   // Leitura de mercado da Deriv: so precisa do App ID, nao do token. Sem App
   // ID salvo o painel apenas diz isso, em vez de tentar conectar sem parar.
   // (Aqui no initApp, nao no changeSym: no changeSym so conectaria depois de
