@@ -1,0 +1,1860 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Atlas Dashboard v10.0</title>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+  <script>
+    // Polyfill universal de AbortSignal.timeout para Android / WebViews / Navegadores Móveis
+    if (typeof AbortSignal !== 'undefined' && !AbortSignal.timeout) {
+      AbortSignal.timeout = function(ms) {
+        var controller = new AbortController();
+        var timer = setTimeout(function() {
+          try { controller.abort(new DOMException('TimeoutError', 'TimeoutError')); }
+          catch(e) { controller.abort(); }
+        }, ms);
+        if (controller.signal && controller.signal.addEventListener) {
+          controller.signal.addEventListener('abort', function() { clearTimeout(timer); }, { once: true });
+        }
+        return controller.signal;
+      };
+    }
+  </script>
+
+  <!-- As fontes vem antes do style.css de proposito: o navegador ja abre a
+       conexao com o Google e pede o CSS das fontes enquanto baixa o nosso,
+       em vez de so descobrir esse pedido depois de analisar style.css. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://unpkg.com" crossorigin>
+  <!-- media="print" faz o navegador baixar sem bloquear a primeira pintura;
+       o onload devolve pra "all" quando chega. Com display=swap o texto sai
+       na fonte de sistema e troca sozinho — se o Google estiver lento ou fora
+       do ar, a pagina aparece do mesmo jeito, em vez de esperar por ele. -->
+  <link rel="stylesheet" media="print" onload="this.media='all';this.onload=null"
+        href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap"></noscript>
+  <link rel="stylesheet" href="./style.css?v=101_crisp_filtered_entries">
+</head>
+<body class="dark">
+<div id="vectra-splash">
+  <!-- ABERTURA — aneis, explosao de raios e ribbon de EMAs, tudo num unico
+       <canvas>. Antes eram 38 paths SVG animados com filter e mask, e nenhum
+       dos dois e composto em GPU: cada quadro re-rasterizava os 38, o que
+       segurava a abertura em 38fps no celular. Medido: dentro do SVG o teto
+       era 46fps, e so abrindo mao do brilho E da mascara. No canvas o brilho
+       sai de dois tracos sobrepostos e nao custa por quadro.
+       Fica em z-index 1, abaixo do .vectra-splash-inner, entao nasce atras
+       do totem. -->
+  <canvas id="rb-canvas" class="ribbon-burst" aria-hidden="true"></canvas>
+  <div class="vectra-splash-inner">
+    
+    <div class="totem-wrapper">
+      <!-- autoplay so roda com muted; playsinline evita o iOS abrir em tela cheia.
+           Sem loop de proposito: o fim do video e o gatilho pra entrar no app.
+           O <img> dentro do <video> e o fallback de quem nao decodifica o mp4. -->
+      <video id="vectra-totem-video" class="vectra-splash-img"
+             autoplay muted playsinline preload="auto" poster="./vectra-totem.jpg">
+        <!-- Para trocar o video do splash, mude so esta linha. -->
+        <source src="./vectra-totem-person.mp4" type="video/mp4">
+        <img src="./vectra-totem.jpg" alt="Vectra" class="vectra-splash-img">
+      </video>
+      <div class="totem-sweep"></div>
+    </div>
+    <div class="vectra-splash-sparks">
+      <span class="spark" style="--x:34.5%;--y:19.3%;--d:1.17s"></span>
+      <span class="spark" style="--x:12.4%;--y:53.2%;--d:0.66s"></span>
+      <span class="spark" style="--x:11.1%;--y:50.7%;--d:0.07s"></span>
+      <span class="spark" style="--x:44.2%;--y:12.1%;--d:0.16s"></span>
+      <span class="spark" style="--x:43.4%;--y:78.8%;--d:0.22s"></span>
+      <span class="spark" style="--x:25.6%;--y:61.2%;--d:1.71s"></span>
+      <span class="spark" style="--x:56.8%;--y:40.9%;--d:1.76s"></span>
+      <span class="spark" style="--x:10.1%;--y:81.5%;--d:0.52s"></span>
+      <span class="spark" style="--x:18.7%;--y:16.4%;--d:0.56s"></span>
+      <span class="spark" style="--x:77.8%;--y:21.9%;--d:1.05s"></span>
+      <span class="spark" style="--x:62.2%;--y:38.8%;--d:0.99s"></span>
+      <span class="spark" style="--x:11.5%;--y:11.2%;--d:0.37s"></span>
+      <span class="spark" style="--x:65.9%;--y:43.6%;--d:0.57s"></span>
+      <span class="spark" style="--x:57.5%;--y:45.9%;--d:0.54s"></span>
+      <span class="spark" style="--x:75.9%;--y:67.5%;--d:0.44s"></span>
+      <span class="spark" style="--x:56.5%;--y:52.2%;--d:1.58s"></span>
+    </div>
+    <div class="vectra-splash-word">VECTRA</div>
+    <div class="vectra-splash-tag">GLOBAL DATA INTELLIGENCE</div>
+  </div>
+</div>
+<script>
+(function(){
+  var splash=document.getElementById('vectra-splash');
+  if(!splash)return;
+  var dismissed=false;
+  var FECHA_MS=800;  // entra ANTES do fim de vectraFechar (.95s) pra o preto
+                     // comecar a sair junto com o ponto, sem intervalo morto
+
+  // Saida em duas etapas: o circulo recolhe pro centro (.fechando) e so
+  // depois o fundo preto some (.hide). Um fade seco perdia o efeito.
+  // Medido num celular: com o splash so em opacity:0/visibility:hidden, as 34
+  // animacoes infinitas da abertura (17 rbCorre + 17 rbRespira nos paths do
+  // ribbon, mais o sweep, o brilho e as particulas) seguiam rodando pra sempre
+  // por baixo do app — visibility:hidden nao para animacao em CSS. Custava um
+  // quarto do processador: (program) 29,3% -> 5,5% e ocioso 65,4% -> 91,1%.
+  // Por isso o .apagado (display:none) entra depois do fade. O elemento fica
+  // no DOM porque a tela de descanso o reaproveita.
+  var APAGA_MS=900;  // o fade do .hide dura .85s
+  function apagar(){
+    if(splash.classList.contains("hide"))splash.classList.add("apagado");
+    if(window.__rbPara)window.__rbPara(); // para o canvas e limpa o buffer
+    if(video&&!video.paused)video.pause();
+  }
+  function esconder(){
+    splash.classList.add("hide");
+    setTimeout(apagar,APAGA_MS);
+  }
+
+  function dismiss(){
+    if(dismissed)return;
+    dismissed=true;
+    splash.classList.add("fechando");
+    setTimeout(esconder,FECHA_MS);
+  }
+  splash.addEventListener("click",function(){
+    if(!dismissed)dismiss();
+    else esconder(); // modo tela de descanso
+  });
+
+  // O video toca INTEIRO antes de entrar — "ended" e quem manda. As demais
+  // saidas existem so pra ele nunca prender a entrada, ja que o splash cobre
+  // tudo (z-index 99999) e antes so saia no clique.
+  var video=document.getElementById("vectra-totem-video");
+  var HOLD_MS=900;      // respiro apos o ultimo frame, com o texto legivel
+  var ESPERA_MAX=6000;  // nao comecou a tocar ate aqui: entra assim que der
+  var TETO_MS=13000;    // teto absoluto: 8s de video + respiro + fechamento
+                        // dao ~9,7s, entao 13s ja e folga. Acima disso o que
+                        // o usuario ve e so uma tela preta.
+  var PISO_MS=3200;     // chao da abertura quando o video nao toca. O canvas
+                        // so solta os raios em 0,95s e o ribbon em 2,35s: sem
+                        // esse piso, quem cai numa saida de emergencia
+                        // (autoplay barrado, mp4 que nao chega) via a abertura
+                        // cortada em 0,7s. Medido num iPhone emulado com o
+                        // autoplay bloqueado: o splash comecava a fechar aos
+                        // 735ms. E o que faz a abertura do celular sair
+                        // diferente da do computador.
+  var tempoOk=false, appOk=false, agendado=false;
+  var inicioAbertura=performance.now();
+  function sair(){if(tempoOk&&appOk)dismiss();}
+  // Toda saida de emergencia passa por aqui, entao o piso vale pra todas de
+  // uma vez. O caminho normal (video inteiro, ~8s) chega bem depois do piso e
+  // nao espera nada.
+  function liberarTempo(){
+    if(tempoOk||agendado)return;
+    var falta=PISO_MS-(performance.now()-inicioAbertura);
+    if(falta>16){agendado=true;setTimeout(function(){tempoOk=true;sair();},falta);return;}
+    tempoOk=true;sair();
+  }
+
+  // Medido: com "load" o splash so podia sair depois do ULTIMO recurso da
+  // pagina — o script do unpkg e o proprio mp4 inclusos. Numa rede lenta isso
+  // segurava a tela preta por 12s (aqui: DOMContentLoaded 0,5s / load 12,5s).
+  // O que interessa e o app estar montado atras do splash, e com os scripts
+  // em defer isso acontece no DOMContentLoaded.
+  if(document.readyState!=="loading")appOk=true;
+  else document.addEventListener("DOMContentLoaded",function(){appOk=true;sair();});
+  setTimeout(dismiss,TETO_MS);
+
+  if(!video){
+    liberarTempo();
+  }else{
+    // Medido: com <source>, nem o <video> nem o <source> disparam "error" de
+    // forma confiavel quando o arquivo nao existe. O sinal que de fato muda e
+    // networkState === 3 (NETWORK_NO_SOURCE), entao e ele que vigiamos.
+    var vigia=setInterval(function(){
+      if(video.networkState===3||video.error){clearInterval(vigia);liberarTempo();}
+    },300);
+    function pararVigia(){clearInterval(vigia);}
+    video.addEventListener("playing",pararVigia,{once:true});
+    // Depois do ultimo frame o splash segura HOLD_MS antes de comecar a
+    // fechar. Sem essa pausa o fechamento comecava no mesmo instante em que
+    // o video acabava e cortava a leitura do GLOBAL DATA INTELLIGENCE.
+    video.addEventListener("ended",function(){
+      pararVigia();
+      setTimeout(liberarTempo,HOLD_MS);
+    });
+    video.addEventListener("error",liberarTempo);
+    var t=video.play&&video.play();
+    if(t&&t.catch)t.catch(function(){pararVigia();liberarTempo();}); // autoplay barrado
+    // Ultimo recurso: comecou a carregar mas nunca saiu do zero.
+    setTimeout(function(){if(video.currentTime===0){pararVigia();liberarTempo();}},ESPERA_MAX);
+
+  }
+
+  // ── MOTOR DA ABERTURA ────────────────────────────────────────────────
+  // Aneis, raios e ribbon num canvas so. O glow sai de dois tracos
+  // sobrepostos (largo e fraco, fino e forte), nao de shadowBlur, que custa
+  // caro por traco. Sem filtro, sem mascara.
+  (function(){
+    var cv=document.getElementById("rb-canvas");
+    if(!cv||!cv.getContext) return;
+    if(window.matchMedia&&window.matchMedia("(prefers-reduced-motion:reduce)").matches) return;
+    var ctx=cv.getContext("2d"), L=0,A=0,dpr=1,t0=0,raf=0;
+    // QUALIDADE ADAPTATIVA. Nao da pra saber de antemao o que a maquina
+    // aguenta, entao a animacao mede o proprio custo e cai de nivel sozinha:
+    //   2 = tudo (21 raios, 17 medias, glow de dois tracos)
+    //   1 = 12 raios, 9 medias, ainda com glow
+    //   0 = 8 raios, 6 medias, traco unico e dpr 1
+    var qual=2, nRaios=21, nEmas=17, glow=true;
+    var amostras=0, somaMs=0, ultimo=0;
+    function baixarQualidade(){
+      if(qual===0) return;
+      qual--;
+      if(qual===1){ nRaios=12; nEmas=9; }
+      else { nRaios=8; nEmas=6; glow=false; dpr=1; L=0; medir(); }
+    }
+
+    var CORES=["#2979FF","#00B8D9","#00897B","#F5A623","#FF6D9E","#E91E63","#6A1B9A"];
+    var PERIODOS=[13,17,21,27,34,45,55,72,95,120,144,200,240,305,410,500,610];
+
+    var N=460, preco=new Float32Array(N), v=0;
+    for(var i=0;i<N;i++){
+      v+=(Math.sin(i/23)*1.9+Math.sin(i/61)*3.4+Math.sin(i/7.3)*0.7+Math.sin(i/151)*5.2)*0.55;
+      preco[i]=v;
+    }
+    // ribbon de verdade e um feixe de medias do MESMO dado: por isso elas
+    // convergem e abrem juntas, como num grafico
+    var EMAS=PERIODOS.map(function(pp){
+      var k=2/(pp+1),o=new Float32Array(N);o[0]=preco[0];
+      for(var j=1;j<N;j++)o[j]=preco[j]*k+o[j-1]*(1-k);
+      return o;});
+    var lo=Infinity,hi=-Infinity;
+    EMAS.forEach(function(e){for(var j=0;j<N;j++){if(e[j]<lo)lo=e[j];if(e[j]>hi)hi=e[j];}});
+    var meio=(hi-lo)/2;
+
+    var RAIOS=[];
+    for(var r=0;r<21;r++) RAIOS.push({ang:r*(Math.PI*2/21),
+      curva:(58+(r%5)*26)*(r%2?-1:1)/900, cor:CORES[r%CORES.length],
+      larg:2+(r%3)*0.9, atraso:r*0.035});
+    var ANEIS=[{c:"#2979FF",d:0},{c:"#E91E63",d:.06},{c:"#00897B",d:.12},
+               {c:"#F5A623",d:.18},{c:"#6A1B9A",d:.24}];
+
+    // Mede pela VIEWPORT, nao por clientWidth. O canvas e filho de um
+    // elemento fixed inset:0, entao a viewport e sempre a medida certa — e,
+    // ao contrario do clientWidth, nunca devolve uma caixa parcial durante o
+    // layout inicial. Medir pela caixa fazia um quadro sair com metade da
+    // largura e a explosao aparecia com duas origens.
+    // Mede pela caixa do proprio canvas quando ela ja existe, e so cai na
+    // viewport enquanto ela ainda e zero (o primeiro quadro pode chegar antes
+    // do layout — foi por isso que um dia se mediu a janela). No iOS os dois
+    // numeros nao batem: o elemento e fixed inset:0, entao a altura em CSS e a
+    // da janela com a barra de endereco recolhida, enquanto innerHeight e a
+    // altura visivel AGORA, com a barra na tela. Desenhar no segundo dentro de
+    // uma caixa do primeiro estica a abertura na vertical e sobe o centro — a
+    // explosao saindo de um ponto que nao e o do totem.
+    function medir(){
+      var nl2=cv.clientWidth||window.innerWidth, na=cv.clientHeight||window.innerHeight;
+      if(nl2===L&&na===A) return;
+      // no iOS a barra de endereco recolhe na rolagem e dispara resize por uns
+      // 60-90px de altura; refazer o buffer por isso limpa o canvas e a
+      // abertura pisca no meio
+      if(nl2===L&&A&&Math.abs(na-A)<120) return;
+      L=nl2; A=na;
+      dpr=Math.min(window.devicePixelRatio||1,1.5); // acima de 1.5 o ganho e nulo
+      cv.width=Math.round(L*dpr); cv.height=Math.round(A*dpr);
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+    }
+
+    function neon(cor,larg,alfa,desenha){
+      ctx.strokeStyle=cor; ctx.lineCap="round";
+      if(glow){ ctx.globalAlpha=alfa*.22; ctx.lineWidth=larg*4.5; desenha(); }
+      ctx.globalAlpha=alfa; ctx.lineWidth=glow?larg:larg*1.6; desenha();
+    }
+
+    function quadro(agora){
+      medir();
+      if(ultimo){
+        somaMs+=agora-ultimo; amostras++;
+        // 24 quadros e o bastante pra saber se a maquina esta sofrendo;
+        // 22ms de media ja e menos de 45fps
+        if(amostras>=24){ if(somaMs/amostras>22) baixarQualidade();
+          amostras=0; somaMs=0; }
+      }
+      ultimo=agora;
+      var t=(agora-t0)/1000, cx=L/2, cy=A/2, base=Math.min(L,A)*.36;
+      ctx.save(); ctx.setTransform(1,0,0,1,0,0);
+      ctx.clearRect(0,0,cv.width,cv.height); ctx.restore();
+
+      for(var a=0;a<ANEIS.length;a++){
+        var ta=t-ANEIS[a].d; if(ta<0||ta>1) continue;
+        var esc,al;
+        if(ta<.55){esc=.05+1.5*(ta/.55); al=Math.min(1,ta/.18);}
+        else{esc=1.55-1.53*((ta-.55)/.45); al=.9*(1-(ta-.55)/.45);}
+        (function(cor,e2,a2){ neon(cor,2,a2,function(){
+          ctx.beginPath(); ctx.arc(cx,cy,base*e2,0,6.2832); ctx.stroke(); });
+        })(ANEIS[a].c,esc,al);
+      }
+
+      if(t>.82&&t<1.32){
+        var fp=(t-.82)/.5;
+        ctx.globalAlpha=fp<.35?fp/.35:1-(fp-.35)/.65;
+        ctx.fillStyle="#fff"; ctx.beginPath();
+        ctx.arc(cx,cy,5*(fp<.35?(fp/.35)*1.8:1.8-1.65*(fp-.35)/.65),0,6.2832); ctx.fill();
+      }
+
+      for(var k=0;k<nRaios;k++){
+        var R=RAIOS[k], tr=t-(.95+R.atraso); if(tr<0) continue;
+        var fr=Math.min(1,tr/1.4), esc3=.02+.98*(1-Math.pow(1-fr,3));
+        var al3=fr<.22?fr/.22:.5+.5*(1-fr);
+        if(tr>1.55) al3*=Math.max(0,1-(tr-1.55)/1.1);
+        if(al3<=.01) continue;
+        (function(R2,e3,a3){
+          var alc=Math.max(L,A)*1.15*e3;
+          neon(R2.cor,R2.larg,a3*.55,function(){
+            ctx.save(); ctx.translate(cx,cy); ctx.rotate(R2.ang);
+            ctx.beginPath(); ctx.moveTo(0,0);
+            ctx.quadraticCurveTo(alc*.36,R2.curva*alc*.5,alc,R2.curva*alc*1.6);
+            ctx.stroke(); ctx.restore(); });
+        })(R,esc3,al3);
+      }
+
+      if(t>2.35){
+        var fb=Math.min(1,(t-2.35)/1.6), escY=(A*.40)/Math.max(1e-6,hi-lo);
+        var passo=(L*2)/(N-1);
+        var salto=EMAS.length/nEmas;
+        for(var e=0;e<EMAS.length;e+=salto){
+          (function(serie,idx){
+            var dur=16+idx*.9, desl=(t*(L*2)/dur)%(L*2);
+            var cor=CORES[Math.min(CORES.length-1,(idx/EMAS.length*CORES.length)|0)];
+            var al=(.30+.42*(.5+.5*Math.sin(t/(dur/3)+idx*.4)))*fb;
+            neon(cor,2.4-(idx/EMAS.length)*1,al*.8,function(){
+              ctx.beginPath(); var iniciou=false;
+              for(var j=0;j<N;j++){
+                var x=j*passo-desl; if(x<-passo||x>L+passo){iniciou=false;continue;}
+                var y=cy-(serie[j]-lo-meio)*escY*(.10+.90*fb);
+                if(!iniciou){ctx.moveTo(x,y);iniciou=true;} else ctx.lineTo(x,y);
+              }
+              ctx.stroke(); });
+          })(EMAS[e|0],e|0);
+        }
+      }
+      ctx.globalAlpha=1;
+      raf=requestAnimationFrame(quadro);
+    }
+
+    window.addEventListener("resize",medir);
+    t0=performance.now();
+    raf=requestAnimationFrame(quadro);
+    // encerra junto com o splash: sem isso seguiria desenhando por baixo do
+    // dashboard, competindo com os graficos
+    window.__rbPara=function(){ if(raf) cancelAnimationFrame(raf); raf=0;
+      ctx.save(); ctx.setTransform(1,0,0,1,0,0);
+      ctx.clearRect(0,0,cv.width,cv.height); ctx.restore(); };
+    // A tela de descanso reabre o splash, e sem isto ela voltava com o totem
+    // parado num canvas vazio. Recomeca do zero (t0 novo) pra abertura tocar
+    // inteira de novo, e nao continua de onde parou.
+    window.__rbSegue=function(){ if(raf) return;
+      L=0; medir(); t0=performance.now(); raf=requestAnimationFrame(quadro); };
+  })();
+
+  // Atalho: se o fade terminar antes dos APAGA_MS, apaga na hora. O setTimeout
+  // do esconder() fica como garantia, porque transitionend nao dispara em toda
+  // situacao (aba em segundo plano, por exemplo).
+  splash.addEventListener("transitionend",function(e){
+    if(e.target===splash&&e.propertyName==="opacity")apagar();
+  });
+  window.toggleScreensaver = function() {
+    splash.classList.remove("apagado"); // reacende antes de tirar o .hide
+    splash.classList.remove("hide");
+    if(window.__rbSegue)window.__rbSegue(); // religa o canvas da abertura
+    splash.classList.remove("fechando"); // senao volta com o totem encolhido
+    dismissed = true; // prevent the timeout from firing again if it hasn't
+  };
+})();
+</script>
+
+<div id="toasts"></div>
+
+
+<div class="app-shell">
+  <!-- NAV LATERAL DE ICONES -->
+  <div class="side-nav">
+    <div class="side-nav-top">
+      <div class="nav-item active" title="Inicio"><span class="nav-icon">🏠</span><span class="nav-lbl">Inicio</span></div>
+      <div class="nav-item" id="nav-analise" title="Analise" onclick="switchRTab('analise')"><span class="nav-icon">📊</span><span class="nav-lbl">Analise</span></div>
+      <div class="nav-item" id="nav-alerts" title="Alertas" onclick="toggleAlerts()"><span class="nav-icon">🔔</span><span class="nav-lbl">Alertas</span></div>
+      <div class="nav-item" title="Ajuda" onclick="alert('ATLAS Dashboard: chart em tempo real + motor de sinais (ATLAS/GOLD/Fibonacci) + ferramentas de desenho. Aba OPERAR prepara a ordem para a Deriv.')"><span class="nav-icon">❓</span><span class="nav-lbl">Ajuda</span></div>
+      <div class="nav-item" title="Idioma"><span class="nav-icon">🌐</span><span class="nav-lbl">PT-BR</span></div>
+    </div>
+    <div class="nav-item" id="nav-config" title="Configuracoes" onclick="openDerivModal()"><span class="nav-icon">⚙️</span><span class="nav-lbl">Config</span></div>
+  </div>
+
+  <!-- MODAL: CONFIGURACOES DERIV -->
+  <div id="deriv-modal-overlay" class="modal-overlay" onclick="if(event.target===this)closeDerivModal()">
+    <div class="modal-card">
+      <div class="modal-hd">
+        <span>Conectar conta Deriv</span>
+        <button class="modal-x" onclick="closeDerivModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-status-row">
+          <span class="dot off" id="deriv-status-dot"></span>
+          <span id="deriv-status-txt">Desconectado</span>
+        </div>
+
+        <label class="modal-lbl">App ID</label>
+        <input type="text" id="deriv-appid" class="modal-input" placeholder="ex: 12345"
+          oninput="localStorage.setItem('deriv_app_id', this.value)">
+        <div class="modal-hint">
+          Crie gratis em <b>api.deriv.com</b> &rarr; "Register application". Isso fica salvo so no seu navegador, e nao e um segredo.
+        </div>
+
+        <label class="modal-lbl" style="margin-top:12px;">Token de API</label>
+        <div style="position:relative;">
+          <input type="password" id="deriv-token" class="modal-input" placeholder="cole aqui a cada sessao" autocomplete="off" style="padding-right:36px;">
+          <button type="button" onclick="toggleTokenVisibility()" id="token-eye"
+            style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;
+            cursor:pointer;font-size:14px;color:var(--t2);padding:4px;">👁</button>
+        </div>
+        <div class="modal-hint">
+          Gere em Deriv &rarr; Configuracoes &rarr; Seguranca e Login &rarr; API Token (escopo <b>Trade</b>).
+          <b>Nunca compartilhe esse token comigo no chat</b> — ele fica so na memoria desta aba e some se voce recarregar a pagina.
+        </div>
+
+        <button class="modal-connect-btn" id="deriv-connect-btn" onclick="onDerivConnectClick()">Conectar</button>
+        <!-- Dado de mercado na Deriv e publico: so o App ID, sem token. Quem
+             so quer o cruzamento Binance x Deriv entra por aqui. -->
+        <button class="modal-connect-btn" onclick="ligaDadosDeriv()"
+          style="margin-top:6px;background:transparent;border:1px solid var(--bd2);color:var(--t2);"
+          title="Usa so o App ID pra ler ticks do mercado. Nao envia ordem nem precisa de token.">
+          So dados de mercado (sem token)</button>
+      </div>
+    </div>
+  </div>
+
+
+
+  <div class="page-col">
+    <!-- TOPBAR -->
+    <div class="topbar">
+      <div class="logo" style="cursor:pointer;" onclick="toggleScreensaver()" title="Ativar Tela de Descanso">
+        <img src="./vectra-icon.png" alt="Vectra" class="logo-icon logo-icon-img">
+        <div><div class="logo-name">VECTRA</div><div class="logo-sub">GLOBAL DATA INTELLIGENCE</div></div>
+      </div>
+      <div class="sep"></div>
+      <div class="dot off blink" id="ws-dot"></div>
+      <span class="st" id="ws-st">Conectando...</span>
+      <span class="st" id="data-source-badge" style="display:none;color:var(--gold);font-weight:700;margin-left:6px;" title="Fonte de dados de fallback ativa (Binance indisponivel no momento)"></span>
+      <div class="sep"></div>
+      <div class="cat-bar" id="cat-bar"></div>
+
+      <select id="sym-select" onchange="changeSym(this.value)">
+        <!-- Opciones generadas dinamicamente -->
+      </select>
+
+      <div class="sep"></div>
+      <select id="tf-select" onchange="changeTF(this.value)">
+        <option value="1m">1m</option>
+        <option value="3m">3m</option>
+        <option value="5m">5m</option>
+        <option value="6m">6m</option>
+        <option value="15m" selected>15m</option>
+        <option value="30m">30m</option>
+        <option value="1h">1h</option>
+        <option value="4h">4h</option>
+        <option value="5h">5h</option>
+        <option value="6h">6h</option>
+        <option value="12h">12h</option>
+        <option value="15h">15h</option>
+        <option value="1d">1d</option>
+        <option value="1M">1M</option>
+        <option value="3M">3M</option>
+        <option value="6M">6M</option>
+        <option value="9M">9M</option>
+        <option value="12M">12M</option>
+        <option value="1w">1w</option>
+      </select>
+      <button class="btn" id="btn-pausa" onclick="togglePausaSinais()" title="Pausa TODOS os sinais, avisos e sons de uma vez. A leitura continua rodando e o log continua gravando — o que para e a instrucao, nao a medicao">⏵ Sinais ativos</button>
+      <button class="btn" id="btn-fullhist" onclick="loadFullHistory()" title="Carrega todo o historico disponivel, pra analisar tendencia macro">🕰 Tudo</button>
+      <button class="btn" id="btn-modo" onclick="trocaModo()" title="Auto: o painel segue o lado mais perto de entrar. Comprador/Vendedor: trava no lado que voce escolheu, mesmo faltando muito">◈ Auto</button>
+      <button class="btn" id="btn-multi" onclick="toggleMultiView()" title="Abre BTC, ETH, XAU e XAG juntos na mesma tela">🔲 Multi</button>
+      <button class="btn" id="btn-mtf" onclick="toggleMtfView()" title="Abre 4 timeframes diferentes para o ativo selecionado">⏱ Multi-TF</button>
+      <button class="btn" id="btn-validador" onclick="toggleValidatorPanel()" title="Valida todos os ativos da lista com o checklist ATLAS (Score + EMAs + StochRSI)">🛡 Validador</button>
+      <button class="btn" id="btn-rsitable" onclick="toggleRsiTable()" title="Tabela RSI multi-timeframe pra todos os ativos, com alvo de preco inverso">📊 RSI Table</button>
+      <button class="btn" id="btn-rainbow" onclick="toggleRainbowTab()" title="Rainbow Chart isolado (regressao log de longo prazo)">🌈 Rainbow</button>
+      <button class="btn" id="btn-estudo" onclick="toggleStudyArchive()" title="Arquivo de estudo: angulo das EMAs 8/16 por timeframe, pra registrar observacoes ao longo do tempo">📚 Arquivo</button>
+      <button class="btn" id="btn-backtest" onclick="toggleBacktestTab()" title="Backtest: simula um sinal contra o historico e mostra Win Rate, Profit Factor, Sharpe e mais">🧪 Backtest</button>
+      <button class="btn" id="btn-macro" onclick="toggleMacroTab()" title="Leitura macro: RSI semanal, Canal Gaussiano, StochRSI, MACD/PPO mensal, Pi Cycle">📐 Macro</button>
+      <button class="btn" id="btn-terminal" onclick="toggleTerminalTab()" title="Terminal: forca consolidada D/W/M + cruzamento + RSI inverso, e climax de volume nos fundos (VSA/Wyckoff)">🎯 Terminal</button>
+      
+      <!-- BOTAO TRADINGVIEW FX INDICADORES -->
+      <button class="btn btn-fx-indicators" id="btn-fx-indicadores" onclick="toggleModalIndicadores()" title="Gerenciador de Indicadores, Estratégias e Métricas (fx)">
+        <span class="fx-symbol">fx</span> Indicadores
+        <span class="fx-badge" id="fx-badge-count">0</span>
+      </button>
+
+      <!-- MENU RAPIDO DE ATALHOS -->
+      <div class="quick-ind-menu-wrapper" style="position:relative; display:inline-flex;">
+        <button class="btn" id="btn-quick-indicators" onclick="toggleQuickIndicatorsDropdown()" title="Atalhos rápidos de indicadores">
+          ⚡ Atalhos ▾
+        </button>
+        <div id="quick-indicators-dropdown" class="quick-ind-dropdown" style="display:none;">
+          <div class="quick-ind-item" onclick="toggleDefaultMAsVisibility(); fecharQuickDropdown();"><span>📈 Médias Base Iniciais (EMA 8 a 200)</span><span id="quick-dot-defaultmas" class="quick-ind-dot"></span></div>
+          <div class="quick-ind-item" onclick="toggleDynamicTrailing(); fecharQuickDropdown();"><span>⚡ Vectra Dynamic (ZLEMA + KAMA + Catraca)</span><span id="quick-dot-dynamictrailing" class="quick-ind-dot"></span></div>
+          <div class="quick-ind-item" onclick="toggleGannSquareOfNine(); fecharQuickDropdown();"><span>🏛️ Gann Square of Nine v3 (Alvos Maiores)</span><span id="quick-dot-gannsq9" class="quick-ind-dot"></span></div>
+          <div class="quick-ind-item" onclick="toggleEmaRibbon(); fecharQuickDropdown();"><span>🌊 Vectra 8-EMA Ribbon + Matrix RSI CVD</span><span id="quick-dot-emaribbon" class="quick-ind-dot"></span></div>
+          <div class="quick-ind-item" onclick="toggleMtfRibbonMatrix(); fecharQuickDropdown();"><span>📊 Vectra MTF Ribbon Matrix (1W-12M)</span><span id="quick-dot-mtfribbonmatrix" class="quick-ind-dot"></span></div>
+          <div class="quick-ind-item" onclick="toggleDynamicTargets(); fecharQuickDropdown();"><span>🎯 Targets & Stop V1</span><span id="quick-dot-targets" class="quick-ind-dot"></span></div>
+          <div class="quick-ind-item" onclick="toggleFibboRibbon(); fecharQuickDropdown();"><span>⚛️ Fibbo Ribbon & Quantum HUD</span><span id="quick-dot-fibboribbon" class="quick-ind-dot"></span></div>
+          <div class="quick-ind-item" onclick="toggleFibboReversal(); fecharQuickDropdown();"><span>🎯 Fibbo 8/16 Reversal (Clean)</span><span id="quick-dot-fibboreversal" class="quick-ind-dot"></span></div>
+          <div class="quick-ind-item" onclick="toggleSqueezeEngine(); fecharQuickDropdown();"><span>💥 Squeeze Engine</span><span id="quick-dot-squeeze" class="quick-ind-dot"></span></div>
+          <div class="quick-ind-item" onclick="toggleExhaustionBands(); fecharQuickDropdown();"><span>⚡ Exaustão (Full no Preço)</span><span id="quick-dot-exhaustion" class="quick-ind-dot"></span></div>
+          <div class="quick-ind-item" onclick="toggleRsiPreco(); fecharQuickDropdown();"><span>📏 RSI em Preço (Linhas)</span><span id="quick-dot-rsipreco" class="quick-ind-dot"></span></div>
+          <div class="quick-ind-item" onclick="toggleVolumeVisibility(); fecharQuickDropdown();"><span>📊 Volume no Preço</span><span id="quick-dot-volume" class="quick-ind-dot"></span></div>
+          <div class="quick-ind-item" onclick="toggleModalIndicadores(); fecharQuickDropdown();" style="border-top:1px solid var(--bd2); margin-top:4px; color:var(--accent);"><span style="font-weight:700;">+ Ver Todos Indicadores (fx)</span></div>
+        </div>
+      </div>
+
+      <button class="btn" id="btn-default-mas-top" onclick="toggleDefaultMAsVisibility()" title="Ocultar ou Mostrar o pacote de médias base iniciais (EMA 8/16/55/98/200 + MA 56/89)">📈 Médias Base</button>
+      <button class="btn" id="btn-dynamictrailing-top" onclick="toggleDynamicTrailing()" title="Vectra Dynamic INDICATOR (ZLEMA 10 + KAMA 34 + Trailing Stop Catraca & Alvos)">⚡ Vectra Dynamic</button>
+      <button class="btn" id="btn-gannsq9-top" onclick="toggleGannSquareOfNine()" title="Gann Square of Nine - Universal HUD & Cycle Engine v3">🏛️ Gann Sq9</button>
+      <button class="btn" id="btn-emaribbon-top" onclick="toggleEmaRibbon()" title="Vectra 8-EMA Ribbon + Matrix RSI CVD [Atlas v6]">🌊 8-EMA Ribbon</button>
+      <button class="btn" id="btn-mtfribbonmatrix-top" onclick="toggleMtfRibbonMatrix()" title="Vectra MTF EMA Ribbon Matrix (1W, 3W, 1M, 12M) - Sub-painel Oscilador Institucional">📊 MTF Ribbon Matrix</button>
+      <button class="btn" id="btn-fibboreversal-top" onclick="toggleFibboReversal()" title="Setup Fibbo 8/16 Ribbon & Reversal Flow com Trailing Stop ZLEMA">🎯 Fibbo Reversal</button>
+      <button class="btn" id="btn-fibboribbon-top" onclick="toggleFibboRibbon()" title="Setup Fibbo Ribbon 8/16 + Trailing ZLEMA & Quantum HUD">⚛️ Fibbo Ribbon</button>
+
+      <button class="btn" id="btn-bussola" onclick="toggleBussolaModal()" title="Bussola Direcional do Mercado">🧭 Bússola</button>
+      <button class="btn" id="btn-potential" onclick="togglePotential()" title="Calculadora Dinâmica de Potencial de Lucro e Risco (Alavancagem 800:1)">⚡ Potential</button>
+      <button class="btn" id="btn-gold" onclick="toggleGoldTab()" title="Mercados globais: 377 ativos (cripto/forex/indices/commodities/acoes) com RSI H1/H4/D1 + alvo inverso, cotacao ao vivo">🥇 Gold</button>
+      <button class="btn" id="btn-hide-layers-top" onclick="toggleOcultarCamadasVisiveis()" title="Ocultar/Restaurar todos os itens de camadas e indicadores visíveis">👁️ Ocultar Camadas</button>
+
+      <!-- Elementos ocultos para compatibilidade com eventuais chamadas legacy por ID -->
+      <div style="display:none;" aria-hidden="true">
+        <button id="btn-confluator-gold" onclick="toggleConfluatorGoldModal()"></button>
+        <button id="btn-neon-rainbow-top" onclick="toggleNeonRainbow()"></button>
+        <button id="btn-squeeze-top" onclick="toggleSqueezeEngine()"></button>
+        <button id="btn-predictive-top" onclick="togglePredictiveCross()"></button>
+        <button id="btn-fractal-suite-top" onclick="toggleFractalSuite()"></button>
+        <button id="btn-clean-cross-top" onclick="toggleCleanCross()"></button>
+        <button id="btn-effort-top" onclick="toggleEffortOscillator()"></button>
+        <button id="btn-liquidity-top" onclick="toggleLiquidityImbalance()"></button>
+        <button id="btn-targets-top" onclick="toggleDynamicTargets()"></button>
+        <button id="btn-exhaustion-bands" onclick="toggleExhaustionBands()"></button>
+        <button id="btn-pullback-top" onclick="togglePullbackBreakout()"></button>
+        <button id="btn-mtf-bias-top" onclick="toggleMtfBias()"></button>
+        <button id="btn-volume-top" onclick="toggleVolumeVisibility()"></button>
+      </div>
+      <button class="btn" id="btn-theme" onclick="toggleTheme()" title="Alterna entre tema claro e escuro">🌙</button>
+      <button class="btn" id="btn-alerts" onclick="toggleAlerts()">🔔 OFF</button>
+      <span class="st" id="st-info" style="color:var(--goldd);"></span>
+      <span class="st" id="hist-info" style="color:var(--t3);font-size:9px;"></span>
+      <span class="st" id="rt-price" style="color:var(--green);font-size:13px;font-weight:900;margin-left:auto;font-family:var(--mono);"></span>
+      
+    </div>
+
+    <!-- LAYOUT -->
+    <div class="layout">
+      <div class="main-area">
+        <!-- MULTI-VIEW: 4 ativos ao mesmo tempo (BTC/ETH/XAU/XAG) -->
+        <div id="multi-view" class="multi-view">
+          <div class="multi-cell" data-sym="BTCUSDT">
+            <div class="multi-hd"><span class="multi-sym">BTC/USD</span><span class="multi-timer" id="multi-timer-BTCUSDT">--:--</span><span class="multi-px" id="multi-px-BTCUSDT">--</span></div>
+            <div class="multi-chart" id="multi-chart-BTCUSDT"></div>
+          </div>
+          <div class="multi-cell" data-sym="ETHUSDT">
+            <div class="multi-hd"><span class="multi-sym">ETH/USD</span><span class="multi-timer" id="multi-timer-ETHUSDT">--:--</span><span class="multi-px" id="multi-px-ETHUSDT">--</span></div>
+            <div class="multi-chart" id="multi-chart-ETHUSDT"></div>
+          </div>
+          <div class="multi-cell" data-sym="XAUUSDT">
+            <div class="multi-hd"><span class="multi-sym">XAU/USD (Ouro)</span><span class="multi-timer" id="multi-timer-XAUUSDT">--:--</span><span class="multi-px" id="multi-px-XAUUSDT">--</span></div>
+            <div class="multi-chart" id="multi-chart-XAUUSDT"></div>
+          </div>
+          <div class="multi-cell" data-sym="XAGUSDT">
+            <div class="multi-hd"><span class="multi-sym">XAG/USD (Prata)</span><span class="multi-timer" id="multi-timer-XAGUSDT">--:--</span><span class="multi-px" id="multi-px-XAGUSDT">--</span></div>
+            <div class="multi-chart" id="multi-chart-XAGUSDT"></div>
+          </div>
+        </div>
+
+        
+        <!-- MTF-VIEW: 4 timeframes do mesmo ativo -->
+        <div id="mtf-view" class="multi-view" style="position:relative;">
+        <div id="mtf-center-compass" style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); z-index:100; width:226px; height:150px; background:rgba(19, 25, 34, 0.7); backdrop-filter:blur(8px); border-radius:16px; border:1px solid rgba(255,255,255,0.05); display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:2px; overflow:hidden; box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+            <div style="background:rgba(0,0,0,0.3); display:flex; flex-direction:column; align-items:center; justify-content:center;">
+                <span id="mtf-comp-lbl-1" style="font-size:9px; color:var(--t2);">TF 1</span>
+                <span id="mtf-comp-val-1" style="font-size:15px; font-weight:900; font-family:var(--mono); color:var(--t3); line-height:1.15; white-space:nowrap;">--</span>
+            </div>
+            <div style="background:rgba(0,0,0,0.3); display:flex; flex-direction:column; align-items:center; justify-content:center;">
+                <span id="mtf-comp-lbl-2" style="font-size:9px; color:var(--t2);">TF 2</span>
+                <span id="mtf-comp-val-2" style="font-size:15px; font-weight:900; font-family:var(--mono); color:var(--t3); line-height:1.15; white-space:nowrap;">--</span>
+            </div>
+            <div style="background:rgba(0,0,0,0.3); display:flex; flex-direction:column; align-items:center; justify-content:center;">
+                <span id="mtf-comp-lbl-3" style="font-size:9px; color:var(--t2);">TF 3</span>
+                <span id="mtf-comp-val-3" style="font-size:15px; font-weight:900; font-family:var(--mono); color:var(--t3); line-height:1.15; white-space:nowrap;">--</span>
+            </div>
+            <div style="background:rgba(0,0,0,0.3); display:flex; flex-direction:column; align-items:center; justify-content:center;">
+                <span id="mtf-comp-lbl-4" style="font-size:9px; color:var(--t2);">TF 4</span>
+                <span id="mtf-comp-val-4" style="font-size:15px; font-weight:900; font-family:var(--mono); color:var(--t3); line-height:1.15; white-space:nowrap;">--</span>
+            </div>
+            <div style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); width:70px; height:70px; background:#131922; border-radius:50%; border:2px solid var(--gold); display:flex; align-items:center; justify-content:center; flex-direction:column; box-shadow:0 0 15px rgba(245,166,35,0.15);">
+                <span style="font-size:8px; color:var(--goldd); margin-bottom:-2px;">SOMA</span>
+                <span id="mtf-comp-total" style="font-size:12px; font-weight:900; font-family:var(--mono); color:var(--gold); line-height:1.1; text-align:center; white-space:nowrap;">--</span>
+            </div>
+        </div>
+          <div class="multi-cell" id="mtf-cell-1">
+            <div class="multi-hd">
+              <span class="multi-sym mtf-sym-lbl">--</span>
+              <select class="mtf-tf-select" id="mtf-sel-1" onchange="changeMtfTf(1, this.value)" style="margin-left:8px;">
+                <option value="1m">1m</option><option value="3m">3m</option><option value="5m">5m</option><option value="6m">6m</option><option value="15m" selected>15m</option><option value="30m">30m</option><option value="1h">1h</option><option value="4h">4h</option><option value="5h">5h</option><option value="6h">6h</option><option value="12h">12h</option><option value="15h">15h</option><option value="1d">1d</option><option value="1M">1M</option><option value="3M">3M</option><option value="6M">6M</option><option value="9M">9M</option><option value="12M">12M</option>
+              </select>
+              <span class="multi-timer" id="mtf-timer-1" style="margin-left:auto;margin-right:8px;">--:--</span>
+              <span class="multi-px" id="mtf-px-1">--</span>
+            </div>
+            <div class="multi-chart" id="mtf-chart-1"></div>
+<div id="mtf-compass-container-1" style="position:absolute; left:10px; bottom:34px; z-index:50; pointer-events:none; display:flex; align-items:center; gap:12px; background:rgba(19,25,34,0.7); backdrop-filter:blur(4px); padding:8px 12px; border-radius:8px; border:1px solid var(--bd2); box-shadow:0 4px 12px rgba(0,0,0,0.4); opacity:0.9;">
+        <svg id="mtf-compass-svg-1" width="65" height="65" viewBox="0 0 110 110" style="overflow:visible;"></svg>
+        <div id="mtf-compass-legend-1" style="display:flex; flex-direction:column; gap:3px; font-size:10px; font-family:monospace; color:var(--text); white-space:nowrap;"></div>
+    </div>
+          </div>
+          <div class="multi-cell" id="mtf-cell-2">
+            <div class="multi-hd">
+              <span class="multi-sym mtf-sym-lbl">--</span>
+              <select class="mtf-tf-select" id="mtf-sel-2" onchange="changeMtfTf(2, this.value)" style="margin-left:8px;">
+                <option value="1m">1m</option><option value="3m">3m</option><option value="5m">5m</option><option value="6m">6m</option><option value="15m">15m</option><option value="30m">30m</option><option value="1h" selected>1h</option><option value="4h">4h</option><option value="5h">5h</option><option value="6h">6h</option><option value="12h">12h</option><option value="15h">15h</option><option value="1d">1d</option><option value="1M">1M</option><option value="3M">3M</option><option value="6M">6M</option><option value="9M">9M</option><option value="12M">12M</option>
+              </select>
+              <span class="multi-timer" id="mtf-timer-2" style="margin-left:auto;margin-right:8px;">--:--</span>
+              <span class="multi-px" id="mtf-px-2">--</span>
+            </div>
+            <div class="multi-chart" id="mtf-chart-2"></div>
+<div id="mtf-compass-container-2" style="position:absolute; right:10px; bottom:34px; z-index:50; pointer-events:none; display:flex; flex-direction:row-reverse; align-items:center; gap:12px; background:rgba(19,25,34,0.7); backdrop-filter:blur(4px); padding:8px 12px; border-radius:8px; border:1px solid var(--bd2); box-shadow:0 4px 12px rgba(0,0,0,0.4); opacity:0.9;">
+        <svg id="mtf-compass-svg-2" width="65" height="65" viewBox="0 0 110 110" style="overflow:visible;"></svg>
+        <div id="mtf-compass-legend-2" style="display:flex; flex-direction:column; gap:3px; font-size:10px; font-family:monospace; color:var(--text); white-space:nowrap;"></div>
+    </div>
+          </div>
+          <div class="multi-cell" id="mtf-cell-3">
+            <div class="multi-hd">
+              <span class="multi-sym mtf-sym-lbl">--</span>
+              <select class="mtf-tf-select" id="mtf-sel-3" onchange="changeMtfTf(3, this.value)" style="margin-left:8px;">
+                <option value="1m">1m</option><option value="3m">3m</option><option value="5m">5m</option><option value="6m">6m</option><option value="15m">15m</option><option value="30m">30m</option><option value="1h">1h</option><option value="4h" selected>4h</option><option value="5h">5h</option><option value="6h">6h</option><option value="12h">12h</option><option value="15h">15h</option><option value="1d">1d</option><option value="1M">1M</option><option value="3M">3M</option><option value="6M">6M</option><option value="9M">9M</option><option value="12M">12M</option>
+              </select>
+              <span class="multi-timer" id="mtf-timer-3" style="margin-left:auto;margin-right:8px;">--:--</span>
+              <span class="multi-px" id="mtf-px-3">--</span>
+            </div>
+            <div class="multi-chart" id="mtf-chart-3"></div>
+<div id="mtf-compass-container-3" style="position:absolute; left:10px; bottom:34px; z-index:50; pointer-events:none; display:flex; align-items:center; gap:12px; background:rgba(19,25,34,0.7); backdrop-filter:blur(4px); padding:8px 12px; border-radius:8px; border:1px solid var(--bd2); box-shadow:0 4px 12px rgba(0,0,0,0.4); opacity:0.9;">
+        <svg id="mtf-compass-svg-3" width="65" height="65" viewBox="0 0 110 110" style="overflow:visible;"></svg>
+        <div id="mtf-compass-legend-3" style="display:flex; flex-direction:column; gap:3px; font-size:10px; font-family:monospace; color:var(--text); white-space:nowrap;"></div>
+    </div>
+          </div>
+          <div class="multi-cell" id="mtf-cell-4">
+            <div class="multi-hd">
+              <span class="multi-sym mtf-sym-lbl">--</span>
+              <select class="mtf-tf-select" id="mtf-sel-4" onchange="changeMtfTf(4, this.value)" style="margin-left:8px;">
+                <option value="1m">1m</option><option value="3m">3m</option><option value="5m">5m</option><option value="6m">6m</option><option value="15m">15m</option><option value="30m">30m</option><option value="1h">1h</option><option value="4h">4h</option><option value="5h">5h</option><option value="6h">6h</option><option value="12h">12h</option><option value="15h">15h</option><option value="1d" selected>1d</option><option value="1M">1M</option><option value="3M">3M</option><option value="6M">6M</option><option value="9M">9M</option><option value="12M">12M</option>
+              </select>
+              <span class="multi-timer" id="mtf-timer-4" style="margin-left:auto;margin-right:8px;">--:--</span>
+              <span class="multi-px" id="mtf-px-4">--</span>
+            </div>
+            <div class="multi-chart" id="mtf-chart-4"></div>
+<div id="mtf-compass-container-4" style="position:absolute; right:10px; bottom:34px; z-index:50; pointer-events:none; display:flex; flex-direction:row-reverse; align-items:center; gap:12px; background:rgba(19,25,34,0.7); backdrop-filter:blur(4px); padding:8px 12px; border-radius:8px; border:1px solid var(--bd2); box-shadow:0 4px 12px rgba(0,0,0,0.4); opacity:0.9;">
+        <svg id="mtf-compass-svg-4" width="65" height="65" viewBox="0 0 110 110" style="overflow:visible;"></svg>
+        <div id="mtf-compass-legend-4" style="display:flex; flex-direction:column; gap:3px; font-size:10px; font-family:monospace; color:var(--text); white-space:nowrap;"></div>
+    </div>
+          </div>
+        </div>
+
+          <!-- RSI TABLE: multi-timeframe pra todos os ativos da lista -->
+        <div id="rsi-table-view" class="rsi-table-view">
+          <div class="rsit-toolbar">
+            <span class="rsit-title">RSI TABLE · MULTI-TIMEFRAME</span>
+            <div class="rsit-zones">
+              <button class="rsit-zf on" data-zone="all" onclick="setRsiZone('all',this)">TODOS</button>
+              <button class="rsit-zf" data-zone="os" onclick="setRsiZone('os',this)">🔴 SOBREVENDIDO</button>
+              <button class="rsit-zf" data-zone="ob" onclick="setRsiZone('ob',this)">🟢 SOBRECOMPRADO</button>
+            </div>
+            <input class="rsit-search" id="rsit-search" placeholder="🔍 buscar ativo..." oninput="filterRsiTable(this.value)">
+            <span class="rsit-updated" id="rsit-updated">--</span>
+          </div>
+          <div class="rsit-scroll">
+            <table class="rsit-table">
+              <thead>
+                <tr>
+                  <th onclick="sortRsiTable('sym')">ATIVO</th>
+                  <th onclick="sortRsiTable('1')">M1</th>
+                  <th onclick="sortRsiTable('5')">M5</th>
+                  <th onclick="sortRsiTable('15')">M15</th>
+                  <th onclick="sortRsiTable('60')">H1</th>
+                  <th onclick="sortRsiTable('240')">H4</th>
+                  <th onclick="sortRsiTable('D')">D1</th>
+                  <th onclick="sortRsiTable('score')">SCORE</th>
+                  <th>ALVO OS30 (H1)</th>
+                  <th>ALVO OB70 (H1)</th>
+                </tr>
+              </thead>
+              <tbody id="rsit-body">
+                <tr><td colspan="10" style="text-align:center;color:var(--t3);padding:20px;">Carregando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- RAINBOW: regressao log isolada, sem poluir o grafico principal -->
+        <div id="rainbow-view" class="rainbow-view">
+          <div class="rainbow-toolbar">
+            <span class="rainbow-title">🌈 RAINBOW CHART · <span id="rainbow-sym">--</span></span>
+            <span class="rainbow-sub">Regressao logaritmica sobre o preco no tempo · verde = barato, vermelho = caro · velas 1D</span>
+            <span class="rainbow-updated" id="rainbow-updated">--</span>
+          </div>
+          <div id="rainbow-chart" style="flex:1;min-height:0;"></div>
+        </div>
+
+        
+        <!-- ARQUIVO DE ESTUDO -->
+        <div id="study-view" class="macro-view">
+          <div class="rainbow-toolbar">
+            <span class="rainbow-title">📚 ARQUIVO DE ESTUDO · <span id="study-sym">--</span></span>
+            <span class="rainbow-sub">Ângulo das EMAs 8/16 por timeframe (M1 a D1) · atan(inclinação normalizada), comparável entre timeframes</span>
+            <button class="btn" id="btn-study-save" onclick="archiveStudyObservation()" style="margin-left:auto;">💾 Arquivar observação</button>
+          </div>
+          <div class="macro-scroll" id="study-cards">
+            <div style="color:var(--t3);font-size:11px;padding:20px;text-align:center;">Carregando...</div>
+          </div>
+          <div class="sp-sec" style="margin-top:6px;"><span>OBSERVAÇÕES ARQUIVADAS</span><span class="sp-sec-val" id="study-archive-count">0</span></div>
+          <div id="study-archive-list" style="padding:0 16px 20px;"></div>
+        </div>
+
+        <!-- BACKTEST -->
+        <div id="backtest-view" class="macro-view">
+          <div class="rainbow-toolbar">
+            <span class="rainbow-title">🧪 BACKTEST · <span id="backtest-sym">--</span></span>
+            <span class="rainbow-sub">Simula o sinal contra o histórico — sem spread/comissão ainda, SL sempre avaliado antes do TP</span>
+            <button class="btn" id="btn-backtest-run" onclick="runBacktestUI()" style="margin-left:auto;">▶ Rodar backtest</button>
+          </div>
+          <div class="macro-scroll" style="display:block;padding:16px;" id="backtest-config">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:14px;">
+              <div>
+                <label style="font-size:10px;color:var(--t3);text-transform:uppercase;display:block;margin-bottom:4px;">Sinal</label>
+                <select id="bt-signal" style="width:100%;background:var(--bg4);border:1px solid var(--bd2);border-radius:6px;color:var(--text);padding:6px 8px;font-size:12px;">
+                  <option value="9-21-ema">9/21 EMA Cross</option>
+                  <option value="12-26-ema">12/26 EMA Cross</option>
+                  <option value="50-200-sma">Golden/Death Cross (50/200 SMA)</option>
+                  <!-- as medias do proprio Atlas: o backtest so tinha os tres
+                       cruzamentos classicos e nenhum dos que o painel usa -->
+                  <option value="8-16-ema">EMA 8/16 (Atlas)</option>
+                  <option value="8-55-ema">EMA 8/55 (Atlas)</option>
+                  <option value="16-55-ema">EMA 16/55 (Atlas)</option>
+                  <option value="8-98-ema">EMA 8/98 (Atlas)</option>
+                  <option value="16-98-ema">EMA 16/98 (Atlas)</option>
+                  <option value="8-200-ema">EMA 8/200 (Atlas)</option>
+                  <option value="16-200-ema">EMA 16/200 (Atlas)</option>
+                  <option value="55-200-ema">EMA 55/200 (Atlas)</option>
+                  <option value="56-89-sma">MA 56/89 (Ribbon)</option>
+                  <option value="8-89-mix">EMA 8 x MA 89</option>
+                  <option value="16-89-mix">EMA 16 x MA 89</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size:10px;color:var(--t3);text-transform:uppercase;display:block;margin-bottom:4px;">Direção</label>
+                <select id="bt-direction" style="width:100%;background:var(--bg4);border:1px solid var(--bd2);border-radius:6px;color:var(--text);padding:6px 8px;font-size:12px;">
+                  <option value="both">Ambos</option>
+                  <option value="long">Só compra</option>
+                  <option value="short">Só venda</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size:10px;color:var(--t3);text-transform:uppercase;display:block;margin-bottom:4px;">Timeframe</label>
+                <select id="bt-tf" style="width:100%;background:var(--bg4);border:1px solid var(--bd2);border-radius:6px;color:var(--text);padding:6px 8px;font-size:12px;">
+                  <option value="1d" selected>1D</option>
+                  <option value="4h">4H</option>
+                  <option value="1h">1H</option>
+                  <option value="15m">15m</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size:10px;color:var(--t3);text-transform:uppercase;display:block;margin-bottom:4px;">Filtro Choppiness (ATR)</label>
+                <select id="bt-choppy" style="width:100%;background:var(--bg4);border:1px solid var(--bd2);border-radius:6px;color:var(--text);padding:6px 8px;font-size:12px;">
+                  <option value="0">Desligado</option>
+                  <option value="1" selected>Ligado — so opera com ATR acima da media</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size:10px;color:var(--t3);text-transform:uppercase;display:block;margin-bottom:4px;">TP1 / TP2 / TP3 (x ATR)</label>
+                <div style="display:flex;gap:4px;">
+                  <input id="bt-tp1" type="number" value="1" step="0.5" style="width:33%;background:var(--bg4);border:1px solid var(--bd2);border-radius:6px;color:var(--text);padding:6px;font-size:12px;">
+                  <input id="bt-tp2" type="number" value="2" step="0.5" style="width:33%;background:var(--bg4);border:1px solid var(--bd2);border-radius:6px;color:var(--text);padding:6px;font-size:12px;">
+                  <input id="bt-tp3" type="number" value="3" step="0.5" style="width:33%;background:var(--bg4);border:1px solid var(--bd2);border-radius:6px;color:var(--text);padding:6px;font-size:12px;">
+                </div>
+              </div>
+              <div>
+                <label style="font-size:10px;color:var(--t3);text-transform:uppercase;display:block;margin-bottom:4px;">SL1 / SL2 / SL3 (x ATR)</label>
+                <div style="display:flex;gap:4px;">
+                  <input id="bt-sl1" type="number" value="1.5" step="0.5" style="width:33%;background:var(--bg4);border:1px solid var(--bd2);border-radius:6px;color:var(--text);padding:6px;font-size:12px;">
+                  <input id="bt-sl2" type="number" value="2.5" step="0.5" style="width:33%;background:var(--bg4);border:1px solid var(--bd2);border-radius:6px;color:var(--text);padding:6px;font-size:12px;">
+                  <input id="bt-sl3" type="number" value="3.5" step="0.5" style="width:33%;background:var(--bg4);border:1px solid var(--bd2);border-radius:6px;color:var(--text);padding:6px;font-size:12px;">
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="backtest-results" style="padding:0 16px 24px;">
+            <div style="color:var(--t3);font-size:12px;text-align:center;padding:30px;">Configure e clique em "Rodar backtest".</div>
+          </div>
+        </div>
+
+        <!-- MACRO: leitura de longo prazo (semanal/mensal) — RSI, Canal Gaussiano,
+             StochRSI, MACD/PPO, Pi Cycle. Painel de status, nao um grafico. -->
+        <div id="macro-view" class="macro-view">
+          <div class="rainbow-toolbar">
+            <span class="rainbow-title">📐 LEITURA MACRO · <span id="macro-sym">--</span></span>
+            <span class="rainbow-sub">Semanal/Mensal · aproximacoes calculadas localmente, nao e o mesmo motor do TradingView</span>
+            <span class="rainbow-updated" id="macro-updated">--</span>
+          </div>
+
+            <div class="macro-scroll" id="macro-cards">
+            <div style="color:var(--t3);font-size:11px;padding:20px;text-align:center;">Carregando leitura macro...</div>
+          </div>
+        </div>
+
+        <!-- TERMINAL: consolida a forca do multi-TF (D/W/M) + cruzamento fresco +
+             RSI/alvo inverso num score unico, e cruza volume com VSA/Wyckoff
+             (Spring/Terminal Shakeout) pra achar clímax de venda nos fundos. -->
+        <div id="terminal-view" class="macro-view">
+          <div class="rainbow-toolbar">
+            <span class="rainbow-title">🎯 TERMINAL · <span id="terminal-sym">--</span></span>
+            <span class="rainbow-sub">Forca D/W/M + VSA/Wyckoff · climax de volume nos fundos listado abaixo (nao mexe no grafico principal)</span>
+            <span class="rainbow-updated" id="terminal-updated">--</span>
+          </div>
+          <div id="terminal-score-box" style="display:flex;align-items:center;gap:16px;padding:14px 16px;border-bottom:1px solid var(--bd2);flex-shrink:0;">
+            <div style="text-align:center;">
+              <div style="font-size:9px;color:var(--t3);letter-spacing:.05em;">FORÇA TOTAL (D/W/M)</div>
+              <div id="terminal-score-val" style="font-size:28px;font-weight:900;font-family:var(--mono);color:var(--t2);">--</div>
+            </div>
+            <div style="flex:1;height:8px;background:var(--bg2);border-radius:4px;overflow:hidden;position:relative;">
+              <div id="terminal-score-bar" style="position:absolute;top:0;bottom:0;left:50%;width:0;background:var(--gold);"></div>
+            </div>
+            <div style="text-align:center;">
+              <div style="font-size:9px;color:var(--t3);letter-spacing:.05em;">ALINHAMENTO</div>
+              <div id="terminal-agree-val" style="font-size:16px;font-weight:800;font-family:var(--mono);">--</div>
+            </div>
+            <div style="text-align:center;">
+              <div style="font-size:9px;color:var(--t3);letter-spacing:.05em;">VOL. VS FUNDOS</div>
+              <div id="terminal-vol-val" style="font-size:16px;font-weight:800;font-family:var(--mono);">--</div>
+            </div>
+          </div>
+          <div style="padding:10px 16px 0;flex-shrink:0;">
+            <div style="font-size:10.5px;font-weight:700;color:var(--t2);letter-spacing:.3px;margin-bottom:4px;">🥇 CLÍMAX DE VOLUME NOS FUNDOS (VSA/Wyckoff)</div>
+            <div class="pot-fib-list" id="terminal-climax-list" style="max-height:110px;"></div>
+          </div>
+          <div class="macro-scroll" id="terminal-cards">
+            <div style="color:var(--t3);font-size:11px;padding:20px;text-align:center;">Carregando leitura terminal...</div>
+          </div>
+        </div>
+
+        <!-- GOLD: mercados globais (cripto/forex/indices/commodities/acoes),
+             cotacao ao vivo via SimpleFX + RSI multi-timeframe via Binance. -->
+        <div id="gold-view" class="gold-view">
+          <div class="rainbow-toolbar">
+            <span class="rainbow-title">🥇 ATLAS GOLD · MERCADOS GLOBAIS</span>
+            <span class="rainbow-sub" id="gold-ws-st">Conectando...</span>
+            <div class="gold-cats" id="gold-cats">
+              <div class="cp active" data-cat="ALL" onclick="goldSetCategory('ALL')">ALL</div>
+              <div class="cp" data-cat="CRYPTO" onclick="goldSetCategory('CRYPTO')">CRYPTO</div>
+              <div class="cp" data-cat="FOREX" onclick="goldSetCategory('FOREX')">FOREX</div>
+              <div class="cp" data-cat="INDICES" onclick="goldSetCategory('INDICES')">INDICES</div>
+              <div class="cp" data-cat="COMMODITIES" onclick="goldSetCategory('COMMODITIES')">COMMOD</div>
+              <div class="cp" data-cat="ASIA-PAC" onclick="goldSetCategory('ASIA-PAC')">ASIA-PAC</div>
+              <div class="cp" data-cat="EUR/ME/AFR" onclick="goldSetCategory('EUR/ME/AFR')">EUR/ME/AFR</div>
+              <div class="cp" data-cat="LATAM" onclick="goldSetCategory('LATAM')">LATAM</div>
+              <div class="cp" data-cat="AMER NORTH" onclick="goldSetCategory('AMER NORTH')">AMER NORTH</div>
+            </div>
+            <input type="text" id="gold-search" class="rsit-search" placeholder="Buscar ativo..." oninput="goldOnSearch(this.value)">
+            <button class="btn" id="gold-btn-alerts" onclick="goldToggleAlerts()">🔔 OFF</button>
+            <span class="rainbow-updated" id="gold-updated">--</span>
+          </div>
+          <div class="gold-body">
+            <div class="rsit-scroll">
+              <table class="rsit-table" style="min-width:920px;">
+                <thead>
+                  <tr>
+                    <th style="text-align:left;cursor:default;">ATIVO</th>
+                    <th style="cursor:default;">CAT</th>
+                    <th style="cursor:default;">BID</th>
+                    <th style="cursor:default;">ASK</th>
+                    <th style="cursor:default;">SPREAD</th>
+                    <th style="cursor:default;">H1 RSI</th>
+                    <th style="cursor:default;">H1 ALVO 30/70</th>
+                    <th style="cursor:default;">H4 RSI</th>
+                    <th style="cursor:default;">D1 RSI</th>
+                    <th style="cursor:default;">D1 ALVO 30/70</th>
+                    <th style="cursor:default;">MTF</th>
+                  </tr>
+                </thead>
+                <tbody id="gold-tbody"></tbody>
+              </table>
+            </div>
+            <div class="gold-spanel">
+              <div class="globe-wrap" style="margin:0;border-radius:0;height:150px;">
+                <canvas id="gold-globe-canvas" width="260" height="150"></canvas>
+                <div class="globe-overlay">
+                  <div class="globe-cnt" id="gold-globe-cnt">0 cotacoes</div>
+                  <div class="globe-sub">ATLAS GOLD ENGINE</div>
+                </div>
+              </div>
+              <div class="sp-sec"><span>WATCHLIST (TOP 60)</span></div>
+              <div id="gold-watchlist" style="max-height:170px;overflow-y:auto;"></div>
+              <div class="sp-sec"><span>ATIVO: <span id="gold-dt-sym">--</span></span></div>
+              <div class="gold-detail-grid" id="gold-detail"></div>
+              <div class="sp-sec"><span>LOG DE ALERTAS</span><span class="sp-sec-val" style="cursor:pointer;" onclick="goldClearAlertLog()">LIMPAR</span></div>
+              <div id="gold-alert-log" style="flex:1;overflow-y:auto;"><div style="padding:10px;color:var(--t3);text-align:center;font-size:10px;">Sem alertas ainda</div></div>
+            </div>
+          </div>
+        </div>
+
+        
+                  <div class="chart-wrap">
+          <div id="chart-price-overlay" style="position:absolute; top:14px; left:56px; z-index:10; pointer-events:none; display:flex; flex-direction:column; gap:1px;">
+            <span style="font-size:13px; color:var(--t2); font-weight:800; letter-spacing:0.1em;" id="big-sym">--</span>
+            <span id="big-price" style="font-size:32px; font-weight:900; font-family:var(--mono); color:var(--green);">--</span>
+            <span id="candle-timer" style="font-size:16px; font-weight:800; font-family:var(--mono); color:var(--t2);">00:00</span>
+          </div>
+          <!-- As bolhas ficam ATRAS do grafico (z-index 1, contra o 2 do
+               #chart): centradas na maxima/minima, por cima elas tingiam a
+               vela e o gradiente do ribbon sumia debaixo delas. Atras, o
+               candle desenha por cima e continua inteiro. -->
+          <canvas id="bolha-canvas"></canvas>
+          <div id="chart"></div>
+          <canvas id="draw-canvas"></canvas>
+          <!-- A barra fica POR CIMA do grafico o tempo todo, e com 15 botoes ela
+               cobre justamente o canto onde o preco costuma estar. O punho
+               recolhe pra uma faixa fina e o estado fica salvo. -->
+          <div id="drawing-toolbar">
+            <button class="tool-btn" id="tool-collapse" onclick="toggleBarraDesenho()">&#9668;<span class="tool-tip">Recolher a barra</span></button>
+            <div class="tool-sep"></div>
+            <button class="tool-btn active" data-tool="cursor">↖<span class="tool-tip">Cursor (Esc)</span></button>
+            <div class="tool-sep"></div>
+            <button class="tool-btn" data-tool="ray">╱<span class="tool-tip">Raio (extensao infinita)</span></button>
+            <button class="tool-btn" data-tool="horizontal">━<span class="tool-tip">Linha horizontal</span></button>
+            <button class="tool-btn" data-tool="vertical">│<span class="tool-tip">Linha vertical</span></button>
+            <button class="tool-btn" data-tool="rect">▭<span class="tool-tip">Retangulo / zona</span></button>
+            <button class="tool-btn" data-tool="fibbo">☰<span class="tool-tip">Fibonacci 24 niveis + zona de quebra</span></button>
+            <button class="tool-btn" data-tool="fibretr">◇<span class="tool-tip">Fib Retração (acumulação, c/ negativos)</span></button>
+            <button class="tool-btn" data-tool="text">T<span class="tool-tip">Texto</span></button>
+            <button class="tool-btn" data-tool="pencil">✏️<span class="tool-tip">Lapis (mantem so os ultimos 3 tracos)</span></button>
+            <div class="tool-sep"></div>
+            <button class="tool-btn" data-tool="eraser">⌫<span class="tool-tip">Apagar (clique no desenho)</span></button>
+            <button class="tool-btn" id="tool-undo">↺<span class="tool-tip">Desfazer (Ctrl+Z)</span></button>
+            <button class="tool-btn danger" id="tool-clear">🗑<span class="tool-tip">Limpar tudo</span></button>
+            <div class="tool-sep"></div>
+            <button class="tool-btn" id="tool-magnet">🧲<span class="tool-tip">Ima OHLC: OFF</span></button>
+            <div class="tool-sep"></div>
+            <!-- Botão rápido para abrir Janela de Indicadores fx -->
+            <button class="tool-btn" id="btn-open-indicators-tool" onclick="toggleModalIndicadores()" title="Gerenciador de Indicadores (fx)" style="color:var(--accent); font-weight:900; font-family:var(--mono); font-size:13px;">fx<span class="tool-tip">Indicadores & Estruturas (fx)</span></button>
+            <button class="tool-btn on" id="tool-volume" onclick="toggleVolumeVisibility()" title="Ocultar/Mostrar Volume no Preço">&#128202;<span class="tool-tip">Volume no Preço</span></button>
+            <button class="tool-btn" id="btn-rsipreco" onclick="toggleRsiPreco()">&#8478;<span class="tool-tip">RSI ao contrario: cada nivel vira uma linha de preco</span></button>
+            <button class="tool-btn" id="tool-hide-draw" onclick="toggleDesenhosVisiveis()">&#128065;<span class="tool-tip">Esconder os desenhos (sem apagar)</span></button>
+            <button class="tool-btn" id="tool-hide-layers" onclick="toggleOcultarCamadasVisiveis()">&#128064;<span class="tool-tip">Ocultar todos itens de camadas visíveis</span></button>
+
+            <!-- Elementos ocultos para compatibilidade com seletores legacy por ID -->
+            <div style="display:none;" aria-hidden="true">
+              <button id="btn-bolhas" onclick="toggleBolhas()"></button>
+              <button id="btn-elliott" onclick="toggleElliott()"></button>
+              <button id="btn-trampolim" onclick="toggleTrampolim()"></button>
+              <button id="btn-neon-rainbow" onclick="toggleNeonRainbow()"></button>
+              <button id="btn-squeeze-engine" onclick="toggleSqueezeEngine()"></button>
+              <button id="btn-predictive-cross" onclick="togglePredictiveCross()"></button>
+              <button id="btn-fractal-suite" onclick="toggleFractalSuite()"></button>
+              <button id="btn-clean-cross" onclick="toggleCleanCross()"></button>
+              <button id="btn-effort" onclick="toggleEffortOscillator()"></button>
+              <button id="btn-liquidity" onclick="toggleLiquidityImbalance()"></button>
+              <button id="btn-targets" onclick="toggleDynamicTargets()"></button>
+              <button id="btn-dynamictrailing" onclick="toggleDynamicTrailing()"></button>
+              <button id="btn-dynamic-trailing" onclick="toggleDynamicTrailing()"></button>
+              <button id="btn-gannsq9" onclick="toggleGannSquareOfNine()"></button>
+              <button id="btn-pullback" onclick="togglePullbackBreakout()"></button>
+              <button id="btn-mtf-bias" onclick="toggleMtfBias()"></button>
+              <button id="btn-fibboribbon" onclick="toggleFibboRibbon()"></button>
+              <button id="btn-fibboreversal" onclick="toggleFibboReversal()"></button>
+              <button id="btn-emaribbon" onclick="toggleEmaRibbon()"></button>
+              <button id="btn-mtfribbonmatrix" onclick="toggleMtfRibbonMatrix()"></button>
+            </div>
+            <div style="position:relative;">
+              <div class="tool-color" id="tool-color-sw" style="background:#FFEB3B;"></div>
+              <div class="tool-swatches" id="tool-swatches">
+                <div class="tool-sw sel" data-c="#FFEB3B" style="background:#FFEB3B;"></div>
+                <div class="tool-sw" data-c="#00A879" style="background:#00A879;"></div>
+                <div class="tool-sw" data-c="#EC3F3F" style="background:#EC3F3F;"></div>
+                <div class="tool-sw" data-c="#377cfc" style="background:#377cfc;"></div>
+                <div class="tool-sw" data-c="#7C4DFF" style="background:#7C4DFF;"></div>
+                <div class="tool-sw" data-c="#FFFFFF" style="background:#FFFFFF;"></div>
+              </div>
+            </div>
+          </div>
+          <div id="clean-cross-hud" style="display:none; position:absolute; top:104px; left:56px; z-index:25; background:rgba(10,13,20,0.85); backdrop-filter:blur(8px); border:1px solid #30363d; border-radius:8px; padding:10px 14px; font-family:var(--font); min-width:200px; box-shadow:0 8px 32px rgba(0,0,0,0.6); pointer-events:none;">
+            <div style="font-size:10px; font-weight:800; color:var(--gold); margin-bottom:6px; letter-spacing:0.05em; display:flex; justify-content:space-between; align-items:center;">
+              <span>🎯 CLEAN CROSS</span>
+              <span id="clean-cross-hud-mode" style="color:#00e5ff; font-family:var(--mono);">Day Trade (8x34)</span>
+            </div>
+            <div style="display:grid; grid-template-columns:auto 1fr; gap:4px 8px; font-size:9.5px; align-items:center;">
+              <span style="color:var(--t2);">Perfil:</span>
+              <span id="clean-cross-hud-profile" style="font-weight:700; text-align:right;">Automático</span>
+              <span style="color:var(--t2);">Regime:</span>
+              <span id="clean-cross-hud-regime" style="font-weight:800; text-align:right;">--</span>
+            </div>
+          </div>
+          <div id="liquidity-hud" style="display:none; position:absolute; top:104px; left:56px; z-index:25; background:rgba(10,13,20,0.85); backdrop-filter:blur(8px); border:1px solid #30363d; border-radius:8px; padding:10px 14px; font-family:var(--font); min-width:210px; box-shadow:0 8px 32px rgba(0,0,0,0.6); pointer-events:none;">
+            <div style="font-size:10px; font-weight:800; color:var(--gold); margin-bottom:6px; letter-spacing:0.05em; display:flex; justify-content:space-between; align-items:center;">
+              <span>💧 LIQUIDITY & IMBALANCE</span>
+              <span id="liq-hud-status" style="color:#00e5ff; font-family:var(--mono);">ATIVO</span>
+            </div>
+            <div style="display:grid; grid-template-columns:auto 1fr; gap:4px 8px; font-size:9.5px; align-items:center;">
+              <span style="color:var(--t2);">Imbalance (FVG):</span>
+              <span id="liq-hud-fvg" style="font-weight:700; text-align:right;">--</span>
+              <span style="color:var(--t2);">Oferta / Demanda:</span>
+              <span id="liq-hud-ob" style="font-weight:700; text-align:right;">--</span>
+            </div>
+          </div>
+          <div id="targets-hud" style="display:none; position:absolute; top:104px; left:56px; z-index:25; background:rgba(10,13,20,0.85); backdrop-filter:blur(8px); border:1px solid #30363d; border-radius:8px; padding:10px 14px; font-family:var(--font); min-width:220px; box-shadow:0 8px 32px rgba(0,0,0,0.6); pointer-events:none;">
+            <div style="font-size:10px; font-weight:800; color:var(--gold); margin-bottom:6px; letter-spacing:0.05em; display:flex; justify-content:space-between; align-items:center;">
+              <span>🎯 DYNAMIC TARGETS (V1 ORIGINAL)</span>
+              <span id="targets-hud-status" style="color:#00e5ff; font-family:var(--mono);">AGUARDANDO GATILHO</span>
+            </div>
+            <div style="display:grid; grid-template-columns:auto 1fr; gap:4px 8px; font-size:9.5px; align-items:center;">
+              <span style="color:var(--t2);">Trailing Stop:</span>
+              <span id="targets-hud-trail" style="font-weight:700; color:#ff9100; font-family:var(--mono); text-align:right;">--</span>
+              <span style="color:var(--t2);">Alvo TP (Magenta):</span>
+              <span id="targets-hud-tp3" style="font-weight:700; color:#e91e63; font-family:var(--mono); text-align:right;">--</span>
+              <span style="color:var(--t2);">Nível Aux 1 (Ciano):</span>
+              <span id="targets-hud-tp2" style="font-weight:700; color:#00e5ff; font-family:var(--mono); text-align:right;">--</span>
+              <span style="color:var(--t2);">Nível Aux 2 (Verde):</span>
+              <span id="targets-hud-tp1" style="font-weight:700; color:#00e676; font-family:var(--mono); text-align:right;">--</span>
+            </div>
+          </div>
+          <div id="dynamic-trailing-hud" style="display:none; position:absolute; top:84px; left:56px; z-index:25; background:rgba(10,13,20,0.88); backdrop-filter:blur(8px); border:1px solid #30363d; border-radius:6px; padding:7px 11px; font-family:var(--font); min-width:235px; box-shadow:0 8px 32px rgba(0,0,0,0.6); pointer-events:auto;">
+            <div id="dynamic-trailing-hud-header" style="font-size:9.5px; font-weight:800; color:var(--gold); margin-bottom:5px; letter-spacing:0.04em; display:flex; justify-content:space-between; align-items:center; cursor:grab; user-select:none;">
+              <span style="display:inline-flex; align-items:center; gap:4px;">🚀 VECTRA DYNAMIC</span>
+              <div style="display:inline-flex; align-items:center; gap:6px;">
+                <span id="dynamic-trailing-hud-status" style="color:#00e5ff; font-family:var(--mono); font-size:9px;">AGUARDANDO</span>
+                <button class="hud-min-btn" onclick="toggleDynamicTrailingHudMin()" style="background:none; border:none; color:var(--t2); cursor:pointer; font-size:9px; padding:0 2px;" title="Minimizar / Expandir">▼</button>
+              </div>
+            </div>
+            <div id="dynamic-trailing-hud-body" style="display:grid; grid-template-columns:auto 1fr; gap:3px 8px; font-size:9px; align-items:center;">
+              <span style="color:var(--t2);">Trailing Stop (Laranja):</span>
+              <span id="dynamic-trailing-hud-trail" style="font-weight:700; color:#ff9100; font-family:var(--mono); text-align:right;">--</span>
+              <span style="color:var(--t2);">TP 3 Final (Magenta):</span>
+              <span id="dynamic-trailing-hud-tp3" style="font-weight:700; color:#e91e63; font-family:var(--mono); text-align:right;">--</span>
+              <span style="color:var(--t2);">TP 2 Grelha (Ciano):</span>
+              <span id="dynamic-trailing-hud-tp2" style="font-weight:700; color:#00b0ff; font-family:var(--mono); text-align:right;">--</span>
+              <span style="color:var(--t2);">TP 1 Grelha (Verde):</span>
+              <span id="dynamic-trailing-hud-tp1" style="font-weight:700; color:#00e676; font-family:var(--mono); text-align:right;">--</span>
+              <span style="color:var(--t2);">Mudança de Mão (Regime):</span>
+              <span id="dynamic-trailing-hud-prob" style="font-weight:700; color:#00e676; font-family:var(--mono); text-align:right;">--</span>
+            </div>
+          </div>
+
+          <div id="gann-sq9-hud" style="display:none; position:absolute; top:84px; right:60px; z-index:25; background:rgba(10,14,24,0.92); backdrop-filter:blur(8px); border:1px solid #384252; border-radius:6px; padding:7px 11px; font-family:var(--font); min-width:260px; box-shadow:0 8px 32px rgba(0,0,0,0.6); pointer-events:auto;">
+            <div id="gann-sq9-hud-header" style="font-size:9.5px; font-weight:800; color:var(--gold); margin-bottom:5px; letter-spacing:0.04em; display:flex; justify-content:space-between; align-items:center; cursor:grab; user-select:none;">
+              <span style="display:inline-flex; align-items:center; gap:4px;">🏛️ GANN SQUARE OF NINE</span>
+              <div style="display:inline-flex; align-items:center; gap:6px;">
+                <span id="gann-sq9-hud-ring" style="color:#00e676; font-family:var(--mono); font-size:9px;">--</span>
+                <button class="hud-min-btn" onclick="toggleGannSq9HudMin()" style="background:none; border:none; color:var(--t2); cursor:pointer; font-size:9px; padding:0 2px;" title="Minimizar / Expandir">▼</button>
+              </div>
+            </div>
+            <div id="gann-sq9-hud-body" style="display:grid; grid-template-columns:auto 1fr; gap:3px 8px; font-size:9px; align-items:center;">
+              <span style="color:var(--t2);">☀️ Grau Solar / Data:</span>
+              <span id="gann-sq9-hud-solar" style="font-weight:700; color:#00e5ff; font-family:var(--mono); text-align:right;">--</span>
+              <span style="color:var(--t2);">🌀 Aro da Espiral:</span>
+              <span id="gann-sq9-hud-aro" style="font-weight:700; color:#ffd700; font-family:var(--mono); text-align:right;">--</span>
+              <span style="color:var(--t2);">📐 Graus Percorridos:</span>
+              <span id="gann-sq9-hud-deg" style="font-weight:700; color:#ff9100; font-family:var(--mono); text-align:right;">--</span>
+              <span style="color:var(--t2);">🎯 Próximo Alvo Angular:</span>
+              <span id="gann-sq9-hud-target" style="font-weight:700; color:#e040fb; font-family:var(--mono); text-align:right;">--</span>
+              <span style="color:var(--t2);">⚓ Âncoras Pivôs:</span>
+              <span id="gann-sq9-hud-anchors" style="font-weight:700; color:var(--t3); font-family:var(--mono); text-align:right;">--</span>
+              <span style="color:var(--t2);">🤖 Confluência Robô:</span>
+              <span id="gann-sq9-hud-confluence" style="font-weight:700; color:#00e676; font-family:var(--mono); text-align:right;">--</span>
+            </div>
+          </div>
+
+          <div id="ema-ribbon-hud" style="display:none; position:absolute; top:84px; right:330px; z-index:25; background:rgba(10,14,24,0.92); backdrop-filter:blur(8px); border:1px solid #384252; border-radius:6px; padding:7px 11px; font-family:var(--font); min-width:240px; box-shadow:0 8px 32px rgba(0,0,0,0.6); pointer-events:auto;">
+            <div id="ema-ribbon-hud-header" style="font-size:9.5px; font-weight:800; color:#00e5ff; margin-bottom:5px; letter-spacing:0.04em; display:flex; justify-content:space-between; align-items:center; cursor:grab; user-select:none;">
+              <span style="display:inline-flex; align-items:center; gap:4px;">🌊 8-EMA RIBBON & MATRIX</span>
+              <div style="display:inline-flex; align-items:center; gap:6px;">
+                <span id="ema-ribbon-hud-regime" style="color:#ffeb3b; font-family:var(--mono); font-size:9px;">NEUTRO</span>
+                <button class="hud-min-btn" onclick="toggleEmaRibbonHudMin()" style="background:none; border:none; color:var(--t2); cursor:pointer; font-size:9px; padding:0 2px;" title="Minimizar / Expandir">▼</button>
+              </div>
+            </div>
+            <div id="ema-ribbon-hud-body" style="display:grid; grid-template-columns:auto 1fr; gap:3px 8px; font-size:9px; align-items:center;">
+              <span style="color:var(--t2);">T1 Local (8/16):</span>
+              <span id="ema-ribbon-st-t1" style="font-weight:700; font-family:var(--mono); text-align:right;">--</span>
+              <span style="color:var(--t2);">T2 Intermediário:</span>
+              <span id="ema-ribbon-st-t2" style="font-weight:700; font-family:var(--mono); text-align:right;">--</span>
+              <span style="color:var(--t2);">T3 Macro:</span>
+              <span id="ema-ribbon-st-t3" style="font-weight:700; font-family:var(--mono); text-align:right;">--</span>
+              <span style="color:var(--t2);">T4 Secular:</span>
+              <span id="ema-ribbon-st-t4" style="font-weight:700; font-family:var(--mono); text-align:right;">--</span>
+              <span style="color:var(--t2);">Matrix RSI Suavizado:</span>
+              <span id="ema-ribbon-hud-rsi" style="font-weight:700; color:#00e5ff; font-family:var(--mono); text-align:right;">--</span>
+            </div>
+          </div>
+
+          <div id="pullback-hud" style="display:none; position:absolute; top:104px; left:56px; z-index:25; background:rgba(10,13,20,0.85); backdrop-filter:blur(8px); border:1px solid #30363d; border-radius:8px; padding:10px 14px; font-family:var(--font); min-width:210px; box-shadow:0 8px 32px rgba(0,0,0,0.6); pointer-events:none;">
+            <div style="font-size:10px; font-weight:800; color:var(--gold); margin-bottom:6px; letter-spacing:0.05em; display:flex; justify-content:space-between; align-items:center;">
+              <span>🔄 PULLBACK & BREAKOUT</span>
+              <span id="pullback-hud-regime" style="color:#00e5ff; font-family:var(--mono);">NEUTRO</span>
+            </div>
+            <div style="display:grid; grid-template-columns:auto 1fr; gap:4px 8px; font-size:9.5px; align-items:center;">
+              <span style="color:var(--t2);">Bolso Superior:</span>
+              <span id="pullback-hud-up" style="font-weight:700; font-family:var(--mono); text-align:right;">--</span>
+              <span style="color:var(--t2);">Bolso Inferior:</span>
+              <span id="pullback-hud-dn" style="font-weight:700; font-family:var(--mono); text-align:right;">--</span>
+              <span style="color:var(--t2);">Último Gatilho:</span>
+              <span id="pullback-hud-last" style="font-weight:800; text-align:right;">--</span>
+            </div>
+          </div>
+          <div id="mtf-bias-hud" style="display:none; position:absolute; top:104px; left:56px; z-index:25; background:rgba(12,16,23,0.92); backdrop-filter:blur(8px); border:1px solid #21262d; border-radius:6px; padding:6px 12px; font-family:var(--font); font-size:10px; box-shadow:0 8px 24px rgba(0,0,0,0.6); pointer-events:none; align-items:center; gap:8px;">
+            <span style="color:#8b949e; font-weight:800;">MTF:</span>
+            <span id="mtf-hud-dots" style="font-family:var(--mono); font-weight:700; display:inline-flex; gap:6px;">
+              <span id="mtf-dot-h1" style="color:#8b949e;">H1○</span>
+              <span id="mtf-dot-d1" style="color:#8b949e;">D1○</span>
+              <span id="mtf-dot-w1" style="color:#8b949e;">W1○</span>
+              <span id="mtf-dot-m1" style="color:#8b949e;">M1○</span>
+            </span>
+            <span style="color:#30363d;">|</span>
+            <span id="mtf-hud-score" style="color:#00e5ff; font-family:var(--mono); font-weight:800;">SCORE: 0/4</span>
+            <span style="color:#30363d;">|</span>
+            <span id="mtf-hud-zlema" style="color:#ffffff; font-family:var(--mono);">ZLEMA 4</span>
+            <span style="color:#30363d;">|</span>
+            <span id="mtf-hud-status" style="padding:2px 8px; border-radius:3px; background:#11151c; color:#ffeb3b; font-weight:800; font-family:var(--mono); letter-spacing:0.04em;">[ BLOQUEADO ]</span>
+          </div>
+          <div id="predictive-hud" style="display:none; position:absolute; top:12px; right:12px; z-index:25; background:rgba(10,13,20,0.85); backdrop-filter:blur(8px); border:1px solid #30363d; border-radius:8px; padding:10px 14px; font-family:var(--font); min-width:230px; box-shadow:0 8px 32px rgba(0,0,0,0.6); pointer-events:none;">
+            <div style="font-size:10px; font-weight:800; color:var(--gold); margin-bottom:6px; letter-spacing:0.05em; display:flex; justify-content:space-between; align-items:center;">
+              <span>🔮 PREDICTIVE CROSS</span>
+              <span id="pred-hud-badge" style="color:#00e5ff; font-family:var(--mono);">SMA 50/200</span>
+            </div>
+            <div style="display:grid; grid-template-columns:auto 1fr; gap:4px 8px; font-size:9.5px; align-items:center;">
+              <span style="color:var(--t2);">Estrutura:</span>
+              <span id="pred-hud-struct" style="font-weight:700; text-align:right;">--</span>
+              <span style="color:var(--t2);">Colisão:</span>
+              <span id="pred-hud-time" style="font-weight:700; text-align:right;">--</span>
+              <span style="color:var(--t2);">Preço Alvo:</span>
+              <span id="pred-hud-target" style="font-weight:800; font-family:var(--mono); text-align:right;">--</span>
+            </div>
+          </div>
+
+          <!-- LEGENDA FLUTUANTE DE INDICADORES ATIVOS NO GRAFICO (ESTILO TRADINGVIEW) -->
+          <div id="tv-chart-indicators-legend" class="tv-legend-bar"></div>
+        </div>
+        <div class="panel-resize-handle" id="resize-effort" style="display:none;" title="Arraste pra redimensionar"></div>
+        <div class="effort-wrap" id="effort-wrap-el" style="display:none; height:105px; position:relative; background:var(--bg2); border-top:1px solid var(--bd2);">
+          <div id="effort-chart" style="width:100%; height:100%;"></div>
+        </div>
+        <div class="panel-resize-handle" id="resize-squeeze" style="display:none;" title="Arraste pra redimensionar"></div>
+        <div class="squeeze-wrap" id="squeeze-wrap-el" style="display:none; height:110px; position:relative; background:var(--bg2); border-top:1px solid var(--bd2);">
+          <div id="squeeze-chart" style="width:100%; height:100%;"></div>
+        </div>
+
+        <!-- SUBPANEL VECTRA MTF EMA RIBBON MATRIX (1W, 3W, 1M, 12M) -->
+        <div class="panel-resize-handle" id="resize-mtf-ribbon" style="display:none;" title="Arraste pra redimensionar"></div>
+        <div class="mtf-ribbon-wrap" id="mtf-ribbon-wrap-el" style="display:none; height:130px; position:relative; background:#0B0E14; border-top:1px solid var(--bd2); overflow:hidden;">
+          <div id="mtf-ribbon-chart" style="width:100%; height:100%;"></div>
+          <!-- HUD Matrix no canto superior direito do subpanel -->
+          <div id="mtf-ribbon-sub-hud" style="position:absolute; top:6px; right:10px; z-index:20; background:rgba(12,16,23,0.92); backdrop-filter:blur(8px); border:1px solid #21262d; border-radius:6px; padding:5px 8px; font-family:var(--font); display:flex; gap:8px; align-items:center; font-size:8.5px;">
+            <span style="color:#8b949e; font-weight:800;">MTF RIBBON</span>
+            <span id="mtf-ribbon-hud-score" style="color:#00e676; font-family:var(--mono); font-weight:900;">--% TOTAL</span>
+            <span style="color:#30363d;">|</span>
+            <span style="color:#8b949e;">1W:</span><span id="mtf-ribbon-st-1w" style="font-family:var(--mono); font-weight:700;">--</span>
+            <span style="color:#8b949e;">3W:</span><span id="mtf-ribbon-st-3w" style="font-family:var(--mono); font-weight:700;">--</span>
+            <span style="color:#8b949e;">1M:</span><span id="mtf-ribbon-st-1m" style="font-family:var(--mono); font-weight:700;">--</span>
+            <span style="color:#8b949e;">12M:</span><span id="mtf-ribbon-st-12m" style="font-family:var(--mono); font-weight:700;">--</span>
+          </div>
+        </div>
+
+        <!-- SUBPANEL FUSÃO - FORÇA QUÂNTICA (Setup Fibbo Ribbon 8/16 + Trailing ZLEMA & Quantum HUD) -->
+        <div class="panel-resize-handle" id="resize-quantum" style="display:none;" title="Arraste pra redimensionar"></div>
+        <div class="quantum-wrap" id="quantum-wrap-el" style="display:none; height:195px; position:relative; background:#0B0E14; border-top:1px solid var(--bd2); overflow:hidden;">
+          <!-- Título do Subpanel no canto superior esquerdo (Fiel à Imagem 1) -->
+          <div id="quantum-subpane-title" style="position:absolute; top:6px; left:12px; z-index:10; pointer-events:none; font-family:var(--font);">
+            <div style="font-size:11px; font-weight:900; color:#00E5FF; letter-spacing:0.04em;">FUSÃO - FORÇA QUÂNTICA</div>
+            <div style="font-size:8.5px; color:var(--t2); margin-top:1px;">RSI Quântico Estocástico Suavizado (14, 14, 3, 3) · Rainbow Flow (Momentum Inercial)</div>
+          </div>
+
+          <!-- Canvas para pintar nuvens de exaustão (>80 e <20), badges L / S e textos explicativos -->
+          <canvas id="quantum-subpane-canvas" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:5;"></canvas>
+
+          <!-- Gráfico Lightweight Charts para o Subpanel -->
+          <div id="quantum-chart" style="width:100%; height:100%;"></div>
+
+          <!-- HUD Quântico acoplado no canto inferior direito do subpanel (Fiel à Imagem 1) -->
+          <div id="quantum-hud" style="position:absolute; bottom:6px; right:10px; z-index:20; background:rgba(13,17,23,0.92); backdrop-filter:blur(8px); border:1px solid #30363d; border-radius:6px; padding:6px 10px; font-family:var(--font); box-shadow:0 8px 32px rgba(0,0,0,0.7); display:flex; gap:10px; align-items:center;">
+            <!-- Tabela Projeção Quântica -->
+            <div style="display:grid; grid-template-columns:1.2fr 1fr 1fr; gap:2px 6px; font-size:8.5px; align-items:center;">
+              <span style="color:var(--t3); font-weight:700;">PROJEÇÃO QUÂNTICA</span>
+              <span style="color:var(--t3); font-weight:700; text-align:right;">VALOR</span>
+              <span style="color:var(--t3); font-weight:700; text-align:right;">PERCENTUAL</span>
+
+              <span style="color:#00E676; font-weight:700;">L - ALVO</span>
+              <span id="quantum-hud-alvo-l" style="color:var(--text); font-family:var(--mono); text-align:right;">--</span>
+              <span id="quantum-hud-pct-l" style="color:#00E676; font-family:var(--mono); font-weight:700; text-align:right;">--</span>
+
+              <span style="color:#F44336; font-weight:700;">S - ALVO</span>
+              <span id="quantum-hud-alvo-s" style="color:var(--text); font-family:var(--mono); text-align:right;">--</span>
+              <span id="quantum-hud-pct-s" style="color:#F44336; font-family:var(--mono); font-weight:700; text-align:right;">--</span>
+
+              <span style="color:var(--gold); grid-column:span 2; font-weight:700;">PRÓXIMA POSIÇÃO IDEAL:</span>
+              <span id="quantum-hud-pos" style="font-weight:800; text-align:right; font-size:8px;">Aguardar Confirmação</span>
+
+              <span style="color:#00E676;">Pontos de L:</span>
+              <span id="quantum-hud-ql" style="color:#00E676; font-weight:700; font-family:var(--mono); text-align:right; grid-column:span 2;">L</span>
+
+              <span style="color:#F44336;">Pontos de S:</span>
+              <span id="quantum-hud-qs" style="color:#F44336; font-weight:700; font-family:var(--mono); text-align:right; grid-column:span 2;">S</span>
+            </div>
+
+            <!-- Velocímetro Gauge semicircular fiel à Imagem 1 -->
+            <div style="display:flex; flex-direction:column; align-items:center; width:72px; border-left:1px solid #21262d; padding-left:8px;">
+              <svg width="68" height="38" viewBox="0 0 68 38">
+                <path d="M 6 36 A 28 28 0 0 1 62 36" fill="none" stroke="#21262d" stroke-width="5" stroke-linecap="round" />
+                <path d="M 6 36 A 28 28 0 0 1 24 14" fill="none" stroke="#F44336" stroke-width="5" stroke-linecap="round" />
+                <path d="M 24 14 A 28 28 0 0 1 44 14" fill="none" stroke="#FFEB3B" stroke-width="5" />
+                <path d="M 44 14 A 28 28 0 0 1 62 36" fill="none" stroke="#00E676" stroke-width="5" stroke-linecap="round" />
+                <line id="quantum-gauge-needle" x1="34" y1="36" x2="34" y2="12" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" transform="rotate(0, 34, 36)" style="transition:transform 0.3s ease;" />
+                <circle cx="34" cy="36" r="3" fill="#FFFFFF" />
+              </svg>
+              <span id="quantum-gauge-txt" style="font-size:7.5px; font-weight:800; color:var(--t2); margin-top:2px;">MÉDIA</span>
+            </div>
+          </div>
+        </div>
+        <div class="panel-resize-handle" id="resize-chart-stoch" title="Arraste pra redimensionar"></div>
+        <div class="stoch-wrap" id="stoch-wrap-el">
+          <button class="panel-swap-btn" id="btn-swap-panels" title="Trocar posição StochRSI ↔ Ribbon Phi" onclick="swapStochPhiPanels()">⇅</button>
+          <!-- BARRA MTF DO STOCHRSI (MINIMIZADA POR PADRÃO) -->
+          <div id="stoch-matrix-hud" class="stoch-matrix-hud minimized">
+            <div class="stoch-hud-mini" onclick="toggleStochMatrixHud()" title="Clique para expandir métricas MTF do RSI">
+              <span style="color:var(--gold);">📊</span>
+              <span>MTF RSI</span>
+              <span id="stoch-hud-mini-hint" style="color:#00e5ff; font-weight:700; margin-left:2px;"></span>
+              <span style="font-size:8px; opacity:0.75;">▾</span>
+            </div>
+            <div class="stoch-hud-full">
+              <button class="stoch-hud-collapse-btn" onclick="toggleStochMatrixHud()" title="Minimizar barra MTF">◀ Ocultar</button>
+              <span style="color:#ffffff; font-weight:700;">LOCAL: <span id="matrix-hud-local">--</span>%</span>
+              <span style="color:#00e5ff; font-weight:700;">3D: <span id="matrix-hud-3d">--</span>%</span>
+              <span style="color:#ff9100; font-weight:700;">2W: <span id="matrix-hud-2w">--</span>%</span>
+              <span style="color:#e91e63; font-weight:700;">2M: <span id="matrix-hud-2m">--</span>%</span>
+              <button id="btn-stoch-full-price" onclick="toggleExhaustionBands()" style="cursor:pointer; background:rgba(255,145,0,0.15); border:1px solid #ff9100; color:#ff9100; border-radius:3px; padding:1px 5px; font-size:8px; font-weight:800; font-family:var(--mono); transition:all 0.15s;" title="Projetar Bandas Dinâmicas de Exaustão sobre os candles no preço">⛶ Full no Preço</button>
+              <button id="btn-stoch-toggle-ladder" onclick="toggleStochPredictionLadder()" class="btn-stoch-ladder-trigger" title="Mostrar/Ocultar Previsão de Preço por Nível de RSI ou StochRSI">🎯 Alvos RSI / Stoch</button>
+            </div>
+          </div>
+
+          <!-- TABELA VISIVEL DE PREVISÃO DE PREÇO (ALVOS RSI / STOCHRSI INVERSO) -->
+          <div id="stoch-prediction-ladder-panel" class="stoch-prediction-card">
+            <div class="stoch-ladder-hd">
+              <div style="display:flex; align-items:center; gap:6px;">
+                <div class="ladder-mode-tabs">
+                  <button id="ladder-tab-rsi" class="ladder-tab-btn active" onclick="setModoPrevisaoLadder('rsi')" title="Engenharia Reversa: Preço dos Alvos Clássicos do RSI">📊 Alvos RSI</button>
+                  <button id="ladder-tab-stoch" class="ladder-tab-btn" onclick="setModoPrevisaoLadder('stoch')" title="Previsão de Preço por Nível de StochRSI (0% a 100% Extremos)">🎯 StochRSI</button>
+                </div>
+                <span id="stoch-ladder-cur-badge" class="stoch-ladder-badge badge-n">RSI --</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <button class="stoch-ladder-btn-close" onclick="toggleStochPredictionLadder()" title="Minimizar / Expandir">▼</button>
+              </div>
+            </div>
+            <div class="stoch-ladder-body" id="stoch-prediction-rows">
+              <!-- Renderizado dinamicamente via JS com niveis RSI ou StochRSI -->
+            </div>
+          </div>
+
+          <div id="stoch-chart"></div>
+        </div>
+        <div class="panel-resize-handle" id="resize-stoch-phi" title="Arraste pra redimensionar"></div>
+        <div class="phi-wrap" id="phi-wrap-el"><div id="phi-chart"></div></div>
+      </div>
+
+      <!-- PAINEL DIREITO: OPERAR (ticket estilo Deriv) / ANALISE (motor ATLAS) - INICIA RECOLHIDO -->
+      <div class="rpanel collapsed">
+        <div class="rpanel-col">
+          <div class="rtabs">
+            <div class="rtab active" id="tab-operar" onclick="switchRTab('operar')">OPERAR</div>
+            <div class="rtab" id="tab-analise" onclick="switchRTab('analise')">ANALISE</div>
+            <div class="rtab" id="tab-ia" onclick="switchRTab('ia')">IA</div>
+            <div class="rtab toggle-col" onclick="toggleRPanelCollapse()" style="flex:0.2; background:var(--brand); color:#fff; cursor:pointer;" title="Recolher/Expandir Painel">▶</div>
+          </div>
+          <!-- OPERAR -->
+          <div class="rpanel-body active" id="body-operar">
+            <div class="tt-help" onclick="alert('Multiplicadores multiplicam o resultado percentual do ativo pelo fator escolhido. O Stop out limita a perda maxima ao valor da sua stake.')">
+              <span>Como negociar Multiplicadores?</span><span>›</span>
+            </div>
+            <div class="tt-updown">
+              <button class="tt-btn up sel" id="tt-up" onclick="setTTSide('up')">Subir</button>
+              <button class="tt-btn down" id="tt-down" onclick="setTTSide('down')">Descer</button>
+            </div>
+            <div class="tt-row">
+              <div class="tt-row-hd"><span class="tt-lbl">Multiplicador<span class="info-i">i</span></span></div>
+              <div class="tt-mult-opts" id="tt-mult-opts">
+                <div class="tt-chip" data-m="50">x50</div>
+                <div class="tt-chip sel" data-m="100">x100</div>
+                <div class="tt-chip" data-m="200">x200</div>
+                <div class="tt-chip" data-m="500">x500</div>
+              </div>
+            </div>
+            <div class="tt-row">
+              <div class="tt-row-hd"><span class="tt-lbl">Stake</span></div>
+              <div class="tt-stake-input">
+                <input type="number" id="tt-stake" value="2" min="1" step="1" oninput="updateTTCalc()">
+                <span class="tt-cur">USD</span>
+              </div>
+            </div>
+            <div class="tt-row">
+              <div class="tt-row-hd"><span class="tt-lbl">Gestao de risco<span class="info-i">i</span></span></div>
+              <span style="font-size:11px;color:var(--t3);">-</span>
+            </div>
+            <div class="tt-info-row"><span class="k">Expira em</span><span class="v" id="tt-expires">--</span></div>
+            <div class="tt-info-row"><span class="k">Stop out</span><span class="v" id="tt-stopout">--</span></div>
+            <div class="tt-info-row"><span class="k">Comissao</span><span class="v" id="tt-commission" style="font-family:var(--font);font-weight:600;font-size:10px;color:var(--t2);">definida pela Deriv</span></div>
+            <div class="tt-buy-wrap">
+              <button class="tt-buy up" id="tt-buy-btn" onclick="onBuyClick()">Comprar</button>
+            </div>
+            <div class="tt-api-note">
+              <b>Conecte sua conta Deriv</b> pra operar de verdade. Este painel ja calcula tudo — falta so ligar seu token de API da Deriv. Nunca cole esse token aqui no chat: ele deve ficar só no seu navegador.
+            </div>
+          </div>
+
+          <!-- ANALISE (motor ATLAS existente) -->
+          <div class="rpanel-body" id="body-analise">
+            <!-- GLOBE -->
+            <div class="globe-wrap">
+              <canvas id="globe-canvas" width="270" height="170"></canvas>
+              <div class="globe-live">
+                <div class="dot grn blink"></div>
+                <span class="globe-live-txt">LIVE</span>
+              </div>
+              <div class="globe-overlay">
+                <div class="globe-cnt" id="globe-cnt">0 sinais</div>
+                <div class="globe-sub">ATLAS INDICATOR</div>
+              </div>
+            </div>
+
+            <!-- O SINAL: um lugar so, uma resposta so. Quatro paineis dizendo
+                 "QUASE" nao e apoio a decisao, e ruido — e "quase" e a palavra
+                 que faz alguem entrar faltando uma. Vem de qualquer porta:
+                 continuacao, onda 3 ou reversao, nos dois lados. Anda no tick. -->
+            <div class="sp-sec" style="background:var(--bg2);"><span>O SINAL</span><span class="sp-sec-val" id="sinal-count">--</span></div>
+            <div id="sinal-box" style="padding:7px 9px;"><div style="font-size:9px;color:var(--t3);">Carregando os portoes...</div></div>
+
+            <!-- A 200 COMO IMA E COMO TRAMPOLIM: longe dela o proximo
+                 movimento provavel e de volta; encostado nela depois de ter
+                 esticado, o proximo provavel e embora outra vez — e e ai que
+                 se entra, porque o stop cabe atras da 89. O ima e medido, nao
+                 assumido: se a taxa de volta nao subir com a distancia, o
+                 painel diz que ele nao existe neste grafico. -->
+            <div class="sp-sec"><span>EMA200: IMA E TRAMPOLIM</span><span class="sp-sec-val" id="mag-count">--</span></div>
+            <div id="mag-box" style="padding:6px 9px;"><div style="font-size:9px;color:var(--t3);">Carregando...</div></div>
+
+            <!-- STOP TECNICO E PRE-STOP: o stop vai onde a TESE MORRE (o
+                 extremo do pavio que rejeitou), nao numa media com folga. E o
+                 pre-stop olha o cruzamento 8/16 no 3m se aproximando, pra
+                 decidir antes do stop bater. 3m avisa, 15m sustenta, 1h vies. -->
+            <div class="sp-sec"><span>STOP TECNICO &amp; PRE-STOP</span><span class="sp-sec-val" id="prestop-count">--</span></div>
+            <div id="prestop-box" style="padding:6px 9px;"><div style="font-size:9px;color:var(--t3);">Lendo 3m, 15m e 1h...</div></div>
+
+            <!-- RSI AO CONTRARIO: o oscilador responde "onde o indicador
+                 esta"; a pergunta util e a inversa, "a que PRECO ele chega em
+                 70?". A media de Wilder e uma recorrencia fechada, entao isso
+                 se resolve exato — nao e estimativa. -->
+            <div class="sp-sec"><span>RSI &rarr; PRECO</span><span class="sp-sec-val" id="rsipreco-count">--</span></div>
+            <div id="rsipreco-box" style="padding:6px 9px;"><div style="font-size:9px;color:var(--t3);">Calculando...</div></div>
+
+            <!-- PADRAO DE POSICIONAMENTO: o unico painel que responde "ja da
+                 pra entrar?". Fica no TOPO da coluna porque e a primeira
+                 pergunta, nao a ultima. Obrigatoria faltando = nao entra. -->
+            <div class="sp-sec"><span>PADRAO DE POSICIONAMENTO</span><span class="sp-sec-val" id="padrao-count">--</span></div>
+            <div id="padrao-box" style="padding:6px 9px;"><div style="font-size:9px;color:var(--t3);">Lendo o mercado...</div></div>
+
+            <!-- LOCALIZACAO E RISCO: "esta barato?" e "onde eu erro?" sao a
+                 mesma pergunta. E o tamanho da posicao e a unica coisa aqui
+                 que protege a banca de um unico trade. -->
+            <div class="sp-sec"><span>LOCALIZACAO &amp; RISCO</span><span class="sp-sec-val" id="local-count">--</span></div>
+            <div id="local-box" style="padding:6px 9px;"><div style="font-size:9px;color:var(--t3);">Carregando historico...</div></div>
+
+            <!-- OPORTUNIDADE EXTREMA: o portao de REVERSAO. O checklist de
+                 posicionamento exige preco do lado certo da EMA200, entao por
+                 construcao ele so libera DEPOIS da virada. Este le a virada
+                 enquanto ela acontece: medias perdendo forca, choque de volume
+                 absorvido e macro frio. -->
+            <div class="sp-sec"><span>OPORTUNIDADE EXTREMA</span><span class="sp-sec-val" id="rev-count">--</span></div>
+            <div id="rev-box" style="padding:6px 9px;"><div style="font-size:9px;color:var(--t3);">Carregando...</div></div>
+
+            <!-- GATILHO DA ONDA 3: o checklist diz SE da pra entrar, este diz
+                 QUANDO. Um portao aberto fica aberto por dezenas de velas, e
+                 entrar no comeco da onda 3 ou no fim dela da resultados
+                 opostos com o mesmo checklist. -->
+            <div class="sp-sec"><span>GATILHO DA ONDA 3</span><span class="sp-sec-val" id="g3-count">--</span></div>
+            <div id="g3-box" style="padding:6px 9px;"><div style="font-size:9px;color:var(--t3);">Carregando...</div></div>
+
+            <!-- FRACTAL: uma queda de 1m nao apaga o que o macro esta fazendo,
+                 ela acontece DENTRO dele. Correcao dentro de tendencia e
+                 virada da tendencia sao identicas no grafico pequeno, e a
+                 diferenca decide ate onde o stop pertence. -->
+            <div class="sp-sec"><span>ANALISE FRACTAL</span><span class="sp-sec-val" id="frac-count">--</span></div>
+            <div id="frac-box" style="padding:6px 9px;"><div style="font-size:9px;color:var(--t3);">Lendo as escalas...</div></div>
+
+            <!-- LOG: tudo que o app mede e historico de PRECO. Isto mede o
+                 historico das DECISOES dele — no seu ativo, no seu tempo, com
+                 os seus limiares. Elliott entra aqui como dado neutro, medido
+                 em paralelo: se mostrar que separa, sobe pra confirmacao. -->
+            <div class="sp-sec"><span>LOG DE SINAIS</span><span class="sp-sec-val" id="log-count">0</span></div>
+            <div id="log-box" style="padding:6px 9px;"><div style="font-size:9px;color:var(--t3);">Nenhuma aparicao ainda.</div></div>
+
+            <!-- RSI HEATMAP: todos os ativos da sua lista, de uma vez -->
+            <div class="sp-sec"><span>RSI HEATMAP</span><span class="sp-sec-val" id="rsi-heat-updated">--</span></div>
+            <div class="rsi-heat-legend">
+              <span><i style="background:#00A879;"></i>Sobrevendido</span>
+              <span><i style="background:#8FBFA8;"></i>Fraco</span>
+              <span><i style="background:#B8BEC7;"></i>Neutro</span>
+              <span><i style="background:#F0A0A0;"></i>Forte</span>
+              <span><i style="background:#EC3F3F;"></i>Sobrecomprado</span>
+            </div>
+            <div class="rsi-heat-scatter" id="rsi-heat-grid" style="height:230px;">
+              <div style="color:#fff;font-size:9px;padding:8px;">Calculando...</div>
+            </div>
+            <div class="rsi-heat-axis-note">Eixo horizontal = market cap (log)</div>
+
+            <!-- TOTAL / TOTAL2 / TOTAL3 -->
+            <div class="sp-sec"><span>MARKET CAP TOTAL</span><span class="sp-sec-val" id="mcap-updated">--</span></div>
+            <div class="mcap-total-grid">
+              <div class="mcap-total-item"><span class="mcap-total-lbl">TOTAL</span><span class="mcap-total-val" id="mcap-total">--</span></div>
+              <div class="mcap-total-item"><span class="mcap-total-lbl">TOTAL2</span><span class="mcap-total-val" id="mcap-total2">--</span></div>
+              <div class="mcap-total-item"><span class="mcap-total-lbl">TOTAL3</span><span class="mcap-total-val" id="mcap-total3">--</span></div>
+            </div>
+
+            <!-- DOMINANCIA TOP 8 -->
+            <div class="sp-sec"><span>DOMINANCIA (TOP 8)</span></div>
+            <div class="dom-list" id="dom-list">
+              <div style="color:var(--t3);font-size:9px;padding:4px 9px;">Calculando...</div>
+            </div>
+
+            <!-- MTF (ativo unico) -->
+            <div id="single-analysis">
+            <div class="sp-sec"><span>MTF SCORE</span><span class="sp-sec-val" id="mtf-summary">0/2</span></div>
+            <div class="mtf-grid">
+              <div class="mtf-row"><span class="mtf-tf">M5</span><div class="mtf-bar"><div class="mtf-fill" id="mtf-m5-fill"></div></div><span class="mtf-cross" id="mtf-m5-cross" title="Cruzamento EMA8x16 recente"></span><span class="mtf-dir flat" id="mtf-m5-dir">---</span></div>
+              <div class="mtf-row"><span class="mtf-tf">H1</span><div class="mtf-bar"><div class="mtf-fill" id="mtf-h1-fill"></div></div><span class="mtf-cross" id="mtf-h1-cross" title="Cruzamento EMA8x16 recente"></span><span class="mtf-dir flat" id="mtf-h1-dir">---</span></div>
+              <div class="mtf-row"><span class="mtf-tf">H4</span><div class="mtf-bar"><div class="mtf-fill" id="mtf-h4-fill"></div></div><span class="mtf-cross" id="mtf-h4-cross" title="Cruzamento EMA8x16 recente"></span><span class="mtf-dir flat" id="mtf-h4-dir">---</span></div>
+              <div class="mtf-row"><span class="mtf-tf">D1</span><div class="mtf-bar"><div class="mtf-fill" id="mtf-d1-fill"></div></div><span class="mtf-cross" id="mtf-d1-cross" title="Cruzamento EMA8x16 recente"></span><span class="mtf-dir flat" id="mtf-d1-dir">---</span></div>
+              <div class="mtf-score">
+                <span class="mtf-score-lbl">Score</span>
+                <span class="mtf-score-val" id="mtf-score-val">0</span>
+                <span class="mtf-score-min">/ min 2</span>
+              </div>
+            </div>
+
+            <!-- MICRO TIMING (M1/M5/M15) — so confirma o momento de entrar,
+                 nunca decide a direcao sozinho (essa vem do MTF acima) -->
+            <div class="sp-sec"><span>MICRO TIMING</span><span class="sp-sec-val" id="micro-summary">--</span></div>
+            <div class="mtf-grid">
+              <div class="mtf-row"><span class="mtf-tf">M1</span><div class="mtf-bar"><div class="mtf-fill" id="micro-m1-fill"></div></div><span class="mtf-cross" id="micro-m1-cross" title="Cruzamento EMA8x16 recente"></span><span class="mtf-dir flat" id="micro-m1-dir">---</span></div>
+              <div class="mtf-row"><span class="mtf-tf">M5</span><div class="mtf-bar"><div class="mtf-fill" id="micro-m5-fill"></div></div><span class="mtf-cross" id="micro-m5-cross" title="Cruzamento EMA8x16 recente"></span><span class="mtf-dir flat" id="micro-m5-dir">---</span></div>
+              <div class="mtf-row"><span class="mtf-tf">M15</span><div class="mtf-bar"><div class="mtf-fill" id="micro-m15-fill"></div></div><span class="mtf-cross" id="micro-m15-cross" title="Cruzamento EMA8x16 recente"></span><span class="mtf-dir flat" id="micro-m15-dir">---</span></div>
+            </div>
+
+            <!-- STOCHRSI -->
+            <div class="sp-sec"><span>STOCHRSI</span><span id="stoch-zone-badge" class="stoch-zone zone-n">NEUTRO</span></div>
+            <div class="stoch-info">
+              <div class="stoch-row"><span class="stoch-lbl">K local</span><span class="stoch-val stoch-k" id="stoch-k-local">--</span></div>
+              <div class="stoch-row"><span class="stoch-lbl">D local</span><span class="stoch-val stoch-d" id="stoch-d-local">--</span></div>
+              <div class="stoch-row"><span class="stoch-lbl">K H1</span><span class="stoch-val stoch-k" id="stoch-k-h1">--</span></div>
+              <div class="stoch-row"><span class="stoch-lbl">D H1</span><span class="stoch-val stoch-d" id="stoch-d-h1">--</span></div>
+            </div>
+
+            <!-- DIRECAO (BUSSOLA) -->
+            <div class="sp-sec"><span>DIRECAO (BUSSOLA)</span><span class="sp-sec-val" style="cursor:pointer;color:var(--accent);" onclick="toggleBussolaModal()">ABRIR</span></div>
+
+            <!-- ANTECIPADOR — reversao antes do cruzamento confirmar -->
+            <div class="sp-sec"><span>ANTECIPADOR</span><span id="antecip-badge" class="fib-dir-badge fib-flat">--</span></div>
+            <div class="micro-note" id="antecip-detail">Sem convergencia + virada do StochRSI no momento.</div>
+
+            <!-- CONFLUATOR — confluencia do fractal (cruzamento EMA8x16) em
+                 cascata H1->M15->M5->M1, junto com o momentum do M1 e o
+                 Antecipador. So confirma quando tudo alinha pro mesmo lado. -->
+            <div class="sp-sec"><span>CONFLUATOR</span><span class="sp-sec-val" id="confluator-score">0/4</span></div>
+            <div style="display:flex;gap:4px;padding:6px 9px;">
+              <div class="confluator-tf" id="confluator-tf-60"><span class="confluator-tf-lbl">H1</span><span class="confluator-tf-dot"></span></div>
+              <div class="confluator-tf" id="confluator-tf-15"><span class="confluator-tf-lbl">M15</span><span class="confluator-tf-dot"></span></div>
+              <div class="confluator-tf" id="confluator-tf-5"><span class="confluator-tf-lbl">M5</span><span class="confluator-tf-dot"></span></div>
+              <div class="confluator-tf" id="confluator-tf-1"><span class="confluator-tf-lbl">M1</span><span class="confluator-tf-dot"></span></div>
+            </div>
+            <div class="micro-note" id="confluator-detail">Aguardando cascata do fractal (EMA8x16) nos timeframes...</div>
+
+            <!-- SENTIMENTO DE MERCADO — funding, OI, long/short, book, volume -->
+            <div class="sp-sec"><span>SENTIMENTO DE MERCADO</span><span class="sp-sec-val" id="sentiment-updated">--</span></div>
+            <div class="micro-note" id="sentiment-body" style="line-height:1.7;">Carregando...</div>
+
+            <!-- RSI INVERSO — preco alvo pro RSI(14) puro bater 30/70 -->
+            <div class="sp-sec"><span>RSI INVERSO (14)</span><span class="sp-sec-val" id="rsiinv-current">--</span></div>
+            <!-- Escada: o preco que leva o RSI(14) a cada nivel. Antes so 30 e 70;
+                 a conta e a mesma, so faltava resolve-la pros outros niveis. -->
+            <div class="stoch-info" id="rsiinv-escada">
+              <div class="stoch-row"><span class="stoch-lbl">Alvo p/ OS 30</span><span class="stoch-val" id="rsiinv-os" style="color:var(--red);">--</span></div>
+              <div class="stoch-row"><span class="stoch-lbl">Alvo p/ OB 70</span><span class="stoch-val" id="rsiinv-ob" style="color:var(--green);">--</span></div>
+            </div>
+
+            <!-- FIBONACCI -->
+            <!-- RELATORIO: junta num arquivo tudo que o painel calculou, com a
+                 sua observacao, pra mandar pros agentes de analise. -->
+            <div class="sp-sec"><span>RELATORIO</span><span class="sp-sec-val" id="rel-count" style="color:var(--accent);">--</span></div>
+            <div style="padding:4px 9px;">
+              <textarea id="rel-obs" rows="2" placeholder="sua observacao sobre este ativo..."
+                style="width:100%;box-sizing:border-box;padding:4px 6px;font-size:10px;font-family:inherit;resize:vertical;"></textarea>
+              <div style="display:flex;gap:4px;margin-top:4px;">
+                <button class="btn" onclick="salvaObservacao()" style="flex:1;padding:3px 6px;font-size:10px;">guardar observacao</button>
+                <button class="btn" onclick="geraPdf()" style="padding:3px 8px;font-size:10px;font-weight:700;" title="Monta a leitura de mercado com capa da Vectra e abre a impressao — escolha Salvar como PDF">PDF</button>
+                <button class="btn" onclick="baixaRelatorio()" style="padding:3px 6px;font-size:10px;" title="Baixa o .json cru, pros agentes de analise">json</button>
+                <button class="btn" onclick="copiaRelatorio()" style="padding:3px 8px;font-size:10px;" title="Copia o relatorio pra colar num agente de analise">copiar</button>
+              </div>
+              <div style="display:flex;gap:4px;margin-top:4px;">
+                <!-- O relatorio reclama quando o alvo do fibo esta sem alarme.
+                     Este botao e a resposta: marca o alvo em um clique. -->
+                <button class="btn" onclick="alarmeNoAlvoFibo()" style="flex:1;padding:3px 6px;font-size:10px;" title="Cria um alarme de preco no proximo alvo do Fibonacci">alarme no alvo do fibo</button>
+              </div>
+            </div>
+            <div class="sig-list" id="rel-list" style="max-height:110px;flex:none;"><div style="padding:5px 9px;font-size:9px;color:var(--t3);">Nenhuma observacao guardada.</div></div>
+
+            <!-- FORCA: o RSI e o StochRSI medem o PRECO. Isto mede quem esta
+                 pagando pra entrar — agressao compradora contra vendedora. -->
+            <div class="sp-sec"><span>FORCA DO FLUXO</span><span class="sp-sec-val" id="forca-count">--</span></div>
+            <div id="forca-box" style="padding:6px 9px;"><div style="font-size:9px;color:var(--t3);">Aguardando negocios ao vivo...</div></div>
+
+            <!-- CONSOLIDACAO: a mesma pergunta (de que lado esta a pressao)
+                 respondida por dois livros diferentes. A Binance mede dinheiro
+                 agressor; a Deriv conta ticks pra cima, porque nao publica
+                 volume negociado. Concordancia reforca, divergencia avisa. -->
+            <div class="sp-sec"><span>BINANCE x DERIV</span><span class="sp-sec-val" id="consolida-count">--</span></div>
+            <div id="consolida-box" style="padding:6px 9px;"><div style="font-size:9px;color:var(--t3);">Carregando...</div></div>
+
+            <!-- ELLIOTT: contagem de ondas com as tres regras conferidas uma
+                 a uma. O que vale aqui nao e o rotulo, e o nivel que INVALIDA:
+                 a onda 2 nao pode passar do inicio da onda 1. -->
+            <div class="sp-sec"><span>ELLIOTT</span><span class="sp-sec-val" id="elliott-count">--</span></div>
+            <div id="elliott-box" style="padding:6px 9px;"><div style="font-size:9px;color:var(--t3);">Sem pivos suficientes.</div></div>
+
+            <!-- CONTRA-ARGUMENTO: tudo aqui do lado diz por que entrar. Esta
+                 secao diz o que pesa contra — e o que evita operacao ruim. -->
+            <div class="sp-sec"><span>CONTRA-ARGUMENTO</span><span class="sp-sec-val" id="contra-count" style="color:var(--red);">--</span></div>
+            <div class="sig-list" id="contra-list" style="max-height:170px;flex:none;"><div style="padding:5px 9px;font-size:9px;color:var(--t3);">Carregando...</div></div>
+
+            <!-- PLACAR: como cada tipo de sinal se saiu no historico carregado.
+                 Mesma regua pra todos (stop 1 ATR, alvo 2 ATR, teto 50 velas),
+                 pra os tipos serem comparaveis entre si. -->
+            <div class="sp-sec"><span>PLACAR DOS SINAIS</span><span class="sp-sec-val" id="placar-count" style="color:var(--accent);">--</span></div>
+            <div class="sig-list" id="placar-list" style="max-height:140px;flex:none;"><div style="padding:5px 9px;font-size:9px;color:var(--t3);">Carregando historico...</div></div>
+
+            <!-- ALARMES: niveis avulsos que o usuario digita, alem dos que ja
+                 vem das ferramentas de fibo, das linhas de preco e das medias. -->
+            <div class="sp-sec"><span>ALARMES</span><span class="sp-sec-val" id="alarme-count" style="color:var(--gold);">0</span></div>
+            <div style="display:flex;gap:5px;padding:5px 9px;align-items:center;">
+              <input id="alarme-preco" type="number" step="any" placeholder="preco"
+                     onkeydown="if(event.key==='Enter')addAlarmeManual();"
+                     style="flex:1;min-width:0;padding:3px 6px;font-size:10px;font-family:var(--mono);">
+              <button class="btn" onclick="addAlarmeManual()" style="padding:3px 8px;font-size:10px;">+ alarme</button>
+            </div>
+            <!-- O alarme das medias deixou de ser automatico: aqui voce monta o
+                 que quer vigiar. Sem nada montado, media nenhuma toca. -->
+            <div style="display:flex;gap:4px;padding:2px 9px 4px;align-items:center;">
+              <select id="alm-tipo" onchange="atualizaFormMedia()" style="flex:1;min-width:0;padding:2px 4px;font-size:9px;">
+                <option value="preco">preco cruza</option>
+                <option value="cruze">media cruza</option>
+              </select>
+              <select id="alm-a" style="padding:2px 4px;font-size:9px;"></select>
+              <span id="alm-x" style="font-size:9px;color:var(--t3);display:none;">x</span>
+              <select id="alm-b" style="padding:2px 4px;font-size:9px;display:none;"></select>
+              <button class="btn" onclick="addAlarmeMedia()" style="padding:2px 6px;font-size:9px;">+</button>
+            </div>
+            <div class="sig-list" id="alm-list" style="max-height:100px;flex:none;"><div style="padding:4px 9px;font-size:9px;color:var(--t3);">Nenhum alarme de media.</div></div>
+
+            <!-- fibo e preco continuam com o liga/desliga simples -->
+            <div style="display:flex;flex-wrap:wrap;gap:8px;padding:4px 9px 6px;font-size:9px;color:var(--t2);">
+              <label style="display:flex;gap:3px;align-items:center;cursor:pointer;"><input type="checkbox" id="alf-fibo" checked onchange="setFonteAlarme('fibo',this.checked)">fibo marcado</label>
+              <label style="display:flex;gap:3px;align-items:center;cursor:pointer;"><input type="checkbox" id="alf-preco" checked onchange="setFonteAlarme('preco',this.checked)">preco</label>
+            </div>
+            <div class="sig-list" id="alarme-list" style="max-height:130px;flex:none;"><div style="padding:5px 9px;font-size:9px;color:var(--t3);">Nenhum alarme manual.</div></div>
+
+            <div class="sp-sec"><span>FIBONACCI</span><span id="fib-dir-badge" class="fib-dir-badge fib-flat">FLAT</span></div>
+            <div class="fib-list" id="fib-list"><div style="color:var(--t3);font-size:9px;padding:4px 0;">Aguardando ancora...</div></div>
+            </div>
+
+            <!-- MTF + STOCHRSI + FIBONACCI + SELO DE VALIDACAO (todos os ativos da lista) -->
+            <div id="multi-analysis" style="display:none;">
+              <div class="sp-sec"><span>VALIDADOR · TODOS OS ATIVOS <span style="color:var(--green);font-weight:900;" title="Roda em segundo plano mesmo com esta aba fechada">● ATIVO</span></span><span class="sp-sec-val" id="multi-analysis-updated">--</span></div>
+              <div id="multi-analysis-cards"></div>
+              <div class="sp-sec"><span>HISTORICO · LIBERADOS</span><span class="sp-sec-val" id="validator-history-count">0</span></div>
+              <div class="sig-list" id="validator-history-list" style="max-height:220px;flex:none;"><div style="padding:5px 9px;font-size:9px;color:var(--t3);">Aguardando o 1o sinal liberado...</div></div>
+            </div>
+
+            <!-- FIB MANUAL (ferramenta de desenho) -->
+            <!-- Historico das ancoras automaticas: de todas as vezes que o motor
+                 ancorou um fibo, quantas chegaram em cada alvo. Responde se vale
+                 perseguir o 2.618 ou parar no 1.618. -->
+            <div class="sp-sec"><span>FIBO · ATE ONDE CHEGA</span><span class="sp-sec-val" id="fibh-count" style="color:var(--accent);">--</span></div>
+            <div class="sig-list" id="fibh-list" style="max-height:120px;flex:none;"><div style="padding:5px 9px;font-size:9px;color:var(--t3);">Sem ancoras arquivadas ainda.</div></div>
+
+            <div class="sp-sec"><span>FIB MANUAL</span><span class="sp-sec-val" id="mfib-count">--</span></div>
+            <div class="fib-list" id="mfib-list" style="max-height:150px;"><div style="color:var(--t3);font-size:9px;padding:4px 0;">Desenhe um fib no grafico...</div></div>
+
+            <!-- FIB RETRACAO (acumulacao, com negativos p/ quebra/spring) -->
+            <div class="sp-sec"><span>FIB RETRAÇÃO · ACUMULAÇÃO</span><span class="sp-sec-val" id="mfibretr-count">--</span></div>
+            <div class="fib-list" id="mfibretr-list" style="max-height:180px;"><div style="color:var(--t3);font-size:9px;padding:4px 0;">Desenhe um fib retracao no grafico...</div></div>
+
+            <!-- RISK -->
+            <div class="sp-sec"><span>RISCO DERIV</span></div>
+            <div class="risk-grid">
+              <div class="risk-row"><span class="risk-lbl">STAKE</span><span class="risk-val">$1.00 x100</span></div>
+              <div class="risk-row"><span class="risk-lbl">RISCO MAX</span><span class="risk-val">$1.00</span></div>
+              <div class="risk-row"><span class="risk-lbl">R:R</span><span class="risk-val" id="risk-rr">--</span></div>
+              <div class="risk-row"><span class="risk-lbl" id="risk-lbl1">TP 1.618</span><span class="risk-val green" id="risk-tp1">--</span></div>
+              <div class="risk-row"><span class="risk-lbl" id="risk-lbl2">TP 2.618</span><span class="risk-val green" id="risk-tp2">--</span></div>
+              <div class="risk-row"><span class="risk-lbl" id="risk-lbl3">TP 3.618</span><span class="risk-val green" id="risk-tp3">--</span></div>
+            </div>
+
+            <!-- SIGNALS -->
+            <div class="sp-sec"><span>SINAIS</span><span class="sp-sec-val" id="sig-count" style="color:var(--orange);">0</span></div>
+            <div class="sig-list" id="sig-list"><div style="padding:5px 9px;font-size:9px;color:var(--t3);">Aguardando sinais...</div></div>
+          </div>
+
+          <!-- IA (visao geral do mercado, analise do ativo atual e chat com o ATLAS) -->
+          <div class="rpanel-body" id="body-ia">
+            <!-- CHAVE DE API -->
+            <div class="sp-sec"><span>CONEXAO IA</span></div>
+            <div style="padding:14px;">
+              <div class="modal-status-row">
+                <span class="dot off" id="ia-key-dot"></span>
+                <span id="ia-key-status">IA desativada</span>
+              </div>
+              <label class="modal-lbl">Chave de API Gemini</label>
+              <div style="position:relative;">
+                <input type="password" id="ia-api-key" class="modal-input" placeholder="AIzaSy..." autocomplete="off" style="padding-right:36px;"
+                  onkeydown="if(event.key==='Enter')onIAKeyConnectClick();">
+                <button type="button" onclick="toggleIAKeyVisibility()" id="ia-key-eye"
+                  style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;
+                  cursor:pointer;font-size:14px;color:var(--t2);padding:4px;">👁</button>
+              </div>
+              <div class="modal-hint">
+                Gere gratis em <b>aistudio.google.com/apikey</b> (Google AI Studio). Fica salva localmente no seu navegador para manter as conversas.
+                <b>Nunca compartilhe essa chave no chat</b> — cole-a apenas aqui.
+              </div>
+              <button class="modal-connect-btn" id="ia-key-connect-btn" onclick="onIAKeyConnectClick()" style="margin-top:10px;">Ativar IA</button>
+            </div>
+
+            <div class="sp-sec"><span>VISAO GERAL (IA)</span></div>
+            <div style="padding:14px;">
+              <button class="ia-global-btn" onclick="analyzeGlobalMarket()">Gerar Visao do Mercado</button>
+              <div id="ai-global-result" style="margin-top:10px;display:none;"></div>
+            </div>
+
+            <div class="sp-sec"><span>ANALISE DO ATIVO: <span id="ia-current-sym">--</span></span></div>
+            <div style="padding:14px;">
+              <button class="ma-ai-btn" onclick="analyzeCurrentAssetAI()">Analisar Ativo Atual</button>
+              <div id="ai-asset-result" style="margin-top:10px;display:none;"></div>
+            </div>
+
+            <div class="sp-sec"><span>ASSISTENTE ATLAS</span></div>
+            <div style="display:flex;flex-direction:column;flex:1;min-height:200px;padding:14px;gap:8px;">
+              <div id="ia-chat-history" style="flex:1;overflow-y:auto;border:1px solid var(--bd2);border-radius:6px;
+                padding:8px;background:var(--bg4);font-size:11px;color:var(--text);">
+                <div style="color:var(--t3);">Ola! Sou o Assistente ATLAS. Pergunte sobre o mercado ou o ativo em analise.</div>
+              </div>
+              <div style="display:flex;gap:6px;">
+                <input type="text" id="ia-chat-input" class="rsit-search" style="flex:1;width:auto;"
+                  placeholder="Pergunte algo ao ATLAS..." onkeydown="if(event.key==='Enter')sendIAChat();">
+                <button class="ia-send-btn" id="ia-send-btn" onclick="sendIAChat()">Enviar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+
+
+<!-- BUSSOLA MODAL -->
+
+<div id="bussola-modal" style="display:none;flex-direction:column;position:fixed;bottom:20px;left:80px;z-index:9999;background:rgba(20,24,32,0.9);border:1px solid var(--bd2);border-radius:10px;padding:12px;width:380px;box-shadow:0 4px 15px rgba(0,0,0,0.8);backdrop-filter:blur(4px);">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;border-bottom:1px solid var(--bd);padding-bottom:6px;">
+    <span style="font-weight:bold;color:var(--goldd);font-size:12px;cursor:move;" class="drag-header">🧭 BÚSSOLA</span>
+    <button onclick="toggleBussolaModal()" style="background:none;border:none;color:var(--t2);cursor:pointer;font-size:16px;line-height:1;">&times;</button>
+  </div>
+  
+  <!-- Com o modo Multi ligado, a bussola mostra os 4 ativos em vez do ativo do
+       grafico principal. O conteudo e montado em JS a partir do MULTI_SYMS. -->
+  <div id="bussola-body-multi" style="display:none;"></div>
+  <!-- Correlacao dos 4: quatro bussolas iguais podem ser uma aposta so. -->
+  <div id="corr-box" style="display:none;margin-top:8px;padding-top:6px;border-top:1px solid var(--bd);"></div>
+
+  <div id="bussola-body-atual">
+    <div class="sp-sec" style="background:none;border:none;padding:0;margin-bottom:4px;"><span>ESTADO</span><span class="sp-sec-val" id="direcao-state-badge" style="font-size:10px;">--</span></div>
+    <div style="display:flex;gap:12px;align-items:center;">
+      <svg id="direcao-compass" width="95" height="95" viewBox="0 0 110 110" style="flex-shrink:0;"></svg>
+      <div id="direcao-force-meter" style="width: 8px; height: 95px; border-radius: 4px; background: linear-gradient(to top, var(--red) 0%, var(--bg3) 50%, var(--green) 100%); position: relative; border: 1px solid var(--bd2); margin-left: 8px; margin-right: 4px;">
+        <div id="direcao-force-pointer" style="position: absolute; left: -6px; width: 20px; height: 2px; background: var(--text); top: 50%; transition: top 0.3s ease-out; box-shadow: 0 0 4px #000;"></div>
+      </div>
+      <div id="direcao-readout" style="flex:1;display:flex;flex-direction:column;gap:4px;font-family:var(--mono);font-size:12px;"></div>
+    </div>
+    <div class="sig-list" id="direcao-history-list" style="max-height:120px;flex:none;border-top:1px solid var(--bd);margin-top:6px;font-size:11.5px;">
+      <div style="padding:4px;color:var(--t3);font-size:11px;">Sem mudanca...</div>
+    </div>
+  </div>
+</div>
+
+<!-- CONFLUATOR GOLD MODAL -->
+<div id="confluator-gold-modal" style="display:none;position:fixed;bottom:20px;left:80px;z-index:9999;background:rgba(20,24,32,0.9);border:1px solid var(--bd2);border-radius:10px;padding:12px;width:300px;box-shadow:0 4px 15px rgba(0,0,0,0.8);backdrop-filter:blur(4px);">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;border-bottom:1px solid var(--bd);padding-bottom:6px;">
+    <span style="font-weight:bold;color:var(--goldd);font-size:12px;cursor:move;" class="drag-header">🏆 ATLAS GOLD (RSI MTF)</span>
+    <button onclick="toggleConfluatorGoldModal()" style="background:none;border:none;color:var(--t2);cursor:pointer;font-size:16px;line-height:1;">&times;</button>
+  </div>
+  <table style="width:100%;font-size:10px;text-align:left;border-collapse:collapse;" id="confluator-gold-table">
+    <tr style="color:var(--t3);border-bottom:1px solid var(--bd3);"><th>TF</th><th>RSI</th><th>Stoch-K</th><th>Stoch-D</th></tr>
+  </table>
+  <div class="micro-note" id="confluator-gold-signal" style="margin-top:8px;text-align:center;font-weight:bold;color:var(--t3);">Calculando...</div>
+</div>
+
+
+    <!-- POTENTIAL CARD -->
+  <div id="potential-card" class="potential-card" style="display:none;">
+    <div class="pot-header drag-header">
+      <span class="pot-title">⚡ POTENTIAL</span>
+      <button class="pot-close" onclick="document.getElementById('potential-card').style.display='none'">×</button>
+    </div>
+    <div class="pot-body">
+      <div class="pot-row">
+        <label>Preço Atual</label>
+        <span id="pot-price" class="pot-val pot-gold">--</span>
+      </div>
+      <div class="pot-row">
+        <label>Alavancagem (1:X)</label>
+        <input type="number" id="pot-lev" value="800" oninput="updatePotential()">
+      </div>
+      <div class="pot-row">
+        <label>Lote (Volume)</label>
+        <input type="number" id="pot-lot" value="0.02" step="0.01" oninput="updatePotential()">
+      </div>
+      <div class="pot-divider"></div>
+      <div class="pot-row">
+        <label>Nocional Real</label>
+        <span id="pot-notional" class="pot-val">--</span>
+      </div>
+      <div class="pot-row">
+        <label>Margem Retida</label>
+        <span id="pot-margin" class="pot-val pot-accent">--</span>
+      </div>
+      <div class="pot-row">
+        <label>Valor do Tick ($1)</label>
+        <span id="pot-tick" class="pot-val">--</span>
+      </div>
+      <div class="pot-row">
+        <label title="Distancia de preco ate a margem retida acabar (100% de perda da margem alocada)">⚠️ Liq. Compra / Venda</label>
+        <span id="pot-liq" class="pot-val pot-gold">--</span>
+      </div>
+      <div class="pot-divider"></div>
+      <div class="pot-row">
+        <label>Preço de Stop</label>
+        <input type="number" id="pot-stop-price" placeholder="clique num fib" oninput="updatePotential()"><button class="btn" onclick="stopPorATR()" title="Poe o stop a 1,5 ATR do preco, no lado certo da operacao" style="padding:1px 5px;font-size:9px;margin-left:4px;">ATR</button>
+      </div>
+      <div class="pot-row">
+        <label>Preço de Alvo</label>
+        <input type="number" id="pot-target-price" placeholder="clique num fib" oninput="updatePotential()">
+      </div>
+      <div class="pot-row">
+        <label>Distância Stop</label>
+        <span id="pot-stop-dist" class="pot-val pot-red">--</span>
+      </div>
+      <div class="pot-row">
+        <label>Distância Alvo</label>
+        <span id="pot-target-dist" class="pot-val pot-green">--</span>
+      </div>
+      <div class="pot-row">
+        <label>Risco Real ($)</label>
+        <span id="pot-risk-real" class="pot-val pot-red">--</span>
+      </div>
+      <div class="pot-row">
+        <label>Retorno Real ($)</label>
+        <span id="pot-reward-real" class="pot-val pot-green">--</span>
+      </div>
+      <div class="pot-row">
+        <label>R:R</label>
+        <span id="pot-rr" class="pot-val pot-gold">--</span>
+      </div>
+      <div class="pot-divider"></div>
+      <div class="pot-row">
+        <label>Banca (Equity, $)</label>
+        <input type="number" id="pot-equity" value="1000" step="10" oninput="updatePotential()">
+      </div>
+      <div class="pot-row">
+        <label>Risco (% da banca)</label>
+        <input type="number" id="pot-risk-pct" value="1" step="0.1" oninput="updatePotential()">
+      </div>
+      <div class="pot-row">
+        <label>Risco Desejado ($)</label>
+        <span id="pot-risk-goal" class="pot-val pot-red">--</span>
+      </div>
+      <div class="pot-row">
+        <label>Lote Sugerido</label>
+        <span id="pot-lot-suggested" class="pot-val pot-accent">--</span>
+      </div>
+      <div class="pot-divider"></div>
+      <div class="pot-fib-header"><span>🎯 Fib Extensão (24 níveis)</span></div>
+      <div class="pot-fib-list" id="pot-fib-list"></div>
+      <div class="pot-fib-header"><span>🎯 Fib Retração (14 níveis)</span></div>
+      <div class="pot-fib-list" id="pot-fibretr-list"></div>
+    </div>
+  </div>
+
+  <!-- MODAL ESTILO TRADINGVIEW: GERENCIADOR DE INDICADORES (ROOT LEVEL) -->
+  <div id="modal-indicadores" class="modal-overlay" onclick="if(event.target===this)fecharModalIndicadores()">
+    <div class="modal-card modal-ind-card">
+      <div class="modal-hd">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-weight:900; font-style:italic; color:var(--accent); font-size:16px;">fx</span>
+          <span style="font-weight:800; font-size:14px; letter-spacing:0.04em;">Indicadores, Estruturas e Métricas</span>
+        </div>
+        <button class="modal-x" onclick="fecharModalIndicadores()">✕</button>
+      </div>
+      
+      <div class="modal-ind-search-bar">
+        <input type="text" id="ind-search-input" class="modal-ind-input" placeholder="🔍 Pesquisar indicador (ex: Stoch, Targets, Squeeze, RSI, FVG, Clean Cross)..." oninput="filtrarIndicadoresModal(this.value)">
+      </div>
+
+      <div class="modal-ind-tabs">
+        <button class="ind-tab-btn active" data-cat="all" onclick="filtrarCategoriaModal('all', this)">Todos (<span id="cnt-all">23</span>)</button>
+        <button class="ind-tab-btn" data-cat="active" onclick="filtrarCategoriaModal('active', this)">Ativos (<span id="cnt-active">0</span>)</button>
+        <button class="ind-tab-btn" data-cat="overlay" onclick="filtrarCategoriaModal('overlay', this)">No Preço (<span id="cnt-overlay">14</span>)</button>
+        <button class="ind-tab-btn" data-cat="subpane" onclick="filtrarCategoriaModal('subpane', this)">Osciladores (<span id="cnt-subpane">4</span>)</button>
+        <button class="ind-tab-btn" data-cat="mtf" onclick="filtrarCategoriaModal('mtf', this)">MTF & Macro (<span id="cnt-mtf">5</span>)</button>
+      </div>
+
+      <div class="modal-ind-body" id="modal-ind-list">
+        <!-- Renderizado dinamicamente via JS com toggle, eye icon e status badge -->
+      </div>
+
+      <div class="modal-ind-footer">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <button class="btn" onclick="toggleOcultarCamadasVisiveis()" title="Ocultar ou restaurar temporariamente todas as sobreposições visíveis">👁️ Ocultar / Mostrar Todas</button>
+          <span style="font-size:10px; color:var(--t3);" id="ind-footer-info">0 indicadores ligados no gráfico</span>
+        </div>
+        <button class="btn" onclick="fecharModalIndicadores()" style="font-weight:700;">Concluído</button>
+      </div>
+    </div>
+  </div>
+
+<!-- defer nos dois: sem ele um <script src> trava o analisador ate o arquivo
+     chegar, entao uma rede ruim (ou o unpkg lento) congelava a pagina inteira,
+     inclusive a saida da abertura. Com defer os dois baixam em paralelo com a
+     leitura do HTML e executam nesta ordem, antes do DOMContentLoaded — que e
+     o que o main.js espera pra iniciar, e os onclick do HTML so disparam no
+     clique, bem depois. -->
+<script defer src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<script defer src="./main.js?v=101_crisp_filtered_entries"></script>
+<script defer src="./ponte_antigravity.js?v=101_crisp_filtered_entries"></script>
+</body>
+
+</html>
+
