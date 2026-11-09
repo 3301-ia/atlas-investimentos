@@ -1,0 +1,316 @@
+[
+ {
+  "arquivo": "gann_square_of_nine.pine",
+  "linhas": 412,
+  "bytes": 25472,
+  "sha256": "a731787bd5b1e7d8a837ffa8ec20625bb56cf50f953140f174fcaeb35c03e444",
+  "declaracao": "indicator(\"Gann Square of Nine - Universal HUD & Cycle Engine v4\", shorttitle=\"Gann Sq9 v4\", overlay=true, max_lines_count=500, max_labels_count=500)",
+  "pine": "6",
+  "entradas": [
+   [
+    "anchor_mode",
+    "\"Automático (Pivôs Recentes"
+   ],
+   [
+    "pivot_len",
+    "15, \"Período do Pivô (Modo Automático"
+   ],
+   [
+    "manual_top",
+    "87128.0, \"Preço Topo Manual (P_topo"
+   ],
+   [
+    "manual_bot",
+    "82467.0, \"Preço Fundo Manual (P_fundo"
+   ],
+   [
+    "scale_choice",
+    "\"Automático (Auto-Detectar"
+   ],
+   [
+    "show_hud",
+    "true, \"Exibir Painel HUD\", group=grp_h"
+   ],
+   [
+    "hud_position",
+    "\"Topo Direito\", \"Posição do Painel\","
+   ],
+   [
+    "hud_size_opt",
+    "\"Pequeno\", \"Tamanho da Fonte HUD\","
+   ],
+   [
+    "display_mode",
+    "\"Aro Ativo + Próximo Aro\", \"Modo de Tr"
+   ],
+   [
+    "show_sub_harm",
+    "true, \"Exibir Harmónicos Intermediário"
+   ],
+   [
+    "show_crit_fill",
+    "true, \"Destacar Zona Crítica e Exaustã"
+   ],
+   [
+    "show_exp_arcs",
+    "false, \"Exibir Alvos Expansivos do Q9 "
+   ],
+   [
+    "show_base9",
+    "false, \"Exibir Extensões da Lei de Trê"
+   ]
+  ],
+  "alertas": [
+   "ta.crossunder(close, p_red_90),  title=\"Perda 90° → Anel Vermelho\",   ",
+   "ta.crossover(close,  p_exp_90),  title=\"Rompimento +90° → Anel Verde\",",
+   "ta.cross(close, p_red_1620),     title=\"Toque Alvo Crítico 1620°\",    ",
+   "ta.cross(close, p_red_1800),     title=\"Zona de Exaustão 1800°\",      ",
+   "ta.cross(close, p_exp_1440),     title=\"Oitava +1440° (4ª Volta Acima)",
+   "ta.cross(close, p_exp_3600),     title=\"TETO MÁXIMO +3600°\",          "
+  ],
+  "ordens": [],
+  "rotulos": []
+ },
+ {
+  "arquivo": "indicador_master_atlas_v10.pine",
+  "linhas": 91,
+  "bytes": 6966,
+  "sha256": "35a40afc2272b247f47a11bc279f04a72ab0356a823b4665892b64b62b3f8c24",
+  "declaracao": "indicator(\"Indicador Master: Atlas v10 + Ribbon + Bubbles\", overlay=true, max_labels_count=500, max_lines_count=500, max_boxes_count=500)",
+  "pine": "6",
+  "entradas": [
+   [
+    "lowerTfInput",
+    "\"\", \"Lower TF (Empty = Auto Scale"
+   ],
+   [
+    "minNotional",
+    "500, \"Min notional to show (USD/USDT"
+   ],
+   [
+    "maxPerBar",
+    "1, \"Max bubbles per bar\", minval=1, ma"
+   ],
+   [
+    "bubblePos",
+    "\"Wick Extreme\", \"Bubble Position\", opt"
+   ],
+   [
+    "showText",
+    "true, \"Show notional text\", group=grpB"
+   ],
+   [
+    "textSizeOpt",
+    "\"Normal\", \"Text Size\", options=[\"Auto\""
+   ],
+   [
+    "textDecoup",
+    "true, \"Separate Text (Prevents blockin"
+   ],
+   [
+    "bubbleTrans",
+    "40, \"Bubble Transparency (0-100"
+   ],
+   [
+    "debug",
+    "true, \"Debug label\", group=grpBubbles"
+   ],
+   [
+    "t1",
+    " 25000, \"Tier 1\", step=1000, group=grp"
+   ],
+   [
+    "t2",
+    " 50000, \"Tier 2\", step=1000, group=grp"
+   ],
+   [
+    "t3",
+    "100000, \"Tier 3\", step=1000, group=grp"
+   ],
+   [
+    "t4",
+    "250000, \"Tier 4\", step=1000, group=grp"
+   ],
+   [
+    "sourceMode",
+    "\"Predefined Crosses\", \"Source Mode\", o"
+   ]
+  ],
+  "alertas": [],
+  "ordens": [],
+  "rotulos": []
+ },
+ {
+  "arquivo": "vectra_dynamic_indicator.pine",
+  "linhas": 162,
+  "bytes": 7275,
+  "sha256": "37c3bae56dcbdb6a46bf25872c150c81a4d495fa94d66ce875f2629bb90dd5df",
+  "declaracao": "indicator(\"Vectra Dynamic INDICATOR\", overlay=true, max_labels_count=500, max_lines_count=500)",
+  "pine": "5",
+  "entradas": [
+   [
+    "fast_len",
+    "10, \"Período Base ZLEMA\", minval=1, gr"
+   ],
+   [
+    "kama_len",
+    "34, \"Período Lento KAMA (Filtro Macro"
+   ],
+   [
+    "hist_mult",
+    "0.45, \"Histerese ATR (Anti-Ruído Micro"
+   ],
+   [
+    "len_atr",
+    "14, \"Período ATR (Volatilidade"
+   ],
+   [
+    "use_slope",
+    "true, \"Exigir Inclinação da ZLEMA para"
+   ],
+   [
+    "mult_stop",
+    "1.8, \"Multiplicador Trailing Stop (Lar"
+   ],
+   [
+    "mult_tp1",
+    "2.2, \"Multiplicador TP 1 (Verde"
+   ],
+   [
+    "mult_tp2",
+    "3.4, \"Multiplicador TP 2 (Azul"
+   ],
+   [
+    "mult_tp3",
+    "4.8, \"Multiplicador TP 3 (Rosa"
+   ],
+   [
+    "show_medias",
+    "true, \"Exibir Médias ZLEMA e KAMA\", gr"
+   ],
+   [
+    "show_labels",
+    "true, \"Exibir Badges de Entrada / Stop"
+   ]
+  ],
+  "alertas": [],
+  "ordens": [],
+  "rotulos": [
+   "ENTRADA L",
+   "ENTRADA S",
+   "STOP L",
+   "STOP S"
+  ]
+ },
+ {
+  "arquivo": "vectra_dynamic_stepped_trailing.pine",
+  "linhas": 152,
+  "bytes": 6867,
+  "sha256": "4abccbbaba730bb5d91f42505548903d93e8fb5273679e92f4abd04f21010bf2",
+  "declaracao": "indicator(\"Vectra Dynamic (Pure Stepped Trailing & Targets) - Suavizado MTF\", overlay=true, max_labels_count=500, max_lines_count=500)",
+  "pine": "5",
+  "entradas": [
+   [
+    "fast_len",
+    "10, \"Período Base ZLEMA\", minval=1, gr"
+   ],
+   [
+    "kama_len",
+    "34, \"Período Lento KAMA (Filtro Macro"
+   ],
+   [
+    "hist_mult",
+    "0.40, \"Histerese ATR (Anti-Ruído Micro"
+   ],
+   [
+    "len_atr",
+    "14, \"Período ATR (Volatilidade"
+   ],
+   [
+    "mult_stop",
+    "1.8, \"Multiplicador Trailing Stop (Lar"
+   ],
+   [
+    "mult_tp1",
+    "2.2, \"Multiplicador TP 1 (Verde"
+   ],
+   [
+    "mult_tp2",
+    "3.4, \"Multiplicador TP 2 (Azul"
+   ],
+   [
+    "mult_tp3",
+    "4.8, \"Multiplicador TP 3 (Rosa"
+   ],
+   [
+    "show_medias",
+    "true, \"Exibir Médias ZLEMA e KAMA\", gr"
+   ],
+   [
+    "show_labels",
+    "true, \"Exibir Badges de Entrada / Stop"
+   ]
+  ],
+  "alertas": [],
+  "ordens": [],
+  "rotulos": [
+   "ENTRADA L",
+   "ENTRADA S",
+   "STOP L",
+   "STOP S"
+  ]
+ },
+ {
+  "arquivo": "vectra_ema_ribbon_matrix_rsi.pine",
+  "linhas": 110,
+  "bytes": 6338,
+  "sha256": "1a2b9ec727a395bdf0f596c4a3aa27b52298410799c2de37485d1791a9707671",
+  "declaracao": "indicator(\"Vectra 8-EMA Ribbon + Matrix RSI CVD [Atlas v6]\", overlay=true, max_labels_count=500)",
+  "pine": "6",
+  "entradas": [],
+  "alertas": [],
+  "ordens": [],
+  "rotulos": []
+ },
+ {
+  "arquivo": "vectra_mtf_ribbon_matrix_institutional.pine",
+  "linhas": 89,
+  "bytes": 4971,
+  "sha256": "d2338f4dcd5ad5cd2bb1c4cba47d3c4c682894b18136fff38ea3d34c97ab2b79",
+  "declaracao": "indicator(\"Vectra MTF EMA Ribbon Matrix (1W, 3W, 1M, 12M)\", overlay=false, precision=2)",
+  "pine": "5",
+  "entradas": [
+   [
+    "len_fast",
+    "2, \"Período EMA Ultrarrápida\", minval="
+   ],
+   [
+    "len_mid",
+    "21, \"Período EMA Intermediária\", minva"
+   ],
+   [
+    "len_slow",
+    "200, \"Período EMA Institucional\", minv"
+   ],
+   [
+    "tf_1w",
+    "\"1W\", \"Timeframe 1: 1 Semana\""
+   ],
+   [
+    "tf_3w",
+    "\"3W\", \"Timeframe 2: 3 Semanas\""
+   ],
+   [
+    "tf_1m",
+    "\"1M\", \"Timeframe 3: 1 Mês\""
+   ],
+   [
+    "tf_12m",
+    "\"12M\", \"Timeframe 4: 1 Ano\""
+   ]
+  ],
+  "alertas": [],
+  "ordens": [],
+  "rotulos": []
+ }
+]
