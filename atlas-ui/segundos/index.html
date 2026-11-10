@@ -140,13 +140,11 @@ let dyn=false, fib=false;
 let visao={tudo:true,n:120,desloc:0};
 
 const MAS=[
- {id:'ribbon',n:'Ribbon 8',cor:'#D9B45B',on:true,calc:p=>emaRibbon(p,8)},
  {id:'ema9',n:'EMA 9',cor:'#4FB3D9',on:true,calc:p=>ema(p,9)},
- {id:'ema21',n:'EMA 21',cor:'#7BD98F',on:false,calc:p=>ema(p,21)},
- {id:'ema50',n:'EMA 50',cor:'#C98BD9',on:false,calc:p=>ema(p,50)},
- {id:'ema200',n:'EMA 200',cor:'#E2685F',on:false,calc:p=>ema(p,200)},
+ {id:'ema18',n:'EMA 18',cor:'#7BD98F',on:true,calc:p=>ema(p,18)},
  {id:'zlema',n:'ZLEMA 10',cor:'#F2A65A',on:true,calc:p=>zlema(p,10)},
- {id:'kama',n:'KAMA 34',cor:'#9AD0EC',on:false,calc:p=>kama(p,34)}
+ {id:'ema50',n:'EMA 50',cor:'#C98BD9',on:false,calc:p=>ema(p,50)},
+ {id:'ema200',n:'EMA 200',cor:'#E2685F',on:false,calc:p=>ema(p,200)}
 ];
 function emaRibbon(precos,qtd){const out=[];const lens=[8,13,21,34,55,89,144,233].slice(0,qtd);
  lens.forEach(l=>out.push(ema(precos,l))); return out;}
@@ -320,6 +318,8 @@ function desenhar(){
     const corpoLarg=Math.max(1.2,Math.min(9,passo*0.62));
     lista.forEach((v,i)=>{
       const x=X(i), up=v.c>=v.o;
+      if(v.v===0){ ctx.strokeStyle='rgba(154,163,178,.42)'; ctx.lineWidth=1.6;
+        const yy=Math.round(Y(v.c))+0.5; ctx.beginPath(); ctx.moveTo(x-corpoLarg/2,yy); ctx.lineTo(x+corpoLarg/2,yy); ctx.stroke(); return; }
       ctx.strokeStyle=up?'#3FBF8F':'#E2685F'; ctx.fillStyle=up?'#3FBF8F':'#E2685F'; ctx.lineWidth=1;
       ctx.beginPath(); ctx.moveTo(x,Y(v.h)); ctx.lineTo(x,Y(v.l)); ctx.stroke();
       const y1=Y(Math.max(v.o,v.c)), y2=Y(Math.min(v.o,v.c));
@@ -363,6 +363,26 @@ function desenhar(){
     ctx.fillStyle='#D9B45B'; ctx.fillRect(w-pad.r+2,y-8,wt,16);
     ctx.fillStyle='#0E1728'; ctx.fillText(txt,w-pad.r+7,y+4);
   }
+
+  // cruzamentos EMA 9 x EMA 18
+  try{
+    const fech=velas.map(v=>v.c), e9=ema(fech,9), e18=ema(fech,18);
+    let cruzes=0;
+    for(let i=Math.max(1,ini+1); i<Math.min(velas.length,ini+qtd); i++){
+      const a=e9[i], b=e18[i], pa=e9[i-1], pb=e18[i-1];
+      if(a==null||b==null||pa==null||pb==null) continue;
+      const subiu=pa<=pb&&a>b, desceu=pa>=pb&&a<b;
+      if(!subiu&&!desceu) continue;
+      cruzes++;
+      const x=X(i-ini), y=Y(velas[i].c);
+      ctx.fillStyle=subiu?'#3FBF8F':'#E2685F';
+      ctx.beginPath();
+      if(subiu){ ctx.moveTo(x,y-9); ctx.lineTo(x-4,y-2); ctx.lineTo(x+4,y-2); }
+      else { ctx.moveTo(x,y+9); ctx.lineTo(x-4,y+2); ctx.lineTo(x+4,y+2); }
+      ctx.closePath(); ctx.fill();
+    }
+    window.__cruzes=cruzes;
+  }catch(e){}
 
   // horario das velas
   ctx.fillStyle='#6E7A8C'; ctx.font='10px ui-monospace,monospace';
@@ -456,7 +476,14 @@ function desenhaDynamic(pad,Y,X,w,h,ini,qtd){
   linha(plano.entrada,'#D9B45B',false,1.2,.9,'ENTRADA '+plano.entrada.toFixed(0));
   linha(plano.stopAtual,'#E2685F',true,1.2,.95,'STOP '+plano.stopAtual.toFixed(0)+(plano.stopAtual>=plano.entrada?' BE':''));
   ctx.strokeStyle='#4FB3D9'; ctx.lineWidth=1.4; ctx.beginPath(); let tem=false, antX=null, antY=null;
-  plano.trailing.forEach(pt=>{ const li=pt.i-ini; if(li<0||li>=qtd) return; const x=meia(X(li)), y=meia(Y(pt.preco));
+  const fechK=velas.map(v=>v.c), kk=kama(fechK,34);
+  let nivel=null; const trilho=[];
+  for(let i=plano.i; i<velas.length; i++){
+    const k=kk[i]; if(k==null) continue;
+    nivel = nivel==null ? k : (plano.lado==='long' ? Math.max(nivel,k) : Math.min(nivel,k));
+    trilho.push({i,preco:nivel});
+  }
+  trilho.forEach(pt=>{ const li=pt.i-ini; if(li<0||li>=qtd) return; const x=meia(X(li)), y=meia(Y(pt.preco));
     if(!tem){ ctx.moveTo(x,y); tem=true; } else { ctx.lineTo(antX,y); ctx.lineTo(x,y); }
     antX=x; antY=y; });
   if(tem) ctx.stroke();
