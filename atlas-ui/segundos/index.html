@@ -34,7 +34,29 @@ label{font-size:11px;color:var(--cinza);display:block;margin-bottom:4px}
 .navtop::-webkit-scrollbar{display:none}
 .navtop a{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 14px;border-radius:10px;border:1px solid var(--borda);background:var(--card);color:#B9C4D6;text-decoration:none;font-size:13px;font-weight:600}
 .navtop a.atual{border-color:var(--gold);color:var(--gold);background:rgba(217,180,91,.12)}
-</style></head><body>
+
+/* ---- tela larga: duas colunas, ar de operacao ---- */
+.wrap{display:block}
+.colA,.colB{min-width:0}
+@media (min-width:1000px){
+  body{max-width:none;padding:20px 26px}
+  .wrap{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:22px;align-items:start}
+  .colB{position:sticky;top:16px}
+  #cv{height:calc(100vh - 250px);min-height:420px}
+  h1{font-size:20px}
+  .preco{font-size:30px}
+  .barra{gap:10px}
+  button,select{padding:11px 14px}
+  .sec{margin-top:14px}
+}
+@media (min-width:1600px){
+  .wrap{grid-template-columns:minmax(0,1fr) 430px;gap:26px}
+  #cv{height:calc(100vh - 230px)}
+  .preco{font-size:34px}
+}
+body.modoTela .navtop{display:none}
+body.modoTela{padding-top:10px}
+</head><body>
 <div class="navtop">
   <a href="/">Painel</a>
   <a href="/segundos/" class="atual">Segundos</a>
@@ -42,7 +64,7 @@ label{font-size:11px;color:var(--cinza);display:block;margin-bottom:4px}
   <a href="/terminal/">Acessos</a>
 </div>
 
-<div class="top">
+<div class="wrap"><div class="colA"><div class="top">
   <div>
     <h1>Gráfico em segundos</h1>
     <div class="varr" id="sub">conectando…</div>
@@ -64,6 +86,7 @@ label{font-size:11px;color:var(--cinza);display:block;margin-bottom:4px}
   <button class="tf" data-tf="30">30s</button>
   <button class="tf" data-tf="60">1min</button>
   <button id="pausar">Pausar</button>
+<button id="tela" title="abrir numa janela grande, para computador ou segunda tela">Tela ampla</button>
 </div>
 
 <div class="barra vista">
@@ -86,7 +109,7 @@ label{font-size:11px;color:var(--cinza);display:block;margin-bottom:4px}
 
 <div id="fibInfo" style="display:none;margin:8px 0 2px;padding:8px 10px;border-left:2px solid #5B6B85;background:rgba(91,107,133,.10);font:11px ui-monospace,monospace;color:#C9D3E3;border-radius:0 8px 8px 0;line-height:1.5"></div>
 <div id="dynInfo" style="display:none;margin:8px 0 2px;padding:8px 10px;border-left:2px solid var(--gold);background:var(--card);border:1px solid var(--borda);border-left:2px solid var(--gold);color:#C9D3E3;border-radius:12px;line-height:1.5"></div>
-<div class="mas" id="mas"></div>
+</div><div class="colB"><div class="mas" id="mas"></div>
 
 <div class="sec">Posições</div>
 <div id="lista"></div>
@@ -432,6 +455,15 @@ function avisoDyn(msg){
   const info=document.getElementById('dynInfo');
   if(info){ info.style.display='block'; info.textContent=msg; }
 }
+function abrirTela(){
+  const w=Math.min(screen.availWidth||1440,1920), h=Math.min(screen.availHeight||900,1200);
+  const esq=Math.max(0,Math.round(((screen.availWidth||w)-w)/2)+((screen.availLeft||0)));
+  const topo=Math.max(0,Math.round(((screen.availHeight||h)-h)/2)+((screen.availTop||0)));
+  const f='width='+w+',height='+h+',left='+esq+',top='+topo+',menubar=no,toolbar=no,location=no,status=no';
+  const j=window.open(location.pathname+'?tela=1','atlasTela',f);
+  if(j){ try{ j.focus(); }catch(e){} }
+  return j;
+}
 function botaoDynamic(){
   const b=document.createElement('button'); b.id='btnDyn'; b.textContent='Vectra Dynamic'; b.style.marginTop='8px';
   b.onclick=()=>{ dyn=!dyn; b.classList.toggle('on',dyn); agendar(); };
@@ -453,7 +485,7 @@ function renderPos(){
       (p.stop?' · stop '+p.stop.toFixed(0):'')+(p.alvo?' · alvo '+p.alvo.toFixed(0):'')+'</div>'+
       '<div style="text-align:right"><span class="'+(pnl>=0?'g':'r')+'">'+(pnl>=0?'+':'')+pnl.toFixed(2)+' US$</span>'+
       (risco?' <span style="color:#9AA3B2">('+(r>=0?'+':'')+r.toFixed(2)+' R)</span>':'')+
-      ' <button data-del="'+i+'" style="min-height:34px;min-width:34px;padding:4px 8px">×</button></div></div>';
+      ' <button data-del="'+i+'" style="min-height:34px;min-width:34px;padding:4px 8px">×</button></div></div></div></div>';
   }).join('');
   el.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{ posicoes.splice(+b.dataset.del,1); salvarPos(); });
 }
@@ -510,6 +542,8 @@ setInterval(salvarVelas,5000);
 window.addEventListener('resize',agendar);
 window.addEventListener('beforeunload',salvarVelas);
 
+document.getElementById('tela').onclick=abrirTela;
+if(new URLSearchParams(location.search).get('tela')) document.body.classList.add('modoTela');
 montarMas(); botaoDynamic(); botaoFibo(); carregarPos(); semear(false); carregar24(); conectar();
 </script>
 </body></html>
