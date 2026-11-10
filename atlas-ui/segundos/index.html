@@ -77,7 +77,7 @@ label{font-size:11px;color:var(--cinza);display:block;margin-bottom:4px}
 </div>
 <p class="nota">Os segundos são montados a partir das negociações reais recebidas ao vivo, agregadas em janelas de 15, 30 ou 60 segundos. As médias e a posição são calculadas aqui no aparelho. As posições ficam salvas neste navegador e servem para leitura e conferência, não substituem o extrato da corretora.</p>
 
-<script>
+<script type="module">
 const $=id=>document.getElementById(id);
 const cv=$('cv'), ctx=cv.getContext('2d');
 let TF=15000, velas=[], ultimoPreco=0, conectado=false, pausado=false, simb='BTC-USD';
@@ -93,19 +93,9 @@ const MAS=[
  {id:'zlema',n:'ZLEMA 10',cor:'#F2A65A',on:true,calc:p=>zlema(p,10)},
  {id:'kama',n:'KAMA 34',cor:'#9AD0EC',on:false,calc:p=>kama(p,34)}
 ];
-function ema(arr,len){const k=2/(len+1);let out=[],prev=null;
- arr.forEach((v,i)=>{prev=prev===null?v:v+ (v-prev)*k; out.push(i<len-1?null:prev);}); return out;}
+import { ema, zlema, kama } from "../core/indicators.js";
 function emaRibbon(precos,qtd){const out=[];const lens=[8,13,21,34,55,89,144,233].slice(0,qtd);
  lens.forEach(l=>out.push(ema(precos,l))); return out;}
-function zlema(arr,len){const lag=Math.floor((len-1)/2);const k=2/(len+1);let out=[],prev=null;
- arr.forEach((v,i)=>{const base=i>=lag? v+(v-arr[i-lag]):v; prev=prev===null?base:prev+(base-prev)*k; out.push(i<len-1?null:prev);}); return out;}
-function kama(arr,len){const f=2/(2+1),s=2/(30+1);let out=[],prev=null,prevV=null;
- for(let i=0;i<arr.length;i++){ if(i<len){out.push(null); prevV=arr[i]; continue;}
-   let vol=Math.abs(arr[i]-arr[i-len]); let sum=0; for(let j=i-len+1;j<=i;j++) sum+=Math.abs(arr[j]-arr[j-1]);
-   const er=sum? vol/sum:0, sc=Math.pow(er*(f-s)+s,2);
-   const v = prev===null? arr[i] : prev + sc*(arr[i]-prev);
-   out.push(v); prev=v; prevV=arr[i]; }
- return out;}
 
 /* ---------- dados ---------- */
 function chaveCandle(ms){return Math.floor(ms/TF)*TF;}
