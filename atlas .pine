@@ -1,0 +1,804 @@
+//@version=6
+// ===================================================================
+// ATLAS INDICATOR v10.0
+// Atlas Investimentos Intercontinentais
+// Pine Script v6 - 100% ASCII puro
+//
+// SINAIS : ATLAS / GOLD / STRESS / RIBBON / H1RSI
+// FIBONACCI : estatico, ancora ATLAS, progressivo 1.618->5.618
+// PAINEL : canto superior direito (label fixo)
+// BOT : Deriv MULTUP/MULTDOWN via webhook JSON
+// ===================================================================
+
+indicator("Atlas v10.0 | EMA:8/16/55/98/200  MA:56/89", overlay=true, max_lines_count=500, max_labels_count=500)
+
+// -------------------------------------------------------------------
+// INPUTS
+// -------------------------------------------------------------------
+i_swingLen   = input.int(21,    "Lookback Swing",         group="Fibonacci", minval=5,   maxval=100)
+i_sqzThr     = input.float(0.5, "Squeeze %",              group="Sinais",    minval=0.1, maxval=2.0,  step=0.1)
+i_flatThr    = input.float(0.04,"Flat EMA %",             group="Sinais",    minval=0.01,maxval=0.5,  step=0.01)
+i_atlasCd    = input.int(10,    "Cooldown ATLAS (barras)",group="Sinais",    minval=3,   maxval=50)
+i_goldCd     = input.int(15,    "Cooldown GOLD (barras)", group="Sinais",    minval=3,   maxval=100)
+i_stressGap  = input.float(0.12,"Stress gap EMA8/16 %",  group="Sinais",    minval=0.01,maxval=0.5,  step=0.01)
+i_stressBars = input.int(2,     "Stress barras curv.",    group="Sinais",    minval=2,   maxval=6)
+i_rbSqzP     = input.float(0.15,"Ribbon squeeze %",       group="Sinais",    minval=0.01,maxval=1.0,  step=0.01)
+i_rbSqzB     = input.int(3,     "Ribbon squeeze barras",  group="Sinais",    minval=1,   maxval=10)
+i_minScore   = input.int(2,     "Score MTF minimo (0-4)", group="MTF",       minval=0,   maxval=4)
+i_rsiLen     = input.int(14,    "RSI periodo",            group="StochRSI",  minval=5,   maxval=30)
+i_stochLen   = input.int(14,    "Stoch periodo",          group="StochRSI",  minval=5,   maxval=30)
+i_kSmooth    = input.int(3,     "K suavizacao",           group="StochRSI",  minval=1,   maxval=10)
+i_dSmooth    = input.int(3,     "D suavizacao",           group="StochRSI",  minval=1,   maxval=10)
+i_ob         = input.int(80,    "OB nivel",               group="StochRSI",  minval=70,  maxval=95)
+i_os         = input.int(20,    "OS nivel",               group="StochRSI",  minval=5,   maxval=30)
+i_atrLen     = input.int(14,    "ATR periodo",            group="Risco",     minval=5,   maxval=50)
+i_atrMult    = input.float(1.5, "ATR mult SL",            group="Risco",     minval=0.5, maxval=5.0,  step=0.1)
+i_stake      = input.float(1.0, "Stake ($)",              group="Risco",     minval=0.5, maxval=10.0, step=0.5)
+i_showMAs    = input.bool(true,  "Medias Moveis",         group="Visual")
+i_showFibo   = input.bool(true,  "Fibonacci",             group="Visual")
+i_showBG     = input.bool(true,  "Fundo de fluxo",        group="Visual")
+i_showPanel  = input.bool(true,  "Painel MTF",            group="Visual")
+i_conta      = input.string("real",       "Conta",        group="Bot")
+i_secret     = input.string("Atlas3301$", "Secret",       group="Bot")
+i_mult       = input.int(100, "Multiplicador",            group="Bot", options=[100,200,300,500,800])
+i_m30SqzThr  = input.float(0.3,  "M30 Sqz compressao % (EMAs)",group="M30 Squeeze", minval=0.05, maxval=1.0, step=0.05)
+i_m30SqzBars = input.int(5,      "M30 Sqz barras minimas",      group="M30 Squeeze", minval=3,   maxval=20)
+i_m30MaSqz   = input.float(0.4,  "M30 Sqz compressao % (MAs)",  group="M30 Squeeze", minval=0.05, maxval=1.0, step=0.05)
+i_showSqzBk  = input.bool(true,  "Mostrar Squeeze Break",        group="M30 Squeeze")
+
+// -------------------------------------------------------------------
+// MEDIAS MOVEIS
+// -------------------------------------------------------------------
+ema8   = ta.ema(close, 8)
+ema16  = ta.ema(close, 16)
+ema55  = ta.ema(close, 55)
+ema98  = ta.ema(close, 98)
+ema200 = ta.ema(close, 200)
+ma56   = ta.sma(close, 56)
+ma89   = ta.sma(close, 89)
+
+plot(i_showMAs ? ema8   : na, "EMA 8",   color=color.new(#2979FF, 0), linewidth=2)
+plot(i_showMAs ? ema16  : na, "EMA 16",  color=color.new(#FF1744, 0), linewidth=2)
+plot(i_showMAs ? ema55  : na, "EMA 55",  color=color.new(#00E676, 0), linewidth=2)
+plot(i_showMAs ? ema98  : na, "EMA 98",  color=color.new(#FFFF8D, 0), linewidth=1)
+plot(i_showMAs ? ema200 : na, "EMA 200", color=color.new(#AA00FF, 0), linewidth=2)
+plot(i_showMAs ? ma56   : na, "MA 56",   color=color.new(#FF80AB, 0), linewidth=2)
+plot(i_showMAs ? ma89   : na, "MA 89",   color=color.new(#00E5FF, 0), linewidth=2)
+
+// -------------------------------------------------------------------
+// FLUXO
+// -------------------------------------------------------------------
+bullMom  = ema8 > ema16 and ema16 > ema55
+bearMom  = ema8 < ema16 and ema16 < ema55
+bullFlow = ema8 > ema16 and ema16 > ema55 and ema16 > ema98 and ema16 > ema200 and ema16 > ma56 and ema16 > ma89
+bearFlow = ema8 < ema16 and ema16 < ema55 and ema16 < ema98 and ema16 < ema200 and ema16 < ma56 and ema16 < ma89
+
+// -------------------------------------------------------------------
+// SQUEEZE LOCAL
+// -------------------------------------------------------------------
+sqzDist   = math.abs(ema8 - ema16) / ema16 * 100
+inSqueeze = sqzDist < i_sqzThr and not bullFlow and not bearFlow
+
+var int lastSqzEnd = na
+if not inSqueeze and inSqueeze[1]
+    lastSqzEnd := bar_index
+postSqz   = not na(lastSqzEnd) and (bar_index - lastSqzEnd) <= 30
+accumCtx  = inSqueeze or postSqz
+
+// -------------------------------------------------------------------
+// FLAT BLOCKER
+// -------------------------------------------------------------------
+e8c  = math.abs(ema8  - ema8[5])  / ema8[5]  * 100
+e16c = math.abs(ema16 - ema16[5]) / ema16[5] * 100
+e55c = math.abs(ema55 - ema55[5]) / ema55[5] * 100
+maFlat = e8c < i_flatThr and e16c < i_flatThr and e55c < i_flatThr * 2.0
+
+rsi14      = ta.rsi(close, 14)
+rsiDivBull = close < close[3] and rsi14 > rsi14[3] and rsi14 < 45
+rsiDivBear = close > close[3] and rsi14 < rsi14[3] and rsi14 > 55
+
+// -------------------------------------------------------------------
+// PIVOTS
+// -------------------------------------------------------------------
+ph = ta.pivothigh(high, i_swingLen, i_swingLen)
+pl = ta.pivotlow(low,  i_swingLen, i_swingLen)
+
+var float pH1  = na
+var int   pH1B = na
+var float pL1  = na
+var int   pL1B = na
+
+if not na(ph)
+    pH1  := ph
+    pH1B := bar_index[i_swingLen]
+if not na(pl)
+    pL1  := pl
+    pL1B := bar_index[i_swingLen]
+
+impBull  = (not na(pH1) and not na(pL1) and pH1B > pL1B) ? math.abs(pH1 - pL1) / pL1 * 100 : 0.0
+impBear  = (not na(pH1) and not na(pL1) and pL1B > pH1B) ? math.abs(pH1 - pL1) / pH1 * 100 : 0.0
+retBull  = impBull > 0.0 ? (pH1 - close) / (pH1 - pL1) * 100 : 0.0
+retBear  = impBear > 0.0 ? (close - pL1) / (pH1 - pL1) * 100 : 0.0
+corrBull = impBull >= 0.8 and retBull >= 23.6 and retBull <= 61.8
+corrBear = impBear >= 0.8 and retBear >= 23.6 and retBear <= 61.8
+flatBlock = (corrBull or corrBear) and maFlat and not rsiDivBull and not rsiDivBear
+
+// -------------------------------------------------------------------
+// STOCHRSI LOCAL
+// -------------------------------------------------------------------
+rsiL   = ta.rsi(close, i_rsiLen)
+stochL = ta.stoch(rsiL, rsiL, rsiL, i_stochLen)
+kL     = ta.sma(stochL, i_kSmooth)
+dL     = ta.sma(kL, i_dSmooth)
+
+// -------------------------------------------------------------------
+// STOCHRSI H1
+// -------------------------------------------------------------------
+h1k = request.security(syminfo.tickerid, "60", ta.sma(ta.stoch(ta.rsi(close, i_rsiLen), ta.rsi(close, i_rsiLen), ta.rsi(close, i_rsiLen), i_stochLen), i_kSmooth), lookahead=barmerge.lookahead_off)
+h1d = request.security(syminfo.tickerid, "60", ta.sma(ta.sma(ta.stoch(ta.rsi(close, i_rsiLen), ta.rsi(close, i_rsiLen), ta.rsi(close, i_rsiLen), i_stochLen), i_kSmooth), i_dSmooth), lookahead=barmerge.lookahead_off)
+
+h1CrossBull = h1k > h1d and h1k[1] <= h1d[1]
+h1CrossBear = h1k < h1d and h1k[1] >= h1d[1]
+h1WasOS     = h1k[1] <= i_os or h1k[2] <= i_os or h1k[3] <= i_os
+h1WasOB     = h1k[1] >= i_ob or h1k[2] >= i_ob or h1k[3] >= i_ob
+h1Buy       = h1CrossBull and h1WasOS
+h1Sell      = h1CrossBear and h1WasOB
+
+// -------------------------------------------------------------------
+// MTF SCORE
+// -------------------------------------------------------------------
+m5_56  = request.security(syminfo.tickerid, "5",   ta.sma(close, 56), lookahead=barmerge.lookahead_off)
+m5_89  = request.security(syminfo.tickerid, "5",   ta.sma(close, 89), lookahead=barmerge.lookahead_off)
+h1_56  = request.security(syminfo.tickerid, "60",  ta.sma(close, 56), lookahead=barmerge.lookahead_off)
+h1_89  = request.security(syminfo.tickerid, "60",  ta.sma(close, 89), lookahead=barmerge.lookahead_off)
+h4_56  = request.security(syminfo.tickerid, "240", ta.sma(close, 56), lookahead=barmerge.lookahead_off)
+h4_89  = request.security(syminfo.tickerid, "240", ta.sma(close, 89), lookahead=barmerge.lookahead_off)
+d1_56  = request.security(syminfo.tickerid, "D",   ta.sma(close, 56), lookahead=barmerge.lookahead_off)
+d1_89  = request.security(syminfo.tickerid, "D",   ta.sma(close, 89), lookahead=barmerge.lookahead_off)
+
+fM5B = m5_56 > m5_89
+fH1B = h1_56 > h1_89
+fH4B = h4_56 > h4_89
+fD1B = d1_56 > d1_89
+fM5S = m5_56 < m5_89
+fH1S = h1_56 < h1_89
+fH4S = h4_56 < h4_89
+fD1S = d1_56 < d1_89
+
+scoreBull = (fM5B ? 1 : 0) + (fH1B ? 1 : 0) + (fH4B ? 1 : 0) + (fD1B ? 1 : 0)
+scoreBear = (fM5S ? 1 : 0) + (fH1S ? 1 : 0) + (fH4S ? 1 : 0) + (fD1S ? 1 : 0)
+mtfBull   = scoreBull >= i_minScore
+mtfBear   = scoreBear >= i_minScore
+
+// -------------------------------------------------------------------
+// ATR / SL
+// -------------------------------------------------------------------
+atr14  = ta.atr(i_atrLen)
+slBuy  = close - atr14 * i_atrMult
+slSell = close + atr14 * i_atrMult
+
+// -------------------------------------------------------------------
+// RIBBON MA56/89
+// -------------------------------------------------------------------
+rbInSqz = true
+for k = 0 to i_rbSqzB - 1
+    rbInSqz := rbInSqz and (math.abs(ma56[k] - ma89[k]) / ma89[k] * 100 < i_rbSqzP)
+
+var bool rbWasSqz = false
+rbGap = math.abs(ma56 - ma89) / ma89 * 100
+if rbInSqz
+    rbWasSqz := true
+if rbGap > i_rbSqzP * 2.5
+    rbWasSqz := false
+
+rbTop      = math.max(ma56, ma89)
+rbBot      = math.min(ma56, ma89)
+rbBreakB   = close > rbTop and close > open and bullMom
+rbBreakS   = close < rbBot and close < open and bearMom
+rbCrossB   = ta.crossover(ma56,  ma89)
+rbCrossS   = ta.crossunder(ma56, ma89)
+
+var bool hadRbBuy  = false
+var bool hadRbSell = false
+var int  lastRbBar = na
+cdRb = na(lastRbBar) or (bar_index - lastRbBar) >= 8
+
+rbBuy  = not flatBlock and cdRb and bullMom and ((rbWasSqz and rbBreakB) or (rbCrossB and not hadRbBuy))  and mtfBull
+rbSell = not flatBlock and cdRb and bearMom and ((rbWasSqz and rbBreakS) or (rbCrossS and not hadRbSell)) and mtfBear
+
+if rbBuy
+    hadRbBuy  := true
+    lastRbBar := bar_index
+if rbSell
+    hadRbSell := true
+    lastRbBar := bar_index
+if bearMom
+    hadRbBuy  := false
+if bullMom
+    hadRbSell := false
+
+// -------------------------------------------------------------------
+// STRESS EMA8/16
+// -------------------------------------------------------------------
+stCrossB = ta.crossover(ema8,  ema16)
+stCrossS = ta.crossunder(ema8, ema16)
+stGap    = math.abs(ema8 - ema16) / ema16 * 100
+
+e8up  = true
+e8dn  = true
+e16up = true
+e16dn = true
+for si = 1 to i_stressBars - 1
+    e8up  := e8up  and (ema8[si-1]  > ema8[si])
+    e8dn  := e8dn  and (ema8[si-1]  < ema8[si])
+    e16up := e16up and (ema16[si-1] > ema16[si])
+    e16dn := e16dn and (ema16[si-1] < ema16[si])
+
+preStB = stGap < i_stressGap and e8up and e16up and ema8 > ema16
+preStS = stGap < i_stressGap and e8dn and e16dn and ema8 < ema16
+
+var int lastStBar = na
+cdSt = na(lastStBar) or (bar_index - lastStBar) >= 5
+stBuy  = (stCrossB or preStB) and cdSt and not flatBlock and bullMom
+stSell = (stCrossS or preStS) and cdSt and not flatBlock and bearMom
+stPx   = (ema8 + ema16) / 2
+
+if stBuy or stSell
+    lastStBar := bar_index
+
+// -------------------------------------------------------------------
+// M30 SQUEEZE BREAK
+// Detecta consolidacao super comprimida no M30 (EMAs 8/16/55 e MAs 56/89
+// todas dentro de i_m30SqzThr%) por i_m30SqzBars barras consecutivas.
+// Ao detectar o 1o cruzamento de EMA8/16 apos essa compressao = SQZBREAK.
+// Este sinal combina com ATLAS para gerar entrada de alta confianca.
+// -------------------------------------------------------------------
+m30_e8   = request.security(syminfo.tickerid, "30", ta.ema(close, 8),   lookahead=barmerge.lookahead_off)
+m30_e16  = request.security(syminfo.tickerid, "30", ta.ema(close, 16),  lookahead=barmerge.lookahead_off)
+m30_e55  = request.security(syminfo.tickerid, "30", ta.ema(close, 55),  lookahead=barmerge.lookahead_off)
+m30_ma56 = request.security(syminfo.tickerid, "30", ta.sma(close, 56),  lookahead=barmerge.lookahead_off)
+m30_ma89 = request.security(syminfo.tickerid, "30", ta.sma(close, 89),  lookahead=barmerge.lookahead_off)
+
+m30_maMax = math.max(math.max(m30_e8, m30_e16), math.max(m30_e55, math.max(m30_ma56, m30_ma89)))
+m30_maMin = math.min(math.min(m30_e8, m30_e16), math.min(m30_e55, math.min(m30_ma56, m30_ma89)))
+m30_maRef = (m30_maMax + m30_maMin) / 2
+m30_maDist = (m30_maMax - m30_maMin) / m30_maRef * 100
+
+m30_emaDist = math.abs(m30_e8 - m30_e16) / m30_e16 * 100
+m30_maDist2 = math.abs(m30_ma56 - m30_ma89) / m30_ma89 * 100
+
+m30_inSqz = m30_emaDist < i_m30SqzThr and m30_maDist2 < i_m30MaSqz and m30_maDist < (i_m30SqzThr * 3.0)
+
+var int m30_sqzCount = 0
+m30_sqzCount := m30_inSqz ? m30_sqzCount + 1 : 0
+m30_wasSqz = m30_sqzCount[1] >= i_m30SqzBars or m30_sqzCount[2] >= i_m30SqzBars or m30_sqzCount[3] >= i_m30SqzBars
+
+m30_crossBull = m30_e8 > m30_e16 and m30_e8[1] <= m30_e16[1]
+m30_crossBear = m30_e8 < m30_e16 and m30_e8[1] >= m30_e16[1]
+
+m30_breakBull = m30_wasSqz and m30_crossBull and not m30_inSqz
+m30_breakBear = m30_wasSqz and m30_crossBear and not m30_inSqz
+
+var int lastSqzBkB = na
+var int lastSqzBkS = na
+cdSqzBkB = na(lastSqzBkB) or (bar_index - lastSqzBkB) >= i_atlasCd
+cdSqzBkS = na(lastSqzBkS) or (bar_index - lastSqzBkS) >= i_atlasCd
+
+sqzBreakBuy  = m30_breakBull and cdSqzBkB and mtfBull and not flatBlock
+sqzBreakSell = m30_breakBear and cdSqzBkS and mtfBear and not flatBlock
+
+if sqzBreakBuy
+    lastSqzBkB := bar_index
+if sqzBreakSell
+    lastSqzBkS := bar_index
+
+// -------------------------------------------------------------------
+// ATLAS SIGNAL
+// -------------------------------------------------------------------
+emaTop  = math.max(ema8, ema16)
+emaBot  = math.min(ema8, ema16)
+touched = low  <= emaTop * 1.001 and low  >= emaBot * 0.999
+touchB  = high >= emaBot * 0.999 and high <= emaTop * 1.001
+newTop  = high > ta.highest(high[1], 10)
+newBot  = low  < ta.lowest(low[1],   10)
+pbBull  = bullFlow and touched and close > emaTop and close > open
+pbBear  = bearFlow and touchB  and close < emaBot and close < open
+
+var int lastAtB = na
+var int lastAtS = na
+cdAtB = na(lastAtB) or (bar_index - lastAtB) >= i_atlasCd
+cdAtS = na(lastAtS) or (bar_index - lastAtS) >= i_atlasCd
+
+firstBull = bullFlow and not bullFlow[1]
+firstBear = bearFlow and not bearFlow[1]
+
+atlasBuy  = not flatBlock and cdAtB and mtfBull and ((firstBull and accumCtx) or pbBull or (bullFlow and newTop) or rbBuy or sqzBreakBuy)
+atlasSell = not flatBlock and cdAtS and mtfBear and ((firstBear and accumCtx) or pbBear or (bearFlow and newBot) or rbSell or sqzBreakSell)
+
+if atlasBuy
+    lastAtB := bar_index
+if atlasSell
+    lastAtS := bar_index
+
+// -------------------------------------------------------------------
+// FIBONACCI v10.0
+// GATILHO  : cruzamento EMA 8/16 (nao mais apenas ATLAS)
+// MEMORIA  : ao reancorar, salva alvos antigos nao batidos
+// HISTORICO: alvos antigos ficam visiveis como referencia
+// -------------------------------------------------------------------
+
+// Gatilho primario: cruzamento EMA 8/16
+ema816CrossBull = ta.crossover(ema8, ema16)
+ema816CrossBear = ta.crossunder(ema8, ema16)
+
+var bool  fibBull  = true
+fibBear = not fibBull  // recalculado toda barra
+var float fibP0    = na
+var float fibP1    = na
+var int   fibP0B   = na
+var int   fibP1B   = na
+var bool  hit1     = false
+var bool  hit2     = false
+var bool  hit3     = false
+var bool  hit4     = false
+var bool  hit5     = false
+var float fib1618  = na
+var float fib2618  = na
+var float fib3618  = na
+var float fib4618  = na
+var float fib5618  = na
+
+// Historico: alvos da ancora anterior (preservados ao reancorar)
+var float oldFib1618 = na
+var float oldFib2618 = na
+var float oldFib3618 = na
+var float oldFib4618 = na
+var float oldFib5618 = na
+var bool  oldBull    = true
+var bool  oldHit1    = false
+var bool  oldHit2    = false
+var bool  oldHit3    = false
+var bool  oldHit4    = false
+var bool  oldHit5    = false
+var int   oldFibAge  = 0
+
+// Funcao inline: calcula alvos bull
+calcBullRange(p0, p1) =>
+    rng = math.abs(p1 - p0)
+    t1  = p1 + rng * 0.618
+    t2  = p1 + rng * 1.618
+    t3  = p1 + rng * 2.618
+    t4  = p1 + rng * 3.618
+    t5  = p1 + rng * 4.618
+    [t1, t2, t3, t4, t5]
+
+// Funcao inline: calcula alvos bear
+calcBearRange(p0, p1) =>
+    rng = math.abs(p0 - p1)
+    t1  = p1 - rng * 0.618
+    t2  = p1 - rng * 1.618
+    t3  = p1 - rng * 2.618
+    t4  = p1 - rng * 3.618
+    t5  = p1 - rng * 4.618
+    [t1, t2, t3, t4, t5]
+
+// Gatilho de reancoragem: EMA 8/16 cruzamento OU ATLAS
+fibTriggerBull = ema816CrossBull or atlasBuy
+fibTriggerBear = ema816CrossBear or atlasSell
+
+if fibTriggerBull
+    // Salva alvos antigos antes de reancorar
+    oldFib1618 := fib1618
+    oldFib2618 := fib2618
+    oldFib3618 := fib3618
+    oldFib4618 := fib4618
+    oldFib5618 := fib5618
+    oldBull    := fibBull
+    oldHit1    := hit1
+    oldHit2    := hit2
+    oldHit3    := hit3
+    oldHit4    := hit4
+    oldHit5    := hit5
+    oldFibAge  := bar_index
+    // Nova ancora bull
+    fibBull := true
+    fibP0   := not na(pL1) ? pL1 : low
+    fibP0B  := not na(pL1B) ? pL1B : bar_index
+    fibP1   := not na(pH1) ? pH1 : high
+    fibP1B  := not na(pH1B) ? pH1B : bar_index - 1
+    hit1    := false
+    hit2    := false
+    hit3    := false
+    hit4    := false
+    hit5    := false
+    [t1, t2, t3, t4, t5] = calcBullRange(fibP0, fibP1)
+    fib1618 := t1
+    fib2618 := t2
+    fib3618 := t3
+    fib4618 := t4
+    fib5618 := t5
+
+if fibTriggerBear and not fibTriggerBull
+    // Salva alvos antigos antes de reancorar
+    oldFib1618 := fib1618
+    oldFib2618 := fib2618
+    oldFib3618 := fib3618
+    oldFib4618 := fib4618
+    oldFib5618 := fib5618
+    oldBull    := fibBull
+    oldHit1    := hit1
+    oldHit2    := hit2
+    oldHit3    := hit3
+    oldHit4    := hit4
+    oldHit5    := hit5
+    oldFibAge  := bar_index
+    // Nova ancora bear
+    fibBull := false
+    fibP0   := not na(pH1) ? pH1 : high
+    fibP0B  := not na(pH1B) ? pH1B : bar_index
+    fibP1   := not na(pL1) ? pL1 : low
+    fibP1B  := not na(pL1B) ? pL1B : bar_index - 1
+    hit1    := false
+    hit2    := false
+    hit3    := false
+    hit4    := false
+    hit5    := false
+    [t1, t2, t3, t4, t5] = calcBearRange(fibP0, fibP1)
+    fib1618 := t1
+    fib2618 := t2
+    fib3618 := t3
+    fib4618 := t4
+    fib5618 := t5
+
+// Progresso dos alvos ativos
+if not na(fib1618) and not hit1
+    hit1 := fibBull ? high >= fib1618 : low <= fib1618
+if not na(fib2618) and hit1 and not hit2
+    hit2 := fibBull ? high >= fib2618 : low <= fib2618
+if not na(fib3618) and hit2 and not hit3
+    hit3 := fibBull ? high >= fib3618 : low <= fib3618
+if not na(fib4618) and hit3 and not hit4
+    hit4 := fibBull ? high >= fib4618 : low <= fib4618
+if not na(fib5618) and hit4 and not hit5
+    hit5 := fibBull ? high >= fib5618 : low <= fib5618
+
+// -------------------------------------------------------------------
+// GOLD SIGNAL  v10.1
+// Gatilho principal: StochRSI H1 cruzando de extremo (OS/OB)
+// na direcao do Fibonacci ativo.
+// Gatilhos de suporte (gT1 / gT2) permanecem mas agora sao
+// COMBINADOS com h1Buy / h1Sell para maior precisao.
+//
+// GOLD BUY  = h1Buy  (K cruza D subindo de < OS) na direcao Bull
+// GOLD SELL = h1Sell (K cruza D descendo de > OB) na direcao Bear
+//
+// Condicoes adicionais de qualidade:
+//   - Fibonacci Bull/Bear alinhado
+//   - MTF Score >= minimo
+//   - Fora de flatBlock
+//   - Cooldown respeitado
+//   - Opcional: preco acima/abaixo de referencia estrutural
+// -------------------------------------------------------------------
+goldWin = 50
+var int lastAtBBar = na
+var int lastAtSBar = na
+if atlasBuy
+    lastAtBBar := bar_index
+if atlasSell
+    lastAtSBar := bar_index
+
+buyWin  = not na(lastAtBBar) and (bar_index - lastAtBBar) <= goldWin and bullFlow
+sellWin = not na(lastAtSBar) and (bar_index - lastAtSBar) <= goldWin and bearFlow
+
+pbBuyG  = bullFlow and touched and close > emaTop and close > open and close < ema55
+pbSellG = bearFlow and touchB  and close < emaBot and close < open and close > ema55
+
+kRise = kL > kL[1] and kL > kL[2]
+kFall = kL < kL[1] and kL < kL[2]
+rejB  = kRise and kL < 50
+rejS  = kFall and kL > 50
+
+wasAbove = low[1] > ema55[1] and low[2] > ema55[2]
+wasBelow = high[1] < ema55[1] and high[2] < ema55[2]
+
+gT1Buy  = buyWin  and wasAbove and pbBuyG  and rejB
+gT1Sell = sellWin and wasBelow and pbSellG and rejS
+
+touchFB = not na(fib1618) and fibBull     and low  <= fib1618 and low  >= fib1618 * 0.998
+touchFS = not na(fib1618) and not fibBull and high >= fib1618 and high <= fib1618 * 1.002
+
+bodyU = close > open ? close - open : 0.0
+bodyD = close < open ? open - close : 0.0
+wickD = low  < math.min(open, close) ? math.min(open, close) - low  : 0.0
+wickU = high > math.max(open, close) ? high - math.max(open, close) : 0.0
+
+gT2Buy  = touchFB and close > open and bodyU >= close * 0.0008 and kL < 35 and kRise and wickD >= bodyU * 0.2
+gT2Sell = touchFS and close < open and bodyD >= close * 0.0008 and kL > 65 and kFall and wickU >= bodyD * 0.2
+
+// H1 StochRSI como gatilho GOLD
+// h1Buy  = K H1 cruza D subindo   apos K ter estado <= OS
+// h1Sell = K H1 cruza D descendo  apos K ter estado >= OB
+// Filtra por Fibonacci ativo + MTF + sem flat
+h1GoldBuy  = h1Buy  and fibBull and mtfBull and not flatBlock and h1k < 70
+h1GoldSell = h1Sell and fibBear and mtfBear and not flatBlock and h1k > 30
+
+// GOLD definitivo: qualquer gatilho qualificado + cooldown
+var int lastGoldB = na
+var int lastGoldS = na
+cdGB = na(lastGoldB) or (bar_index - lastGoldB) >= i_goldCd
+cdGS = na(lastGoldS) or (bar_index - lastGoldS) >= i_goldCd
+
+goldBuy  = (gT1Buy or gT2Buy or h1GoldBuy)  and cdGB
+goldSell = (gT1Sell or gT2Sell or h1GoldSell) and cdGS
+
+if goldBuy
+    lastGoldB := bar_index
+if goldSell
+    lastGoldS := bar_index
+
+// -------------------------------------------------------------------
+// H1 RSI FINAL (sinal separado - nao filtrado por cooldown GOLD)
+// Mostra como diamante azul/magenta quando H1 dispara
+// mas NAO gerou GOLD (ex: cooldown ativo)
+// -------------------------------------------------------------------
+var int lastH1B = na
+var int lastH1S = na
+cdH1B = na(lastH1B) or (bar_index - lastH1B) >= 5
+cdH1S = na(lastH1S) or (bar_index - lastH1S) >= 5
+
+h1BuyFin  = h1GoldBuy  and cdH1B and not goldBuy
+h1SellFin = h1GoldSell and cdH1S and not goldSell
+
+if h1BuyFin
+    lastH1B := bar_index
+if h1SellFin
+    lastH1S := bar_index
+
+// -------------------------------------------------------------------
+// FIBONACCI VISUAL  v10.0  (estetica v5.7/v7.5)
+// Linhas solidas desde P0 ate bEnd
+// Cores vibrantes sem transparencia
+// Labels com preco inline estilo antigo
+// Historico da ancora anterior em tracejado suave
+// -------------------------------------------------------------------
+var line[]  fLines  = array.new_line()
+var label[] fLabels = array.new_label()
+
+if barstate.islast and i_showFibo and not na(fibP0) and not na(fibP1)
+    for ln in fLines
+        line.delete(ln)
+    for lb in fLabels
+        label.delete(lb)
+    array.clear(fLines)
+    array.clear(fLabels)
+
+    fRange = math.abs(fibP1 - fibP0)
+    bMin   = math.min(fibP0B, fibP1B)
+    bEnd   = bar_index + 20
+    bLbl   = bar_index + 21
+
+    // Niveis de retacao internos (P0->P1) - estilo v7.5
+    retLvls = array.from(0.0, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0)
+    retCols = array.from(color.white, color.red, color.orange, color.yellow, color.blue, color.purple, color.gray)
+    for ri = 0 to array.size(retLvls) - 1
+        lv  = array.get(retLvls, ri)
+        pr  = fibBull ? fibP0 + fRange * lv : fibP0 - fRange * lv
+        clr = color.new(array.get(retCols, ri), 55)
+        array.push(fLines,  line.new(bMin, pr, bEnd, pr, color=clr, width=1, style=line.style_dashed))
+        array.push(fLabels, label.new(bLbl, pr, str.tostring(lv * 100, "#.#") + "%   " + str.tostring(pr, "#.##"), color=color.new(color.black, 88), textcolor=color.new(array.get(retCols, ri), 0), style=label.style_label_left, size=size.tiny))
+
+    // Marcadores P0 e P1
+    array.push(fLabels, label.new(fibP0B, fibP0, "P0", color=color.new(color.lime, 0), textcolor=color.black, style=fibBull ? label.style_label_up : label.style_label_down, size=size.small))
+    array.push(fLabels, label.new(fibP1B, fibP1, "P1", color=color.new(color.blue, 0), textcolor=color.white, style=fibBull ? label.style_label_down : label.style_label_up, size=size.small))
+
+    // Extensoes - linhas SOLIDAS largas, cores maximas (estilo v5.7)
+    // 1.618 - Verde lima
+    c1w = hit1 ? 1 : 3
+    c1  = hit1 ? color.new(color.green, 50) : color.new(color.green, 0)
+    array.push(fLines,  line.new(bMin, fib1618, bEnd, fib1618, color=c1, width=c1w, style=line.style_solid))
+    array.push(fLabels, label.new(bLbl, fib1618, (hit1 ? "OK  1.618   " : ">>  1.618   ") + str.tostring(fib1618, "#.##"), color=c1, textcolor=color.white, style=label.style_label_left, size=size.small))
+
+    // 2.618 - Azul teal
+    if hit1
+        c2w = hit2 ? 1 : 3
+        c2  = hit2 ? color.new(color.teal, 50) : color.new(color.teal, 0)
+        array.push(fLines,  line.new(bMin, fib2618, bEnd, fib2618, color=c2, width=c2w, style=line.style_solid))
+        array.push(fLabels, label.new(bLbl, fib2618, (hit2 ? "OK  2.618   " : ">>  2.618   ") + str.tostring(fib2618, "#.##"), color=c2, textcolor=color.white, style=label.style_label_left, size=size.small))
+
+    // 3.618 - Roxo
+    if hit2
+        c3w = hit3 ? 1 : 3
+        c3  = hit3 ? color.new(color.purple, 50) : color.new(color.purple, 0)
+        array.push(fLines,  line.new(bMin, fib3618, bEnd, fib3618, color=c3, width=c3w, style=line.style_solid))
+        array.push(fLabels, label.new(bLbl, fib3618, (hit3 ? "OK  3.618   " : ">>  3.618   ") + str.tostring(fib3618, "#.##"), color=c3, textcolor=color.white, style=label.style_label_left, size=size.small))
+
+    // 4.618 - Ouro
+    if hit3
+        c4w = hit4 ? 1 : 3
+        c4  = hit4 ? color.new(#FFD700, 50) : color.new(#FFD700, 0)
+        array.push(fLines,  line.new(bMin, fib4618, bEnd, fib4618, color=c4, width=c4w, style=line.style_solid))
+        array.push(fLabels, label.new(bLbl, fib4618, (hit4 ? "OK  4.618   " : ">>  4.618   ") + str.tostring(fib4618, "#.##"), color=c4, textcolor=color.black, style=label.style_label_left, size=size.small))
+
+    // 5.618 - Magenta
+    if hit4
+        c5w = hit5 ? 1 : 3
+        c5  = hit5 ? color.new(color.fuchsia, 50) : color.new(color.fuchsia, 0)
+        array.push(fLines,  line.new(bMin, fib5618, bEnd, fib5618, color=c5, width=c5w, style=line.style_solid))
+        array.push(fLabels, label.new(bLbl, fib5618, (hit5 ? "OK  5.618   " : ">>  5.618   ") + str.tostring(fib5618, "#.##"), color=c5, textcolor=color.white, style=label.style_label_left, size=size.small))
+
+    // Ancora anterior: so o proximo alvo pendente, tracejado suave
+    showOld = not na(oldFib1618) and (bar_index - oldFibAge) <= 300
+    if showOld
+        oLbl = bLbl + 22
+        if not oldHit1 and not na(oldFib1618)
+            array.push(fLines,  line.new(bMin, oldFib1618, bEnd, oldFib1618, color=color.new(color.green,  75), width=1, style=line.style_dotted))
+            array.push(fLabels, label.new(oLbl, oldFib1618, "mem 1.618  " + str.tostring(oldFib1618, "#.##"), color=color.new(color.black, 90), textcolor=color.new(color.green,  40), style=label.style_label_left, size=size.tiny))
+        if oldHit1 and not oldHit2 and not na(oldFib2618)
+            array.push(fLines,  line.new(bMin, oldFib2618, bEnd, oldFib2618, color=color.new(color.teal,   75), width=1, style=line.style_dotted))
+            array.push(fLabels, label.new(oLbl, oldFib2618, "mem 2.618  " + str.tostring(oldFib2618, "#.##"), color=color.new(color.black, 90), textcolor=color.new(color.teal,   40), style=label.style_label_left, size=size.tiny))
+        if oldHit2 and not oldHit3 and not na(oldFib3618)
+            array.push(fLines,  line.new(bMin, oldFib3618, bEnd, oldFib3618, color=color.new(color.purple, 75), width=1, style=line.style_dotted))
+            array.push(fLabels, label.new(oLbl, oldFib3618, "mem 3.618  " + str.tostring(oldFib3618, "#.##"), color=color.new(color.black, 90), textcolor=color.new(color.purple, 40), style=label.style_label_left, size=size.tiny))
+        if oldHit3 and not oldHit4 and not na(oldFib4618)
+            array.push(fLines,  line.new(bMin, oldFib4618, bEnd, oldFib4618, color=color.new(#FFD700,     75), width=1, style=line.style_dotted))
+            array.push(fLabels, label.new(oLbl, oldFib4618, "mem 4.618  " + str.tostring(oldFib4618, "#.##"), color=color.new(color.black, 90), textcolor=color.new(#FFD700,     40), style=label.style_label_left, size=size.tiny))
+
+// -------------------------------------------------------------------
+// FUNDOS
+// -------------------------------------------------------------------
+bgcolor(i_showBG and inSqueeze ? color.new(color.gray,  90) : na, title="Squeeze")
+bgcolor(i_showBG and bullFlow  ? color.new(color.green, 95) : na, title="Alta")
+bgcolor(i_showBG and bearFlow  ? color.new(color.red,   95) : na, title="Baixa")
+bgcolor(i_showBG and flatBlock ? color.new(color.blue,  95) : na, title="Flat")
+
+// -------------------------------------------------------------------
+// PAINEL MTF - label fixo canto superior direito
+// Mesmo padrao da v9.1 que funcionava
+// -------------------------------------------------------------------
+f_dot(v)    => v ? "*" : "o"
+f_dir(b, s) => b ? "BUY " : s ? "SELL" : "--- "
+
+var label panelLbl = na
+
+panelY   = ta.highest(high, 50)
+tp1Dist  = not na(fib1618) ? math.abs(fib1618 - close) : atr14 * 1.618
+tp2Dist  = not na(fib2618) ? math.abs(fib2618 - close) : atr14 * 2.618
+tp3Dist  = not na(fib3618) ? math.abs(fib3618 - close) : atr14 * 3.618
+tp4Dist  = not na(fib4618) ? math.abs(fib4618 - close) : atr14 * 4.618
+tp5Dist  = not na(fib5618) ? math.abs(fib5618 - close) : atr14 * 5.618
+ganhoTp1 = i_stake * (tp1Dist / close) * i_mult
+ganhoTp2 = i_stake * (tp2Dist / close) * i_mult
+ganhoTp3 = i_stake * (tp3Dist / close) * i_mult
+ganhoTp4 = i_stake * (tp4Dist / close) * i_mult
+ganhoTp5 = i_stake * (tp5Dist / close) * i_mult
+rrRatio  = ganhoTp1 / i_stake
+if i_showPanel and barstate.islast
+    sNow  = bullFlow ? scoreBull : bearFlow ? scoreBear : 0
+    sDot  = f_dot(sNow >= 1) + f_dot(sNow >= 2) + f_dot(sNow >= 3) + f_dot(sNow >= 4)
+    clr   = fibBull ? color.lime : fibBear ? color.red : sNow >= i_minScore ? color.orange : color.gray
+    fibS  = fibBull ? "BULL" : fibBear ? "BEAR" : "FLAT"
+    h1Kv  = math.round(h1k)
+    h1Dv  = math.round(h1d)
+    h1S   = h1k >= i_ob ? "OB  K=" + str.tostring(h1Kv) + " D=" + str.tostring(h1Dv) : h1k <= i_os ? "OS  K=" + str.tostring(h1Kv) + " D=" + str.tostring(h1Dv) : "K=" + str.tostring(h1Kv) + " D=" + str.tostring(h1Dv)
+    sqzS  = m30_inSqz ? "SQZ [" + str.tostring(math.round(m30_sqzCount)) + "b]" : m30_wasSqz ? "BREAK!" : "livre"
+    rrStr = str.tostring(rrRatio, "#.##")
+    rrTag = rrRatio >= 3.1 ? "[IDEAL]" : rrRatio >= 2.0 ? "[OK]" : "[BAIXO]"
+    g1Str = "$" + str.tostring(ganhoTp1, "#.##")
+    g2Str = "$" + str.tostring(ganhoTp2, "#.##")
+    g3Str = "$" + str.tostring(ganhoTp3, "#.##")
+    g4Str = "$" + str.tostring(ganhoTp4, "#.##")
+    g5Str = "$" + str.tostring(ganhoTp5, "#.##")
+    txt   = "== ATLAS v10.0 ==\n" + syminfo.ticker + "  [" + sDot + "]\nM5: " + f_dir(fM5B, fM5S) + "\nH1: " + f_dir(fH1B, fH1S) + "\nH4: " + f_dir(fH4B, fH4S) + "\nD1: " + f_dir(fD1B, fD1S) + "\nH1RSI: " + h1S + "\nFibo: " + fibS + "\nM30Sqz: " + sqzS + "\nScore: " + str.tostring(sNow) + "/" + str.tostring(i_minScore) + "\n-- RISCO DERIV --\nStake $" + str.tostring(i_stake, "#.##") + " x" + str.tostring(i_mult) + "\nRisco max: $" + str.tostring(i_stake, "#.##") + " (stop=stake)\nR:R  " + rrStr + "  " + rrTag + "\nTP 1.618: +" + g1Str + "\nTP 2.618: +" + g2Str + "\nTP 3.618: +" + g3Str + "\nTP 4.618: +" + g4Str + "\nTP 5.618: +" + g5Str
+    label.delete(panelLbl)
+    panelLbl := label.new(bar_index + 3, panelY, text=txt, color=color.new(color.black, 60), textcolor=clr, style=label.style_label_left, size=size.small)
+
+// -------------------------------------------------------------------
+// PLOTSHAPE - SINAIS
+// -------------------------------------------------------------------
+plotshape(atlasBuy,  title="ATLAS BUY",  style=shape.labelup,   location=location.belowbar, color=color.new(color.green,  0), text="ATLAS", textcolor=color.white, size=size.normal)
+plotshape(atlasSell, title="ATLAS SELL", style=shape.labeldown, location=location.abovebar, color=color.new(color.red,    0), text="ATLAS", textcolor=color.white, size=size.normal)
+plotshape(i_showSqzBk and sqzBreakBuy,  title="SQZ BREAK BUY",  style=shape.triangleup,   location=location.belowbar, color=color.new(color.lime,    0), size=size.small)
+plotshape(i_showSqzBk and sqzBreakSell, title="SQZ BREAK SELL", style=shape.triangledown, location=location.abovebar, color=color.new(color.fuchsia, 0), size=size.small)
+bgcolor(i_showSqzBk and m30_inSqz ? color.new(color.blue, 88) : na, title="M30 Squeeze Zone")
+plotshape(goldBuy,   title="GOLD BUY",   style=shape.labelup,   location=location.belowbar, color=color.new(#FFD700, 0),     text="GOLD",  textcolor=color.black,  size=size.small)
+plotshape(goldSell,  title="GOLD SELL",  style=shape.labeldown, location=location.abovebar, color=color.new(#FFD700, 0),     text="GOLD",  textcolor=color.black,  size=size.small)
+plotshape(h1BuyFin,  title="H1 BUY",     style=shape.diamond,   location=location.belowbar, color=color.new(color.aqua,    0), size=size.small)
+plotshape(h1SellFin, title="H1 SELL",    style=shape.diamond,   location=location.abovebar, color=color.new(color.fuchsia, 0), size=size.small)
+
+rbPx = (ma56 + ma89) / 2
+var label rbBuyLbl  = na
+var label rbSellLbl = na
+var label stBuyLbl  = na
+var label stSellLbl = na
+if rbBuy
+    label.delete(rbBuyLbl)
+    rbBuyLbl  := label.new(bar_index, rbPx, "BUY",  color=color.new(color.green, 0), textcolor=color.white, style=label.style_label_up,   size=size.small)
+if rbSell
+    label.delete(rbSellLbl)
+    rbSellLbl := label.new(bar_index, rbPx, "SELL", color=color.new(color.red,   0), textcolor=color.white, style=label.style_label_down, size=size.small)
+if stBuy
+    label.delete(stBuyLbl)
+    stBuyLbl  := label.new(bar_index, stPx, "^", color=color.new(color.green, 20), textcolor=color.white, style=label.style_label_up,   size=size.tiny)
+if stSell
+    label.delete(stSellLbl)
+    stSellLbl := label.new(bar_index, stPx, "v", color=color.new(color.red,   20), textcolor=color.white, style=label.style_label_down, size=size.tiny)
+
+// -------------------------------------------------------------------
+// DETECTORES FIBONACCI - eventos por barra
+// -------------------------------------------------------------------
+fibNewAnchor = fibTriggerBull or fibTriggerBear
+fibHit1      = not na(fib1618) and hit1  and not hit1[1]
+fibHit2      = not na(fib2618) and hit2  and not hit2[1]
+fibHit3      = not na(fib3618) and hit3  and not hit3[1]
+fibHit4      = not na(fib4618) and hit4  and not hit4[1]
+fibHit5      = not na(fib5618) and hit5  and not hit5[1]
+
+// JSON Fibonacci - ancora nova
+f_fibJson(lado) => '{"tipo":"FIB_ANCHOR","lado":"' + lado + '","ticker":"' + syminfo.ticker + '","p0":' + str.tostring(fibP0, "#.######") + ',"p1":' + str.tostring(fibP1, "#.######") + ',"t1618":' + str.tostring(fib1618, "#.######") + ',"t2618":' + str.tostring(fib2618, "#.######") + ',"t3618":' + str.tostring(fib3618, "#.######") + ',"t4618":' + str.tostring(fib4618, "#.######") + ',"t5618":' + str.tostring(fib5618, "#.######") + ',"rr":' + str.tostring(rrRatio, "#.##") + ',"ganho_tp1":' + str.tostring(ganhoTp1, "#.##") + ',"ganho_tp2":' + str.tostring(ganhoTp2, "#.##") + ',"ganho_tp3":' + str.tostring(ganhoTp3, "#.##") + ',"stake":' + str.tostring(i_stake, "#.##") + ',"mult":' + str.tostring(i_mult) + ',"secret":"' + i_secret + '"}'
+
+// JSON Fibonacci - alvo batido
+f_hitJson(alvo, preco) => '{"tipo":"FIB_HIT","alvo":"' + alvo + '","ticker":"' + syminfo.ticker + '","preco_hit":' + str.tostring(preco, "#.######") + ',"preco_alvo":' + str.tostring(fib1618, "#.######") + ',"lado":"' + (fibBull ? "BULL" : "BEAR") + '","ganho_tp1":' + str.tostring(ganhoTp1, "#.##") + ',"ganho_tp2":' + str.tostring(ganhoTp2, "#.##") + ',"ganho_tp3":' + str.tostring(ganhoTp3, "#.##") + ',"stake":' + str.tostring(i_stake, "#.##") + ',"mult":' + str.tostring(i_mult) + ',"secret":"' + i_secret + '"}'
+
+// -------------------------------------------------------------------
+// ALERTAS JSON
+// -------------------------------------------------------------------
+f_json(tipo, lado, sl_v, tp1_v, tp2_v, tp3_v, score) => '{"tipo":"' + tipo + '","lado":"' + lado + '","ticker":"' + syminfo.ticker + '","entrada":' + str.tostring(close, "#.######") + ',"sl":' + str.tostring(sl_v, "#.######") + ',"tp1":' + str.tostring(tp1_v, "#.######") + ',"tp2":' + str.tostring(tp2_v, "#.######") + ',"tp3":' + str.tostring(tp3_v, "#.######") + ',"score_mtf":' + str.tostring(score) + ',"multiplier":' + str.tostring(i_mult) + ',"conta":"' + i_conta + '","secret":"' + i_secret + '"}'
+
+tp1 = not na(fib1618) ? fib1618 : close
+tp2 = not na(fib2618) ? fib2618 : close
+tp3 = not na(fib3618) ? fib3618 : close
+
+if atlasBuy
+    alert(f_json("ATLAS",  "BUY",  slBuy,  tp1, tp2, tp3, scoreBull), alert.freq_once_per_bar)
+if atlasSell
+    alert(f_json("ATLAS",  "SELL", slSell, tp1, tp2, tp3, scoreBear), alert.freq_once_per_bar)
+if goldBuy
+    alert(f_json("GOLD",   "BUY",  slBuy,  tp1, tp2, tp3, scoreBull), alert.freq_once_per_bar)
+if goldSell
+    alert(f_json("GOLD",   "SELL", slSell, tp1, tp2, tp3, scoreBear), alert.freq_once_per_bar)
+if h1BuyFin
+    alert(f_json("H1RSI",  "BUY",  slBuy,  tp1, tp2, tp3, scoreBull), alert.freq_once_per_bar)
+if h1SellFin
+    alert(f_json("H1RSI",  "SELL", slSell, tp1, tp2, tp3, scoreBear), alert.freq_once_per_bar)
+if stBuy
+    alert(f_json("STRESS", "BUY",  slBuy,  tp1, tp2, tp3, scoreBull), alert.freq_once_per_bar)
+if stSell
+    alert(f_json("STRESS", "SELL", slSell, tp1, tp2, tp3, scoreBear), alert.freq_once_per_bar)
+if rbBuy
+    alert(f_json("RIBBON", "BUY",  slBuy,  tp1, tp2, tp3, scoreBull), alert.freq_once_per_bar)
+if rbSell
+    alert(f_json("RIBBON", "SELL", slSell, tp1, tp2, tp3, scoreBear), alert.freq_once_per_bar)
+
+alertcondition(atlasBuy,  title="[BUY] ATLAS",   message="{{strategy.alert_message}}")
+alertcondition(atlasSell, title="[SELL] ATLAS",  message="{{strategy.alert_message}}")
+alertcondition(sqzBreakBuy,  title="[BUY] SQZ BREAK",  message="{{strategy.alert_message}}")
+alertcondition(sqzBreakSell, title="[SELL] SQZ BREAK", message="{{strategy.alert_message}}")
+alertcondition(goldBuy,   title="[BUY] GOLD",    message="{{strategy.alert_message}}")
+alertcondition(goldSell,  title="[SELL] GOLD",   message="{{strategy.alert_message}}")
+alertcondition(h1BuyFin,  title="[BUY] H1RSI",   message="{{strategy.alert_message}}")
+alertcondition(h1SellFin, title="[SELL] H1RSI",  message="{{strategy.alert_message}}")
+alertcondition(stBuy,     title="[BUY] STRESS",  message="{{strategy.alert_message}}")
+alertcondition(stSell,    title="[SELL] STRESS", message="{{strategy.alert_message}}")
+
+// Alertas Fibonacci
+if fibNewAnchor
+    alert(f_fibJson(fibBull ? "BULL" : "BEAR"), alert.freq_once_per_bar)
+if fibHit1
+    alert(f_hitJson("1.618", fibBull ? high : low), alert.freq_once_per_bar)
+if fibHit2
+    alert(f_hitJson("2.618", fibBull ? high : low), alert.freq_once_per_bar)
+if fibHit3
+    alert(f_hitJson("3.618", fibBull ? high : low), alert.freq_once_per_bar)
+if fibHit4
+    alert(f_hitJson("4.618", fibBull ? high : low), alert.freq_once_per_bar)
+if fibHit5
+    alert(f_hitJson("5.618", fibBull ? high : low), alert.freq_once_per_bar)
+
+alertcondition(fibNewAnchor, title="[FIB] Nova ancora",   message="{{strategy.alert_message}}")
+alertcondition(fibHit1,      title="[FIB] Hit 1.618",     message="{{strategy.alert_message}}")
+alertcondition(fibHit2,      title="[FIB] Hit 2.618",     message="{{strategy.alert_message}}")
+alertcondition(fibHit3,      title="[FIB] Hit 3.618",     message="{{strategy.alert_message}}")
+alertcondition(fibHit4,      title="[FIB] Hit 4.618",     message="{{strategy.alert_message}}")
+alertcondition(fibHit5,      title="[FIB] Hit 5.618",     message="{{strategy.alert_message}}")
+alertcondition(rbBuy,     title="[BUY] RIBBON",  message="{{strategy.alert_message}}")
+alertcondition(rbSell,    title="[SELL] RIBBON", message="{{strategy.alert_message}}")
