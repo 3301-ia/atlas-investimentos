@@ -88,11 +88,13 @@ label{font-size:11px;color:var(--cinza);display:block;margin-bottom:4px}
 
 <script type="module">
 import { ema, zlema, kama } from "../core/indicators.js";
+import { dynamicPlan } from "../core/dynamic.js";
 const $=id=>document.getElementById(id);
 const cv=$('cv'), ctx=cv.getContext('2d');
 const MAX_VELAS=3000;
 let TF=15000, velas=[], ultimoPreco=0, conectado=false, pausado=false, simb='BTC-USD';
 let ws=null, reconect=0, aberto24={h:0,l:0,o:0}, posicoes=[], rafPend=false;
+let dyn=false;
 let visao={tudo:true,n:120,desloc:0};
 
 const MAS=[
@@ -301,6 +303,8 @@ function desenhar(){
     if(p.alvo) desenhaNivel(p.alvo,'#3FBF8F','alvo '+p.alvo.toFixed(0),true,pad,Y,w);
   });
 
+  if(dyn) desenhaDynamic(pad,Y,X,w,h,ini,lista.length);
+
   // último preço
   if(ultimoPreco){
     const y=Y(ultimoPreco);
@@ -328,6 +332,39 @@ function desenhaNivel(preco,cor,texto,tracejado,pad,Y,w){
   ctx.strokeStyle=cor; ctx.globalAlpha=.85; if(tracejado) ctx.setLineDash([3,3]);
   ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(w-pad.r,y); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha=1;
   ctx.fillStyle=cor; ctx.font='10px ui-monospace,monospace'; ctx.fillText(texto,pad.l+4,y-3);
+}
+function desenhaDynamic(pad,Y,X,w,h,ini,qtd){
+  const fechadas=velas.slice(0,-1);
+  if(fechadas.length<40) return;
+  let plano=null; try{ plano=dynamicPlan(fechadas); }catch(e){ return; }
+  if(!plano||!plano.lado) return;
+  const meia=v=>Math.round(v)+0.5;
+  const idxLocal=plano.i-ini;
+  if(idxLocal>=0&&idxLocal<qtd){ const x=meia(X(idxLocal)); ctx.strokeStyle='rgba(217,180,91,.35)'; ctx.setLineDash([2,4]); ctx.beginPath(); ctx.moveTo(x,pad.t); ctx.lineTo(x,h-pad.b); ctx.stroke(); ctx.setLineDash([]); }
+  const linha=(preco,cor,trac,larg,alpha,rotulo)=>{
+    const y=meia(Y(preco)); if(!isFinite(y)) return;
+    ctx.globalAlpha=alpha; ctx.strokeStyle=cor; ctx.lineWidth=larg; if(trac) ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(w-pad.r,y); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha=1;
+    if(rotulo){ ctx.fillStyle=cor; ctx.font='9px ui-monospace,monospace'; ctx.fillText(rotulo,pad.l+3,y-3); }
+  };
+  const alvoAtivo=plano.alvoAtivo<0?plano.alvos.length-1:plano.alvoAtivo;
+  plano.alvos.forEach((a,k)=>{ const ativo=k===alvoAtivo;
+    linha(a,'#3FBF8F',!ativo,ativo?1.2:1,ativo?.85:.28,'TP'+(k+1)+' '+a.toFixed(0)); });
+  linha(plano.entrada,'#D9B45B',false,1.2,.9,'ENTRADA '+plano.entrada.toFixed(0));
+  linha(plano.stopAtual,'#E2685F',true,1.2,.95,'STOP '+plano.stopAtual.toFixed(0)+(plano.stopAtual>=plano.entrada?' BE':''));
+  ctx.strokeStyle='#4FB3D9'; ctx.lineWidth=1.4; ctx.beginPath(); let tem=false, antX=null, antY=null;
+  plano.trailing.forEach(pt=>{ const li=pt.i-ini; if(li<0||li>=qtd) return; const x=meia(X(li)), y=meia(Y(pt.preco));
+    if(!tem){ ctx.moveTo(x,y); tem=true; } else { ctx.lineTo(antX,y); ctx.lineTo(x,y); }
+    antX=x; antY=y; });
+  if(tem) ctx.stroke();
+  const txt=(plano.lado==='long'?'COMPRA':'VENDA')+' '+(plano.estado==='aberta'?'aberta':'fechada')+' '+plano.resultadoR.toFixed(2)+'R';
+  ctx.fillStyle=plano.lado==='long'?'#3FBF8F':'#E2685F'; ctx.font='bold 10px ui-monospace,monospace';
+  ctx.fillText(txt,pad.l+3,pad.t+9);
+}
+function botaoDynamic(){
+  const b=document.createElement('button'); b.id='btnDyn'; b.textContent='Vectra Dynamic'; b.style.marginTop='8px';
+  b.onclick=()=>{ dyn=!dyn; b.classList.toggle('on',dyn); agendar(); };
+  const alvo=document.getElementById('mas'); if(alvo&&alvo.parentNode) alvo.parentNode.insertBefore(b, alvo.nextSibling);
 }
 function agendar(){ if(rafPend) return; rafPend=true; requestAnimationFrame(()=>{ rafPend=false; desenhar(); }); }
 
@@ -402,6 +439,6 @@ setInterval(salvarVelas,5000);
 window.addEventListener('resize',agendar);
 window.addEventListener('beforeunload',salvarVelas);
 
-montarMas(); carregarPos(); semear(false); carregar24(); conectar();
+montarMas(); botaoDynamic(); carregarPos(); semear(false); carregar24(); conectar();
 </script>
 </body></html>
