@@ -76,7 +76,8 @@
 
     var novos = [
       { rotulo: 'Risco', icone: '⚠', href: '/risco/' },
-      { rotulo: 'Acessos', icone: '🔑', href: '/terminal/' }
+      { rotulo: 'Acessos', icone: '🔑', href: '/terminal/' },
+      { rotulo: 'Tela ampla', icone: '🖥', href: '/segundos/?tela=1', janela: true }
     ];
     var referencia = base;
     novos.forEach(function (o) {
