@@ -83,7 +83,9 @@ body.modoTela{padding-top:10px}
     <option value="ETH-USD">ETH</option>
     <option value="SOL-USD">SOL</option>
   </select>
-  <button class="tf on" data-tf="15">15s</button>
+  <button class="tf" data-tf="5">5s</button>
+<button class="tf" data-tf="10">10s</button>
+<button class="tf on" data-tf="15">15s</button>
   <button class="tf" data-tf="30">30s</button>
   <button class="tf" data-tf="60">1min</button>
   <button id="pausar">Pausar</button>
@@ -159,7 +161,12 @@ function carregarVelas(){ try{ const a=JSON.parse(localStorage.getItem(chaveVela
 function novaVela(t,preco,tam){
   const ultima=velas[velas.length-1];
   if(ultima && ultima.t===t){ ultima.h=Math.max(ultima.h,preco); ultima.l=Math.min(ultima.l,preco); ultima.c=preco; ultima.v+=tam; }
-  else velas.push({t,o:preco,h:preco,l:preco,c:preco,v:tam});
+  else {
+    if(ultima){ let prox=ultima.t+TF; let guarda=0;
+      while(prox<t && guarda<240){ velas.push({t:prox,o:ultima.c,h:ultima.c,l:ultima.c,c:ultima.c,v:0}); ultima=velas[velas.length-1]; prox=ultima.t+TF; guarda++; }
+    }
+    velas.push({t,o:preco,h:preco,l:preco,c:preco,v:tam});
+  }
   if(velas.length>MAX_VELAS) velas.splice(0,velas.length-MAX_VELAS);
 }
 function aplicarPreco(preco,tam,ms){
@@ -357,6 +364,16 @@ function desenhar(){
     ctx.fillStyle='#0E1728'; ctx.fillText(txt,w-pad.r+7,y+4);
   }
 
+  // horario das velas
+  ctx.fillStyle='#6E7A8C'; ctx.font='10px ui-monospace,monospace';
+  const passoEt=Math.max(1,Math.ceil(76/Math.max(1,passo)));
+  for(let i=0;i<lista.length;i+=passoEt){
+    const d=new Date(lista[i].t);
+    const hh=String(d.getHours()).padStart(2,'0'), mm=String(d.getMinutes()).padStart(2,'0'), ss=String(d.getSeconds()).padStart(2,'0');
+    const x=Math.min(w-pad.r-46,Math.max(pad.l,X(i)-18));
+    ctx.fillText(hh+':'+mm+':'+ss,x,h-pad.b+15);
+  }
+  window.__velas=velas;
   $('velas').textContent=lista.length+' de '+velas.length+' velas de '+(TF/1000)+'s';
   const seg=Math.max(0,(TF-(Date.now()-chaveCandle(Date.now())))/1000);
   $('fechamento').textContent='fecha em '+seg.toFixed(0)+'s';
