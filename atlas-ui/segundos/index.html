@@ -2,7 +2,7 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0E1728"><title>Gráfico em segundos · Atlas</title>
 <style>
-:root{--navy:#0E1728;--card:#16233A;--gold:#D9B45B;--txt:#EEF1F6;--cinza:#9AA3B2;--ok:#3FBF8F;--risk:#E2685F}
+:root{--navy:#0E1728;--card:#16233A;--card2:#0B1424;--gold:#D9B45B;--txt:#EEF1F6;--cinza:#93A0B4;--ok:#3FBF8F;--risk:#E2685F;--borda:rgba(217,180,91,.18);--bordaSuave:rgba(217,180,91,.10);--linha:rgba(217,180,91,.22)}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;background:var(--navy);color:var(--txt);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
 body{padding:14px 12px 30px;max-width:820px;margin:0 auto}
@@ -12,24 +12,36 @@ h1{font-size:17px;margin:0;letter-spacing:.3px}
 .varr{font-size:12px;color:var(--cinza);font-variant-numeric:tabular-nums}
 .linha{height:1px;background:linear-gradient(90deg,var(--gold),rgba(217,180,91,0));margin:10px 0}
 .barra{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
-select,button,input{background:#0B1424;border:1px solid rgba(255,255,255,.14);color:var(--txt);border-radius:9px;padding:10px;font-size:16px;min-height:40px}
+select,button,input{background:var(--card);border:1px solid var(--borda);color:var(--txt);border-radius:9px;padding:10px;font-size:16px;min-height:40px}
 button{cursor:pointer;font-weight:600}
-button.on{background:rgba(217,180,91,.16);border-color:var(--gold);color:var(--gold)}
+button.on{background:rgba(217,180,91,.14);border-color:var(--gold);color:var(--gold);box-shadow:0 0 0 1px rgba(217,180,91,.25) inset}
 .vista button{padding:8px 11px;font-size:14px;min-height:40px;min-width:44px}
-#cv{width:100%;height:400px;display:block;border:1px solid rgba(255,255,255,.08);border-radius:12px;background:#0B1424;touch-action:none}
+#cv{width:100%;height:400px;display:block;border:1px solid var(--linha);border-radius:14px;background:var(--card2);touch-action:none}
 .rodape{display:flex;gap:10px;flex-wrap:wrap;font-size:11.5px;color:var(--cinza);margin-top:8px;font-variant-numeric:tabular-nums}
 .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--risk);margin-right:5px}
 .dot.ok{background:var(--ok)}
 .sec{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--gold);font-weight:700;margin:18px 0 8px}
 .mas{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
 .mas button{padding:8px 10px;font-size:12.5px;min-height:38px}
-.pos{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#0B1424;border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:10px;margin-bottom:7px;font-size:12.5px;font-variant-numeric:tabular-nums}
+.pos{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#0B1424;border:1px solid var(--bordaSuave);border-radius:10px;padding:10px;margin-bottom:7px;font-size:12.5px;font-variant-numeric:tabular-nums}
 .form{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
 label{font-size:11px;color:var(--cinza);display:block;margin-bottom:4px}
 .nota{font-size:11.5px;color:var(--cinza);line-height:1.55;margin-top:10px;border-left:2px solid rgba(217,180,91,.5);padding-left:10px}
 .g{color:var(--ok)}.r{color:var(--risk)}
 @media(max-width:420px){#cv{height:330px}}
+
+.navtop{display:flex;gap:6px;margin:0 0 12px;overflow-x:auto;scrollbar-width:none}
+.navtop::-webkit-scrollbar{display:none}
+.navtop a{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 14px;border-radius:10px;border:1px solid var(--borda);background:var(--card);color:#B9C4D6;text-decoration:none;font-size:13px;font-weight:600}
+.navtop a.atual{border-color:var(--gold);color:var(--gold);background:rgba(217,180,91,.12)}
 </style></head><body>
+<div class="navtop">
+  <a href="/">Painel</a>
+  <a href="/segundos/" class="atual">Segundos</a>
+  <a href="/risco/">Risco</a>
+  <a href="/terminal/">Acessos</a>
+</div>
+
 <div class="top">
   <div>
     <h1>Gráfico em segundos</h1>
@@ -73,7 +85,7 @@ label{font-size:11px;color:var(--cinza);display:block;margin-bottom:4px}
 </div>
 
 <div id="fibInfo" style="display:none;margin:8px 0 2px;padding:8px 10px;border-left:2px solid #5B6B85;background:rgba(91,107,133,.10);font:11px ui-monospace,monospace;color:#C9D3E3;border-radius:0 8px 8px 0;line-height:1.5"></div>
-<div id="dynInfo" style="display:none;margin:8px 0 2px;padding:8px 10px;border-left:2px solid var(--gold);background:rgba(217,180,91,.06);font:11px ui-monospace,monospace;color:#C9D3E3;border-radius:0 8px 8px 0;line-height:1.5"></div>
+<div id="dynInfo" style="display:none;margin:8px 0 2px;padding:8px 10px;border-left:2px solid var(--gold);background:var(--card);border:1px solid var(--borda);border-left:2px solid var(--gold);color:#C9D3E3;border-radius:12px;line-height:1.5"></div>
 <div class="mas" id="mas"></div>
 
 <div class="sec">Posições</div>
@@ -265,7 +277,7 @@ function desenhar(){
   const X=i=>pad.l+passo*(i+0.5);
 
   // grade
-  ctx.strokeStyle='rgba(255,255,255,.06)'; ctx.lineWidth=1; ctx.font='10px ui-monospace,monospace';
+  ctx.strokeStyle='var(--bordaSuave)'; ctx.lineWidth=1; ctx.font='10px ui-monospace,monospace';
   const ticks=4;
   for(let g=0;g<=ticks;g++){ const y=pad.t+(h-pad.t-pad.b)*g/ticks; const val=hi-(hi-lo)*g/ticks;
     ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(w-pad.r,y); ctx.stroke();
@@ -379,7 +391,7 @@ function avisoFib(msg){
 }
 function botaoFibo(){
   const b=document.createElement('button'); b.id='btnFib'; b.textContent='Fibonacci'; b.style.marginTop='8px';
-  b.onclick=()=>{ fib=!fib; b.style.borderColor=fib?'#D9B45B':'rgba(255,255,255,.14)'; b.style.color=fib?'#D9B45B':'#EEF1F6'; agendar(); };
+  b.onclick=()=>{ fib=!fib; b.style.borderColor=fib?'#D9B45B':'var(--borda)'; b.style.color=fib?'#D9B45B':'#EEF1F6'; agendar(); };
   document.getElementById('mas').appendChild(b);
 }
 function desenhaDynamic(pad,Y,X,w,h,ini,qtd){
