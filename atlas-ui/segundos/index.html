@@ -72,6 +72,7 @@ label{font-size:11px;color:var(--cinza);display:block;margin-bottom:4px}
   <span id="fechamento">—</span>
 </div>
 
+<div id="dynInfo" style="display:none;margin:8px 0 2px;padding:8px 10px;border-left:2px solid var(--gold);background:rgba(217,180,91,.06);font:11px ui-monospace,monospace;color:#C9D3E3;border-radius:0 8px 8px 0;line-height:1.5"></div>
 <div class="mas" id="mas"></div>
 
 <div class="sec">Posições</div>
@@ -175,7 +176,7 @@ async function semear(limpar){
     }
     // 2) negociações da Coinbase, mais recentes e mais finas
     let antes=null, voltas=0, todas=[];
-    while(voltas<4){
+    while(voltas<8){
       const url='https://api.exchange.coinbase.com/products/'+simb+'/trades?limit=1000'+(antes?('&before='+encodeURIComponent(antes)):'');
       const r=await fetch(url); if(!r.ok) break;
       const tr=await r.json(); if(!Array.isArray(tr)||!tr.length) break;
@@ -335,7 +336,7 @@ function desenhaNivel(preco,cor,texto,tracejado,pad,Y,w){
 }
 function desenhaDynamic(pad,Y,X,w,h,ini,qtd){
   const fechadas=velas.slice(0,-1);
-  if(fechadas.length<40) return;
+  if(fechadas.length<25){ avisoDyn('histórico curto: '+fechadas.length+' velas'); return; }
   let plano=null; try{ plano=dynamicPlan(fechadas); }catch(e){ return; }
   if(!plano||!plano.lado) return;
   const meia=v=>Math.round(v)+0.5;
@@ -360,6 +361,16 @@ function desenhaDynamic(pad,Y,X,w,h,ini,qtd){
   const txt=(plano.lado==='long'?'COMPRA':'VENDA')+' '+(plano.estado==='aberta'?'aberta':'fechada')+' '+plano.resultadoR.toFixed(2)+'R';
   ctx.fillStyle=plano.lado==='long'?'#3FBF8F':'#E2685F'; ctx.font='bold 10px ui-monospace,monospace';
   ctx.fillText(txt,pad.l+3,pad.t+9);
+  const alvo=plano.alvos[alvoAtivo];
+  const info=document.getElementById('dynInfo');
+  if(info){ info.style.display='block';
+    info.innerHTML='<b>'+(plano.lado==='long'?'COMPRA':'VENDA')+'</b> · entrada '+plano.entrada.toFixed(0)+
+      ' · stop '+plano.stopAtual.toFixed(0)+' · alvo '+alvo.toFixed(0)+
+      ' · risco '+plano.risco.toFixed(0)+' · '+plano.resultadoR.toFixed(2)+'R'; }
+}
+function avisoDyn(msg){
+  const info=document.getElementById('dynInfo');
+  if(info){ info.style.display='block'; info.textContent=msg; }
 }
 function botaoDynamic(){
   const b=document.createElement('button'); b.id='btnDyn'; b.textContent='Vectra Dynamic'; b.style.marginTop='8px';
