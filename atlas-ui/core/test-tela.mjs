@@ -18,11 +18,12 @@ for (let i = 0; i < 60; i++) {
 const dom = new JSDOM(`<!doctype html><html><body>
   <div class="side-nav-top"><div class="nav-item" id="nav-alerts"><span class="nav-icon">🔔</span><span class="nav-lbl">Alertas</span></div></div>
   <span id="rt-price">$100.00</span>
+  <div id="chart" style="width:600px;height:400px"></div>
 </body></html>`, { runScripts: 'outside-only', url: 'https://atlas.local/' });
 
 const w = dom.window;
 w.AtlasAlertasCore = CORE;
-w.candleSeries = { data: () => candles };
+w.candleSeries = { data: () => candles, coordinateToPrice: (y) => 120 - y * 0.1 };
 w.updatePriceUI = function (p) {
   w.document.getElementById('rt-price').textContent = '$' + p.toFixed(2);
 };
@@ -131,9 +132,9 @@ await dormir(850);
 {
   $$('.ac-tabs button')[0].click();
   const leitura = w.document.getElementById('acLeituraMa').textContent;
-  assert.ok(leitura.includes('EMA9'), 'leitura: ' + leitura);
+  assert.ok(/EMA(8|9)/.test(leitura), 'leitura: ' + leitura);
   $('#acForm [data-acao="armar"]').click();
-  assert.ok(w.document.getElementById('acList').textContent.includes('Média 9/18'));
+  assert.ok(w.document.getElementById('acList').textContent.includes('Média 8/16'));
   t('alerta de média arma e informa as duas EMAs');
 }
 
@@ -152,6 +153,27 @@ await dormir(850);
   w.document.getElementById('acSom').click();
   assert.equal(w.document.getElementById('acSom').textContent, '🔊');
   t('som alterna entre ligado e mudo');
+}
+
+{
+  const chart = w.document.getElementById('chart');
+  chart.getBoundingClientRect = () => ({ top: 0, left: 0, width: 600, height: 400 });
+  const ev = new w.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 220, clientY: 150 });
+  chart.dispatchEvent(ev);
+  const menu = w.document.getElementById('acMenuCtx');
+  assert.ok(menu, 'menu abriu no botao direito');
+  assert.equal(ev.defaultPrevented, true, 'nao abriu o menu do navegador');
+  const botoes = menu.querySelectorAll('button[data-m]');
+  assert.equal(botoes.length, 7, 'sete opcoes: preco e duas duplas de EMA');
+  assert.ok(menu.textContent.includes('Alarme neste preço'));
+  assert.ok(menu.textContent.includes('EMA 8/16'));
+  assert.ok(menu.textContent.includes('EMA 9/18'));
+
+  const alvo = Array.from(botoes).find(b => b.getAttribute('data-m') === 'ma:8:16:acima');
+  alvo.click();
+  assert.equal(w.document.getElementById('acMenuCtx'), null, 'menu fecha depois do clique');
+  assert.ok(w.document.getElementById('acList').textContent.includes('Média 8/16'), 'armou o cruzamento 8/16');
+  t('botao direito arma alarme de preco e de cruzamento');
 }
 
 console.log('\n' + ok + ' verificações de tela passaram');

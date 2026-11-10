@@ -303,6 +303,7 @@ function desenhar(){
 
   const {hi,lo}=faixa(lista);
   const Y=p=>pad.t+(hi-p)/(hi-lo)*(h-pad.t-pad.b);
+  window.__precoDeY=y=>hi-(y-pad.t)*(hi-lo)/Math.max(1,(h-pad.t-pad.b));
   const passo=(w-pad.l-pad.r)/lista.length;
   const X=i=>pad.l+passo*(i+0.5);
 
@@ -313,25 +314,19 @@ function desenhar(){
     ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(w-pad.r,y); ctx.stroke();
     ctx.fillStyle='#7E8798'; ctx.fillText(val.toFixed(1),w-pad.r+5,y+3); }
 
-  // série: vela quando cabe, linha de fechamento quando aperta
-  if(passo>=2.6){
-    const corpoLarg=Math.max(1.2,Math.min(9,passo*0.62));
+  // candles sempre: corpo minimo de 1px, pavio so quando ha espaco
+  {
+    const corpoLarg=Math.max(1,Math.min(9,passo*0.62));
+    const pavio=passo>=1.5;
     lista.forEach((v,i)=>{
       const x=X(i), up=v.c>=v.o;
       if(v.v===0){ ctx.strokeStyle='rgba(154,163,178,.42)'; ctx.lineWidth=1.6;
         const yy=Math.round(Y(v.c))+0.5; ctx.beginPath(); ctx.moveTo(x-corpoLarg/2,yy); ctx.lineTo(x+corpoLarg/2,yy); ctx.stroke(); return; }
       ctx.strokeStyle=up?'#3FBF8F':'#E2685F'; ctx.fillStyle=up?'#3FBF8F':'#E2685F'; ctx.lineWidth=1;
-      ctx.beginPath(); ctx.moveTo(x,Y(v.h)); ctx.lineTo(x,Y(v.l)); ctx.stroke();
+      if(pavio){ ctx.beginPath(); ctx.moveTo(x,Y(v.h)); ctx.lineTo(x,Y(v.l)); ctx.stroke(); }
       const y1=Y(Math.max(v.o,v.c)), y2=Y(Math.min(v.o,v.c));
       ctx.fillRect(x-corpoLarg/2,y1,corpoLarg,Math.max(1,y2-y1));
     });
-  } else {
-    // linha de fechamento com preenchimento leve
-    ctx.beginPath();
-    lista.forEach((v,i)=>{ const x=X(i), y=Y(v.c); i?ctx.lineTo(x,y):ctx.moveTo(x,y); });
-    ctx.strokeStyle='#8FB6D8'; ctx.lineWidth=1.2; ctx.stroke();
-    ctx.lineTo(X(lista.length-1),h-pad.b); ctx.lineTo(X(0),h-pad.b); ctx.closePath();
-    ctx.fillStyle='rgba(143,182,216,.10)'; ctx.fill();
   }
 
   // médias
@@ -592,5 +587,25 @@ window.addEventListener('beforeunload',salvarVelas);
 document.getElementById('tela').onclick=abrirTela;
 if(new URLSearchParams(location.search).get('tela')) document.body.classList.add('modoTela');
 montarMas(); botaoDynamic(); botaoFibo(); carregarPos(); semear(false); carregar24(); conectar();
+</script>
+<script src="../alerta-central.js?v=2" defer></script>
+<script>
+// botao direito no grafico de segundos: alarme no preco do ponteiro ou no
+// cruzamento das EMAs 9/18 que a tela ja usa
+(function(){
+  var tent=0, iv=setInterval(function(){
+    var el=document.getElementById('cv');
+    if(window.AtlasAlertas && el && typeof window.__precoDeY==='function'){
+      clearInterval(iv);
+      window.AtlasAlertas.ligarMenu({el:el, emas:[9,18], precoDe:function(ev){
+        var r=el.getBoundingClientRect();
+        var y=ev.clientY-r.top;
+        if(y<0||y>r.height) return null;
+        return window.__precoDeY(y);
+      }});
+    }
+    if(++tent>60) clearInterval(iv);
+  },250);
+})();
 </script>
 </body></html>

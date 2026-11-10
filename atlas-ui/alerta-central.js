@@ -32,7 +32,7 @@
     aberto: false,
     pronto: false,
     form: {
-      ma: { rapida: 9, lenta: 18, dir: 'ambas' },
+      ma: { rapida: 8, lenta: 16, dir: 'ambas' },
       fib: { nivel: 0.618, swing: 21, dir: 'ambas' },
       preco: { valor: '', dir: 'ambas' }
     }
@@ -92,6 +92,14 @@
         if (num(v) && v > 0) return v;
       }
     } catch (e) {}
+    try { if (typeof ultimoPreco !== 'undefined' && num(ultimoPreco) && ultimoPreco > 0) return ultimoPreco; } catch (e) {}
+    try {
+      var vv = window.__velas;
+      if (Array.isArray(vv) && vv.length) {
+        var ult = vv[vv.length - 1];
+        if (ult && num(ult.c)) return ult.c;
+      }
+    } catch (e) {}
     return null;
   }
 
@@ -102,7 +110,17 @@
     if (S.velas && agora - S.velasEm < 900) return S.velas;
     var cs = null;
     try { if (typeof candleSeries !== 'undefined') cs = candleSeries; } catch (e) { cs = null; }
-    if (!cs || typeof cs.data !== 'function') return S.velas;
+    if (!cs || typeof cs.data !== 'function') {
+      var vv = window.__velas;
+      if (Array.isArray(vv) && vv.length > 4) {
+        var saida2 = vv.slice(-400).map(function (k) { return { t: k.t, o: k.o, h: k.h, l: k.l, c: k.c }; });
+        saida2.pop();
+        S.velas = saida2;
+        S.velasEm = agora;
+        return saida2;
+      }
+      return S.velas;
+    }
     var bruto;
     try { bruto = cs.data(); } catch (e) { return S.velas; }
     if (!Array.isArray(bruto) || bruto.length < 3) return S.velas;
@@ -233,6 +251,8 @@
       ev && ev.lado === 'baixa' ? 'red' : 'green'
     );
     notificar('Atlas · ' + rot, lado + ' em ' + fmt(preco));
+
+    autoMenu(0);
 
     var nav = document.getElementById('nav-alerts');
     if (nav) {
@@ -649,7 +669,14 @@
       '.ac-toast-sub{display:block;font-size:10px;color:#9fb0c9;margin-top:2px}',
       '.ac-pisca{animation:acPisca .7s ease-in-out 3}',
       '@keyframes acPisca{0%,100%{background:transparent}50%{background:rgba(245,166,35,.28)}}',
-      '@media (max-width:560px){.ac{width:100%;border-left:none}.ac-tabs button{font-size:11px}}'
+      '@media (max-width:560px){.ac{width:100%;border-left:none}.ac-tabs button{font-size:11px}}',
+      '.ac-menu{position:fixed;z-index:10001;min-width:236px;background:#0f1826;border:1px solid rgba(245,166,35,.6);',
+      'border-radius:8px;padding:6px;box-shadow:0 14px 34px rgba(0,0,0,.5);font-family:var(--font)}',
+      '.ac-menu-h{font-family:var(--mono);font-size:12px;font-weight:800;color:#f5c776;padding:8px 10px}',
+      '.ac-menu button{display:block;width:100%;min-height:40px;text-align:left;background:transparent;border:none;',
+      'color:#dbe4ef;font-family:var(--font);font-size:12px;font-weight:600;padding:0 10px;border-radius:6px;cursor:pointer}',
+      '.ac-menu button:hover{background:#1b2739;color:#fff}',
+      '.ac-menu-sep{height:1px;background:#22304a;margin:5px 6px}'
     ].join('\n');
     var st = document.createElement('style');
     st.id = 'ac-css';
@@ -777,6 +804,117 @@
     if (ov) ov.classList.remove('on');
   }
 
+  /* ------------------------------------------------------ menu do mouse */
+
+  var MENU_ID = 'acMenuCtx';
+
+  function fecharMenu() {
+    var m = document.getElementById(MENU_ID);
+    if (m && m.parentNode) m.parentNode.removeChild(m);
+  }
+
+  function abrirMenu(ev, preco, emas) {
+    fecharMenu();
+    if (!num(preco)) return;
+    var pares = [];
+    if (emas && emas.length === 2) pares.push([Number(emas[0]), Number(emas[1])]);
+    [[8, 16], [9, 18]].forEach(function (p) {
+      if (!pares.some(function (q) { return q[0] === p[0] && q[1] === p[1]; })) pares.push(p);
+    });
+
+    var html = '<div class="ac-menu-h">$' + fmt(preco) + '</div>' +
+      '<button type="button" data-m="preco:ambas">\ud83d\udd14 Alarme neste preço</button>' +
+      '<button type="button" data-m="preco:acima">\u25b2 Romper acima</button>' +
+      '<button type="button" data-m="preco:abaixo">\u25bc Perder abaixo</button>' +
+      '<div class="ac-menu-sep"></div>';
+
+    pares.slice(0, 2).forEach(function (p) {
+      var rot = 'EMA ' + p[0] + '/' + p[1];
+      html += '<button type="button" data-m="ma:' + p[0] + ':' + p[1] + ':acima">\ud83d\udd14 ' + rot + ' \u25b2 cruzou para cima</button>';
+      html += '<button type="button" data-m="ma:' + p[0] + ':' + p[1] + ':abaixo">\ud83d\udd14 ' + rot + ' \u25bc cruzou para baixo</button>';
+    });
+
+    var m = document.createElement('div');
+    m.className = 'ac-menu';
+    m.id = MENU_ID;
+    m.innerHTML = html;
+    document.body.appendChild(m);
+
+    var w = m.offsetWidth || 236, h = m.offsetHeight || 320;
+    var x = Math.min(Math.max(8, ev.clientX + 6), window.innerWidth - w - 8);
+    var y = Math.min(Math.max(8, ev.clientY + 6), window.innerHeight - h - 8);
+    m.style.left = x + 'px';
+    m.style.top = y + 'px';
+
+    m.addEventListener('click', function (e) {
+      var b = e.target.closest ? e.target.closest('button[data-m]') : null;
+      if (!b) return;
+      var partes = String(b.getAttribute('data-m')).split(':');
+      fecharMenu();
+      if (partes[0] === 'preco') {
+        S.aba = 'preco';
+        S.form.preco.valor = String(preco);
+        S.form.preco.dir = partes[1] || 'ambas';
+        armar();
+      } else if (partes[0] === 'ma') {
+        armarMa(Number(partes[1]), Number(partes[2]), partes[3] || 'ambas');
+      }
+    });
+
+    setTimeout(function () {
+      document.addEventListener('mousedown', foraMenu, true);
+    }, 0);
+  }
+
+  function foraMenu(e) {
+    var m = document.getElementById(MENU_ID);
+    if (m && !m.contains(e.target)) {
+      fecharMenu();
+      document.removeEventListener('mousedown', foraMenu, true);
+    }
+  }
+
+  // Liga o botão direito num elemento de gráfico qualquer.
+  // precoDe(ev) devolve o preço embaixo do ponteiro.
+  function ligarMenu(opcoes) {
+    var el = opcoes && opcoes.el;
+    if (!el || el.__acMenu) return;
+    el.__acMenu = true;
+    el.addEventListener('contextmenu', function (ev) {
+      var preco = null;
+      try { preco = opcoes.precoDe(ev); } catch (e) { preco = null; }
+      if (!num(preco)) return;
+      ev.preventDefault();
+      abrirMenu(ev, preco, opcoes.emas);
+    });
+  }
+
+  function autoMenu(tentativas) {
+    var el = document.getElementById('chart');
+    if (!el) return;
+    var cs = null;
+    try { if (typeof candleSeries !== 'undefined') cs = candleSeries; } catch (e) { cs = null; }
+    if (!cs || typeof cs.coordinateToPrice !== 'function') {
+      if ((tentativas || 0) < 12) setTimeout(function () { autoMenu((tentativas || 0) + 1); }, 1200);
+      return;
+    }
+    ligarMenu({
+      el: el, emas: [8, 16],
+      precoDe: function (ev) {
+        var r = el.getBoundingClientRect();
+        return cs.coordinateToPrice(ev.clientY - r.top);
+      }
+    });
+  }
+
+  function armarMa(rapida, lenta, direcao) {
+    S.form.ma.rapida = Number(rapida);
+    S.form.ma.lenta = Number(lenta);
+    S.form.ma.dir = direcao || 'ambas';
+    S.aba = 'ma';
+    armar();
+  }
+
   /* ---------------------------------------------------------------- init */
 
   function ligarPreco() {
@@ -802,6 +940,12 @@
 
   function iniciar() {
     carregar();
+    // padrão por tela: o painel principal trabalha com 8/16, a tela de
+    // segundos com 9/18. Só vale quando o usuário ainda não escolheu nada.
+    if (!document.getElementById('chart') && window.__velas) {
+      S.form.ma.rapida = 9;
+      S.form.ma.lenta = 18;
+    }
     injetarCss();
     montar();
     ligarPreco();
@@ -820,7 +964,10 @@
       armarPreco: function (preco, direcao) {
         S.aba = 'preco'; S.form.preco.valor = String(preco); S.form.preco.dir = direcao || 'ambas';
         armar();
-      }
+      },
+      armarMa: armarMa,
+      ligarMenu: ligarMenu,
+      abrirMenuEm: abrirMenu
     };
 
     var nav = document.getElementById('nav-alerts');
