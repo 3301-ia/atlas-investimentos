@@ -75,8 +75,8 @@
     if (!base) return false;
 
     var novos = [
-      { rotulo: 'Risco', href: '/risco/' },
-      { rotulo: 'Acessos', href: '/terminal/' }
+      { rotulo: 'Risco', icone: '⚠', href: '/risco/' },
+      { rotulo: 'Acessos', icone: '🔑', href: '/terminal/' }
     ];
     var referencia = base;
     novos.forEach(function (o) {
@@ -85,6 +85,12 @@
       cl.removeAttribute('id');
       var lbl = cl.querySelector('.nav-lbl');
       if (lbl) lbl.textContent = o.rotulo;
+      for (var k = 0; k < cl.children.length; k++) {
+        if (cl.children[k] !== lbl && !cl.children[k].contains(lbl)) {
+          cl.children[k].textContent = o.icone;
+          break;
+        }
+      }
       cl.style.cursor = 'pointer';
       cl.setAttribute('role', 'button');
       cl.setAttribute('title', o.rotulo);
