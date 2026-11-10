@@ -1,33 +1,41 @@
 /* Camada de correção visual e de toque do painel Atlas.
-   Carregada depois de style.css, sobrescreve apenas o que atrapalha
-   o uso no celular e o foco por teclado. Não altera cores de dado
-   nem a identidade do painel. */
+   Carregada depois de style.css. Sobrescreve apenas o que atrapalha o uso
+   no celular e o foco por teclado. Não altera cores de dado nem a
+   identidade do painel. */
 
-/* 1. Toque: alvo mínimo de 40px em tela sensível ao toque */
-@media (pointer: coarse) {
-  button, [role="button"], a, summary,
-  input[type="checkbox"], input[type="radio"] {
-    min-height: 40px;
-    min-width: 40px;
+/* 1. Toque: alvo mínimo de 40px em tela sensível ao toque e em tela estreita */
+@media (pointer: coarse), (hover: none), (max-width: 820px) {
+  button, [role="button"], a, summary, label {
+    min-height: 40px !important;
   }
-  /* ícones soltos dentro de botões continuam alinhados */
-  button, [role="button"] { display: inline-flex; align-items: center; justify-content: center; }
-  /* evita toque acidental entre controles vizinhos */
+  button, [role="button"] {
+    min-width: 40px !important;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
   button + button, [role="button"] + [role="button"] { margin-left: 2px; }
   /* 2. Teclado do iOS: abaixo de 16px o navegador amplia a tela ao focar */
-  input:not([type="checkbox"]):not([type="radio"]), select, textarea { font-size: 16px; }
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea {
+    font-size: 16px !important;
+  }
 }
 
 /* 3. Foco visível por teclado, sem mudar o visual do mouse */
 button:focus-visible, [role="button"]:focus-visible, a:focus-visible,
 input:focus-visible, select:focus-visible, textarea:focus-visible {
-  outline: 2px solid #D9B45B;
+  outline: 2px solid #D9B45B !important;
   outline-offset: 2px;
   border-radius: 6px;
 }
 
-/* 4. Botão sem rótulo visível ganha área de toque previsível */
+/* 4. Botão só com ícone ganha área de toque previsível */
 button:empty, button:has(> svg:only-child) { min-width: 40px; min-height: 40px; }
 
 /* 5. Rolagem horizontal contida em barras de ferramentas, em vez de esticar a página */
-.toolbar, .topbar, .tools, .chips { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
+.toolbar, .topbar, .tools, .chips {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
