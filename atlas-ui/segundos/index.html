@@ -129,8 +129,7 @@ async function semear(){
       tr.sort((a,b)=>new Date(a.time)-new Date(b.time));
       tr.forEach(t=>novaVela(chaveCandle(new Date(t.time).getTime()),parseFloat(t.price),parseFloat(t.size)));
       if(velas.length) ultimoPreco=velas[velas.length-1].c;
-      $('st').textContent='histórico carregado';
-      $('dot').className='dot ok';
+      if(!conectado){ $('st').textContent='histórico carregado'; $('dot').className='dot ok'; }
     }
   }catch(e){ $('st').textContent='sem histórico, só ao vivo'; }
   agendar();
@@ -139,9 +138,10 @@ async function carregar24(){
   try{
     const r=await fetch('https://api.exchange.coinbase.com/products/'+simb+'/stats');
     const s=await r.json();
-    const hi=parseFloat(s.high), lo=parseFloat(s.low), op=parseFloat(s.open);
+    const op=parseFloat(s.open), hi=parseFloat(s.high), lo=parseFloat(s.low);
+    const last=parseFloat(s.last)||ultimoPreco;
     aberto24={h:hi,l:lo,o:op};
-    const pct=op? ((ultimoPreco-op)/op*100):0;
+    const pct=(op&&last)? ((last-op)/op*100):0;
     $('var24').innerHTML='24h <span class="'+(pct>=0?'g':'r')+'">'+(pct>=0?'+':'')+pct.toFixed(2)+'%</span>';
   }catch(e){}
 }
