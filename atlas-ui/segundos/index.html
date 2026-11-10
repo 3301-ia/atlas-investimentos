@@ -126,12 +126,53 @@ function aplicarPreco(preco,tam,ms){
   if(!pausado) novaVela(chaveCandle(ms),preco,tam||0);
   agendar();
 }
+async function semente1s(){
+  const mapa={BTC:'BTCUSDT',ETH:'ETHUSDT',SOL:'SOLUSDT'};
+  const sym=mapa[(simb.split('-')[0]||'').toUpperCase()]; if(!sym) return [];
+  try{
+    const ctrl=(typeof AbortController!=='undefined')?new AbortController():null;
+    const timer=ctrl?setTimeout(()=>ctrl.abort(),6000):null;
+    const r=await fetch('https://api.binance.com/api/v3/klines?symbol='+sym+'&interval=1s&limit=1000',ctrl?{signal:ctrl.signal}:{});
+    if(timer) clearTimeout(timer);
+    if(!r.ok) return [];
+    const a=await r.json();
+    if(!Array.isArray(a)) return [];
+    return a.map(k=>({tMs:k[0],o:+k[1],h:+k[2],l:+k[3],c:+k[4],v:+k[5]}));
+  }catch(e){ return []; }
+}
+async function semente1m(){
+  if(TF!==60000) return [];
+  try{
+    const r=await fetch('https://api.exchange.coinbase.com/products/'+simb+'/candles?granularity=60&limit=300');
+    if(!r.ok) return [];
+    const a=await r.json(); if(!Array.isArray(a)) return [];
+    return a.map(k=>({tMs:k[0]*1000,o:+k[3],h:+k[2],l:+k[1],c:+k[4],v:+k[5]})).sort((x,y)=>x.tMs-y.tMs);
+  }catch(e){ return []; }
+}
+function agregar(base,mapa){
+  base.forEach(c=>{
+    const tt=chaveCandle(c.tMs), v=mapa.get(tt);
+    if(v){ v.h=Math.max(v.h,c.h); v.l=Math.min(v.l,c.l); v.c=c.c; v.v+=c.v; }
+    else mapa.set(tt,{t:tt,o:c.o,h:c.h,l:c.l,c:c.c,v:c.v});
+  });
+}
 async function semear(limpar){
   if(limpar) velas=[];
   const guardadas=carregarVelas();
   if(guardadas&&guardadas.length){ velas=guardadas; ultimoPreco=velas[velas.length-1].c; }
-  let antes=null, voltas=0, todas=[];
+  let fonte='memória local';
   try{
+    const mapa=new Map(velas.map(v=>[v.t,{...v}]));
+    // 1) histórico de segundos da Binance, quando a rede permitir
+    if(TF<60000){
+      const b1=await semente1s();
+      if(b1.length){ agregar(b1,mapa); fonte='Binance 1s + Coinbase'; }
+    } else {
+      const c1=await semente1m();
+      if(c1.length){ agregar(c1,mapa); fonte='Coinbase 1min + ao vivo'; }
+    }
+    // 2) negociações da Coinbase, mais recentes e mais finas
+    let antes=null, voltas=0, todas=[];
     while(voltas<4){
       const url='https://api.exchange.coinbase.com/products/'+simb+'/trades?limit=1000'+(antes?('&before='+encodeURIComponent(antes)):'');
       const r=await fetch(url); if(!r.ok) break;
@@ -143,19 +184,16 @@ async function semear(limpar){
       const vistas=new Set();
       const ord=todas.filter(t=>{const k=t.trade_id||(t.time+t.price+t.size); if(vistas.has(k))return false; vistas.add(k); return true;})
         .sort((a,b)=>new Date(a.time)-new Date(b.time));
-      const mapa=new Map(velas.map(v=>[v.t,{...v}]));
-      ord.forEach(t=>{
-        const tt=chaveCandle(new Date(t.time).getTime()), pr=parseFloat(t.price), tm=parseFloat(t.size)||0;
-        const v=mapa.get(tt);
-        if(v){ v.h=Math.max(v.h,pr); v.l=Math.min(v.l,pr); v.c=pr; v.v+=tm; }
-        else mapa.set(tt,{t:tt,o:pr,h:pr,l:pr,c:pr,v:tm});
-      });
-      velas=[...mapa.values()].sort((a,b)=>a.t-b.t);
-      if(velas.length>MAX_VELAS) velas=velas.slice(-MAX_VELAS);
-      ultimoPreco=velas[velas.length-1].c;
-      salvarVelas();
+      agregar(ord.map(t=>({tMs:new Date(t.time).getTime(),o:+t.price,h:+t.price,l:+t.price,c:+t.price,v:+(t.size||0)})),mapa);
+      if(fonte==='memória local') fonte='Coinbase ao vivo';
+      else if(!fonte.includes('Coinbase')) fonte+=' + Coinbase';
     }
-    if(!conectado){ $('st').textContent=velas.length?'histórico local':'só ao vivo'; $('dot').className='dot ok'; }
+    velas=[...mapa.values()].sort((a,b)=>a.t-b.t);
+    if(velas.length>MAX_VELAS) velas=velas.slice(-MAX_VELAS);
+    if(velas.length) ultimoPreco=velas[velas.length-1].c;
+    salvarVelas();
+    $('fonte').textContent=fonte;
+    if(!conectado){ $('st').textContent=velas.length?'histórico':'só ao vivo'; $('dot').className='dot ok'; }
   }catch(e){ if(!conectado) $('st').textContent='sem histórico, só ao vivo'; }
   agendar();
 }
