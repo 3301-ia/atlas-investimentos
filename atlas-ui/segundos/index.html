@@ -72,6 +72,7 @@ label{font-size:11px;color:var(--cinza);display:block;margin-bottom:4px}
   <span id="fechamento">—</span>
 </div>
 
+<div id="fibInfo" style="display:none;margin:8px 0 2px;padding:8px 10px;border-left:2px solid #5B6B85;background:rgba(91,107,133,.10);font:11px ui-monospace,monospace;color:#C9D3E3;border-radius:0 8px 8px 0;line-height:1.5"></div>
 <div id="dynInfo" style="display:none;margin:8px 0 2px;padding:8px 10px;border-left:2px solid var(--gold);background:rgba(217,180,91,.06);font:11px ui-monospace,monospace;color:#C9D3E3;border-radius:0 8px 8px 0;line-height:1.5"></div>
 <div class="mas" id="mas"></div>
 
@@ -90,12 +91,13 @@ label{font-size:11px;color:var(--cinza);display:block;margin-bottom:4px}
 <script type="module">
 import { ema, zlema, kama } from "../core/indicators.js";
 import { dynamicPlan } from "../core/dynamic.js";
+import { fiboPlan, distanciaAlvo } from "../core/fibonacci.js";
 const $=id=>document.getElementById(id);
 const cv=$('cv'), ctx=cv.getContext('2d');
 const MAX_VELAS=3000;
 let TF=15000, velas=[], ultimoPreco=0, conectado=false, pausado=false, simb='BTC-USD';
 let ws=null, reconect=0, aberto24={h:0,l:0,o:0}, posicoes=[], rafPend=false;
-let dyn=false;
+let dyn=false, fib=false;
 let visao={tudo:true,n:120,desloc:0};
 
 const MAS=[
@@ -305,6 +307,7 @@ function desenhar(){
   });
 
   if(dyn) desenhaDynamic(pad,Y,X,w,h,ini,lista.length);
+  if(fib) desenhaFibo(pad,Y,X,w,h,ini,lista.length);
 
   // último preço
   if(ultimoPreco){
@@ -333,6 +336,51 @@ function desenhaNivel(preco,cor,texto,tracejado,pad,Y,w){
   ctx.strokeStyle=cor; ctx.globalAlpha=.85; if(tracejado) ctx.setLineDash([3,3]);
   ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(w-pad.r,y); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha=1;
   ctx.fillStyle=cor; ctx.font='10px ui-monospace,monospace'; ctx.fillText(texto,pad.l+4,y-3);
+}
+
+function desenhaFibo(pad,Y,X,w,h,ini,qtd){
+  const fechadas=velas.slice(0,-1);
+  const plano=fiboPlan(fechadas);
+  if(!plano){ avisoFib('histórico curto para âncora'); return; }
+  const meia=v=>Math.round(v)+0.5;
+  const linha=(preco,cor,trac,larg,alpha)=>{
+    const y=meia(Y(preco)); if(!isFinite(y)) return;
+    ctx.globalAlpha=alpha; ctx.strokeStyle=cor; ctx.lineWidth=larg;
+    if(trac) ctx.setLineDash([3,5]);
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(w-pad.r,y); ctx.stroke();
+    ctx.setLineDash([]); ctx.globalAlpha=1;
+  };
+  // âncora
+  linha(plano.p0,'#5B6B85',false,1,.5);
+  linha(plano.p1,'#5B6B85',false,1,.5);
+  const li=plano.ancoraEmBarra-ini;
+  if(li>=0&&li<qtd){ const x=X(li); ctx.strokeStyle='rgba(91,107,133,.5)'; ctx.setLineDash([2,4]);
+    ctx.beginPath(); ctx.moveTo(x,pad.t); ctx.lineTo(x,h-pad.b); ctx.stroke(); ctx.setLineDash([]); }
+  // níveis: batidos apagados, ativo cheio, futuros discretos
+  plano.niveis.forEach(n=>{
+    const ativo=n.k===plano.alvoAtivo+1;
+    const cor=n.bateu?'#4A5568':(ativo?'#3FBF8F':'#D9B45B');
+    linha(n.preco,cor,!ativo,ativo?1.4:1,n.bateu?.35:(ativo?.95:.5));
+  });
+  const d=distanciaAlvo(plano,ultimoPreco);
+  const info=document.getElementById('fibInfo');
+  if(info){
+    info.style.display='block';
+    info.innerHTML='<b>FIB '+(plano.lado==='alta'?'ALTA':'BAIXA')+'</b> · âncora '+plano.p0.toFixed(0)+
+      '→'+plano.p1.toFixed(0)+' · range '+plano.range.toFixed(0)+
+      ' · alvo ativo '+plano.alvoAtual.mult+' em '+plano.alvoAtual.preco.toFixed(0)+
+      (d?' ('+d.absoluta.toFixed(0)+' '+d.direcao+')':'')+
+      (plano.invalidada?' · <span style="color:#E2685F">âncora perdida</span>':'');
+  }
+}
+function avisoFib(msg){
+  const info=document.getElementById('fibInfo');
+  if(info){ info.style.display='block'; info.textContent=msg; }
+}
+function botaoFibo(){
+  const b=document.createElement('button'); b.id='btnFib'; b.textContent='Fibonacci'; b.style.marginTop='8px';
+  b.onclick=()=>{ fib=!fib; b.style.borderColor=fib?'#D9B45B':'rgba(255,255,255,.14)'; b.style.color=fib?'#D9B45B':'#EEF1F6'; agendar(); };
+  document.getElementById('mas').appendChild(b);
 }
 function desenhaDynamic(pad,Y,X,w,h,ini,qtd){
   const fechadas=velas.slice(0,-1);
@@ -450,6 +498,6 @@ setInterval(salvarVelas,5000);
 window.addEventListener('resize',agendar);
 window.addEventListener('beforeunload',salvarVelas);
 
-montarMas(); botaoDynamic(); carregarPos(); semear(false); carregar24(); conectar();
+montarMas(); botaoDynamic(); botaoFibo(); carregarPos(); semear(false); carregar24(); conectar();
 </script>
 </body></html>
