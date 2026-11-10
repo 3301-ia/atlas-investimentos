@@ -1,0 +1,304 @@
+<!doctype html><html lang="pt-BR"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0E1728"><title>Gráfico em segundos · Atlas</title>
+<style>
+:root{--navy:#0E1728;--card:#16233A;--gold:#D9B45B;--txt:#EEF1F6;--cinza:#9AA3B2;--ok:#3FBF8F;--risk:#E2685F;--linha:rgba(217,180,91,.25)}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--navy);color:var(--txt);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+body{padding:14px 12px 30px;max-width:760px;margin:0 auto}
+h1{font-size:17px;margin:0;letter-spacing:.3px;display:flex;align-items:center;gap:8px}
+.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.preco{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+.varr{font-size:12px;color:var(--cinza);font-variant-numeric:tabular-nums}
+.linha{height:1px;background:linear-gradient(90deg,var(--gold),rgba(217,180,91,0));margin:10px 0}
+.barra{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+select,button,input{background:#0B1424;border:1px solid rgba(255,255,255,.14);color:var(--txt);border-radius:9px;padding:10px;font-size:16px;min-height:40px}
+button{cursor:pointer;font-weight:600}
+button.on{background:rgba(217,180,91,.16);border-color:var(--gold);color:var(--gold)}
+#cv{width:100%;height:380px;display:block;border:1px solid rgba(255,255,255,.08);border-radius:12px;background:#0B1424}
+.rodape{display:flex;gap:10px;flex-wrap:wrap;font-size:11.5px;color:var(--cinza);margin-top:8px;font-variant-numeric:tabular-nums}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--risk);margin-right:5px}
+.dot.ok{background:var(--ok)}
+.sec{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--gold);font-weight:700;margin:18px 0 8px}
+.mas{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.mas button{padding:8px 10px;font-size:12.5px;min-height:36px}
+.pos{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#0B1424;border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:10px;margin-bottom:7px;font-size:12.5px;font-variant-numeric:tabular-nums}
+.pos b{font-size:13px}
+.form{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.form .full{grid-column:1/-1}
+label{font-size:11px;color:var(--cinza);display:block;margin-bottom:4px}
+.nota{font-size:11.5px;color:var(--cinza);line-height:1.55;margin-top:10px;border-left:2px solid rgba(217,180,91,.5);padding-left:10px}
+.g{color:var(--ok)}.r{color:var(--risk)}
+@media(max-width:420px){#cv{height:320px}}
+</style></head><body>
+<div class="top">
+  <div>
+    <h1>Gráfico em segundos</h1>
+    <div class="varr" id="sub">conectando…</div>
+  </div>
+  <div style="text-align:right">
+    <div class="preco" id="preco">—</div>
+    <div class="varr" id="var24">—</div>
+  </div>
+</div>
+<div class="linha"></div>
+
+<div class="barra">
+  <select id="ativo">
+    <option value="BTC-USD">BTC</option>
+    <option value="ETH-USD">ETH</option>
+    <option value="SOL-USD">SOL</option>
+  </select>
+  <button class="tf on" data-tf="15">15s</button>
+  <button class="tf" data-tf="30">30s</button>
+  <button class="tf" data-tf="60">1min</button>
+  <button id="pausar">Pausar</button>
+</div>
+
+<canvas id="cv"></canvas>
+<div class="rodape">
+  <span><span class="dot" id="dot"></span><span id="st">—</span></span>
+  <span id="velas">—</span>
+  <span id="fonte">Coinbase</span>
+  <span id="fechamento">—</span>
+</div>
+
+<div class="mas" id="mas"></div>
+
+<div class="sec">Posições</div>
+<div id="lista"></div>
+<div class="form">
+  <div><label>Lado</label><select id="pLado"><option value="long">Comprado</option><option value="short">Vendido</option></select></div>
+  <div><label>Tamanho (BTC/ETH)</label><input id="pTam" type="number" step="0.001" value="0.03"></div>
+  <div><label>Entrada</label><input id="pEnt" type="number" step="0.01" placeholder="preço atual"></div>
+  <div><label>Stop</label><input id="pStop" type="number" step="0.01" placeholder="opcional"></div>
+  <div><label>Alvo</label><input id="pAlvo" type="number" step="0.01" placeholder="opcional"></div>
+  <div style="display:flex;align-items:flex-end"><button id="pAdd" style="width:100%">Adicionar</button></div>
+</div>
+<p class="nota">Os segundos são montados a partir das negociações reais recebidas ao vivo, agregadas em janelas de 15, 30 ou 60 segundos. As médias e a posição são calculadas aqui no aparelho. As posições ficam salvas neste navegador e servem para leitura e conferência, não substituem o extrato da corretora.</p>
+
+<script>
+const $=id=>document.getElementById(id);
+const cv=$('cv'), ctx=cv.getContext('2d');
+let TF=15000, velas=[], ultimoPreco=0, conectado=false, pausado=false, simb='BTC-USD';
+let ws=null, reconect=0, aberto24={h:0,l:0,o:0}, posicoes=[], rafPend=false;
+
+/* ---------- médias ---------- */
+const MAS=[
+ {id:'ribbon',n:'Ribbon 8',cor:'#D9B45B',on:true,calc:p=>emaRibbon(p,8)},
+ {id:'ema9',n:'EMA 9',cor:'#4FB3D9',on:true,calc:p=>ema(p,9)},
+ {id:'ema21',n:'EMA 21',cor:'#7BD98F',on:false,calc:p=>ema(p,21)},
+ {id:'ema50',n:'EMA 50',cor:'#C98BD9',on:false,calc:p=>ema(p,50)},
+ {id:'ema200',n:'EMA 200',cor:'#E2685F',on:false,calc:p=>ema(p,200)},
+ {id:'zlema',n:'ZLEMA 10',cor:'#F2A65A',on:true,calc:p=>zlema(p,10)},
+ {id:'kama',n:'KAMA 34',cor:'#9AD0EC',on:false,calc:p=>kama(p,34)}
+];
+function ema(arr,len){const k=2/(len+1);let out=[],prev=null;
+ arr.forEach((v,i)=>{prev=prev===null?v:v+ (v-prev)*k; out.push(i<len-1?null:prev);}); return out;}
+function emaRibbon(precos,qtd){const out=[];const lens=[8,13,21,34,55,89,144,233].slice(0,qtd);
+ lens.forEach(l=>out.push(ema(precos,l))); return out;}
+function zlema(arr,len){const lag=Math.floor((len-1)/2);const k=2/(len+1);let out=[],prev=null;
+ arr.forEach((v,i)=>{const base=i>=lag? v+(v-arr[i-lag]):v; prev=prev===null?base:prev+(base-prev)*k; out.push(i<len-1?null:prev);}); return out;}
+function kama(arr,len){const f=2/(2+1),s=2/(30+1);let out=[],prev=null,prevV=null;
+ for(let i=0;i<arr.length;i++){ if(i<len){out.push(null); prevV=arr[i]; continue;}
+   let vol=Math.abs(arr[i]-arr[i-len]); let sum=0; for(let j=i-len+1;j<=i;j++) sum+=Math.abs(arr[j]-arr[j-1]);
+   const er=sum? vol/sum:0, sc=Math.pow(er*(f-s)+s,2);
+   const v = prev===null? arr[i] : prev + sc*(arr[i]-prev);
+   out.push(v); prev=v; prevV=arr[i]; }
+ return out;}
+
+/* ---------- dados ---------- */
+function chaveCandle(ms){return Math.floor(ms/TF)*TF;}
+function novaVela(t,preco,tam){
+  const ultima=velas[velas.length-1];
+  if(ultima && ultima.t===t){ ultima.h=Math.max(ultima.h,preco); ultima.l=Math.min(ultima.l,preco); ultima.c=preco; ultima.v+=tam; }
+  else velas.push({t,o:preco,h:preco,l:preco,c:preco,v:tam});
+  if(velas.length>600) velas.splice(0,velas.length-600);
+}
+function aplicarPreco(preco,tam,ms){
+  ultimoPreco=preco;
+  $('preco').textContent=preco.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  if(!pausado) novaVela(chaveCandle(ms),preco,tam||0);
+  agendar();
+}
+async function semear(){
+  try{
+    const r=await fetch('https://api.exchange.coinbase.com/products/'+simb+'/trades?limit=1000');
+    const tr=await r.json();
+    if(Array.isArray(tr)){
+      tr.sort((a,b)=>new Date(a.time)-new Date(b.time));
+      tr.forEach(t=>novaVela(chaveCandle(new Date(t.time).getTime()),parseFloat(t.price),parseFloat(t.size)));
+      if(velas.length) ultimoPreco=velas[velas.length-1].c;
+      $('st').textContent='histórico carregado';
+      $('dot').className='dot ok';
+    }
+  }catch(e){ $('st').textContent='sem histórico, só ao vivo'; }
+  agendar();
+}
+async function carregar24(){
+  try{
+    const r=await fetch('https://api.exchange.coinbase.com/products/'+simb+'/stats');
+    const s=await r.json();
+    const hi=parseFloat(s.high), lo=parseFloat(s.low), op=parseFloat(s.open);
+    aberto24={h:hi,l:lo,o:op};
+    const pct=op? ((ultimoPreco-op)/op*100):0;
+    $('var24').innerHTML='24h <span class="'+(pct>=0?'g':'r')+'">'+(pct>=0?'+':'')+pct.toFixed(2)+'%</span>';
+  }catch(e){}
+}
+function conectar(){
+  try{ if(ws) ws.close(); }catch(e){}
+  ws=new WebSocket('wss://ws-feed.exchange.coinbase.com');
+  ws.onopen=()=>{ conectado=true; reconect=0; $('dot').className='dot ok'; $('st').textContent='ao vivo';
+    ws.send(JSON.stringify({type:'subscribe',product_ids:[simb],channels:['matches']})); };
+  ws.onclose=()=>{ conectado=false; $('dot').className='dot'; $('st').textContent='reconectando…';
+    reconect++; setTimeout(conectar, Math.min(1000*reconect,8000)); };
+  ws.onerror=()=>{ try{ws.close();}catch(e){} };
+  ws.onmessage=ev=>{
+    let d; try{ d=JSON.parse(ev.data); }catch(e){ return; }
+    if(d.type==='match'||d.type==='last_match'){
+      aplicarPreco(parseFloat(d.price), parseFloat(d.size||0), new Date(d.time).getTime());
+    }
+  };
+}
+
+/* ---------- desenho ---------- */
+function desenhar(){
+  const dpr=window.devicePixelRatio||1;
+  const w=cv.clientWidth, h=cv.clientHeight;
+  if(cv.width!==Math.round(w*dpr)||cv.height!==Math.round(h*dpr)){ cv.width=Math.round(w*dpr); cv.height=Math.round(h*dpr); }
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,w,h);
+  const pad={t:14,r:64,b:20,l:6};
+  const visiveis=velas.slice(-Math.max(30,Math.floor((w-pad.l-pad.r)/9)));
+  if(!visiveis.length){ ctx.fillStyle='#9AA3B2'; ctx.font='13px -apple-system,sans-serif'; ctx.fillText('aguardando negociações…',16,40); return; }
+
+  let hi=-Infinity, lo=Infinity;
+  visiveis.forEach(v=>{ hi=Math.max(hi,v.h); lo=Math.min(lo,v.l); });
+  posicoes.forEach(p=>{ if(p.stop) {hi=Math.max(hi,p.stop);lo=Math.min(lo,p.stop);} if(p.alvo){hi=Math.max(hi,p.alvo);lo=Math.min(lo,p.alvo);} hi=Math.max(hi,p.entrada); lo=Math.min(lo,p.entrada); });
+  const margem=(hi-lo)*0.08||1; hi+=margem; lo-=margem;
+  const Y=p=>pad.t+(hi-p)/(hi-lo)*(h-pad.t-pad.b);
+  const passo=(w-pad.l-pad.r)/visiveis.length;
+  const X=i=>pad.l+passo*(i+0.5);
+
+  // grade
+  ctx.strokeStyle='rgba(255,255,255,.06)'; ctx.lineWidth=1; ctx.font='10px ui-monospace,monospace';
+  for(let g=0;g<=4;g++){ const y=pad.t+(h-pad.t-pad.b)*g/4; const val=hi-(hi-lo)*g/4;
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(w-pad.r,y); ctx.stroke();
+    ctx.fillStyle='#7E8798'; ctx.fillText(val.toFixed(1),w-pad.r+5,y+3); }
+
+  // velas
+  const corpoLarg=Math.max(1.5,Math.min(9,passo*0.62));
+  visiveis.forEach((v,i)=>{
+    const x=X(i), up=v.c>=v.o;
+    ctx.strokeStyle=up?'#3FBF8F':'#E2685F'; ctx.fillStyle=up?'#3FBF8F':'#E2685F';
+    ctx.beginPath(); ctx.moveTo(x,Y(v.h)); ctx.lineTo(x,Y(v.l)); ctx.stroke();
+    const y1=Y(Math.max(v.o,v.c)), y2=Y(Math.min(v.o,v.c));
+    ctx.fillRect(x-corpoLarg/2, y1, corpoLarg, Math.max(1,y2-y1));
+  });
+
+  // médias
+  const fechamentos=velas.map(v=>v.c);
+  const inicio=velas.length-visiveis.length;
+  MAS.filter(m=>m.on).forEach(m=>{
+    const calc=m.calc(fechamentos);
+    if(m.id==='ribbon'){
+      const linhas=calc;
+      ctx.globalAlpha=0.5;
+      linhas.forEach(l=>{ desenhaLinha(l,inicio,visiveis.length,X,Y); });
+      ctx.globalAlpha=1;
+    } else {
+      ctx.strokeStyle=m.cor; ctx.lineWidth=1.4; desenhaLinha(calc,inicio,visiveis.length,X,Y);
+    }
+  });
+
+  // posições
+  posicoes.forEach(p=>{
+    const cor=p.lado==='long'?'#3FBF8F':'#E2685F';
+    desenhaNivel(p.entrada,cor,'entrada '+p.entrada.toFixed(0));
+    if(p.stop) desenhaNivel(p.stop,'#E2685F','stop '+p.stop.toFixed(0),true);
+    if(p.alvo) desenhaNivel(p.alvo,'#3FBF8F','alvo '+p.alvo.toFixed(0),true);
+  });
+
+  // último preço
+  if(ultimoPreco){
+    const y=Y(ultimoPreco);
+    ctx.strokeStyle='rgba(217,180,91,.55)'; ctx.setLineDash([4,4]); ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(w-pad.r,y); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle='#D9B45B'; const txt=ultimoPreco.toFixed(1); const wt=ctx.measureText(txt).width+10;
+    ctx.fillRect(w-pad.r+2,y-8,wt,16); ctx.fillStyle='#0E1728'; ctx.font='bold 10px ui-monospace,monospace'; ctx.fillText(txt,w-pad.r+7,y+4);
+  }
+  $('velas').textContent=visiveis.length+' velas de '+(TF/1000)+'s';
+  const seg=Math.max(0,(TF-(Date.now()-chaveCandle(Date.now())))/1000);
+  $('fechamento').textContent='fecha em '+seg.toFixed(0)+'s';
+}
+function desenhaLinha(vals,inicio,qtd,X,Y){
+  ctx.beginPath(); let abriu=false;
+  for(let i=0;i<qtd;i++){ const v=vals[inicio+i]; if(v==null){abriu=false;continue;}
+    const x=X(i),y=Y(v); if(!abriu){ctx.moveTo(x,y);abriu=true;}else ctx.lineTo(x,y); }
+  ctx.stroke();
+}
+function desenhaNivel(preco,cor,texto,tracejado){
+  const w=cv.clientWidth,h=cv.clientHeight,pad={t:14,r:64,b:20,l:6};
+  // recalcula faixa igual ao desenho principal
+  const visiveis=velas.slice(-Math.max(30,Math.floor((w-pad.l-pad.r)/9)));
+  let hi=-Infinity,lo=Infinity;
+  visiveis.forEach(v=>{hi=Math.max(hi,v.h);lo=Math.min(lo,v.l);});
+  posicoes.forEach(p=>{ if(p.stop){hi=Math.max(hi,p.stop);lo=Math.min(lo,p.stop);} if(p.alvo){hi=Math.max(hi,p.alvo);lo=Math.min(lo,p.alvo);} hi=Math.max(hi,p.entrada); lo=Math.min(lo,p.entrada); });
+  const m=(hi-lo)*0.08||1; hi+=m; lo-=m;
+  const y=pad.t+(hi-preco)/(hi-lo)*(h-pad.t-pad.b);
+  ctx.strokeStyle=cor; ctx.globalAlpha=.85; if(tracejado) ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(w-pad.r,y); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha=1;
+  ctx.fillStyle=cor; ctx.font='10px ui-monospace,monospace'; ctx.fillText(texto,pad.l+4,y-3);
+}
+function agendar(){ if(rafPend) return; rafPend=true; requestAnimationFrame(()=>{ rafPend=false; desenhar(); }); }
+
+/* ---------- posições ---------- */
+function carregarPos(){ try{ posicoes=JSON.parse(localStorage.getItem('vectra_pos_'+simb)||'[]'); }catch(e){ posicoes=[]; } renderPos(); }
+function salvarPos(){ localStorage.setItem('vectra_pos_'+simb,JSON.stringify(posicoes)); renderPos(); agendar(); }
+function renderPos(){
+  const el=$('lista');
+  if(!posicoes.length){ el.innerHTML='<div style="font-size:12px;color:#9AA3B2;padding:6px 2px">nenhuma posição registrada neste ativo</div>'; return; }
+  el.innerHTML=posicoes.map((p,i)=>{
+    const pnl=(ultimoPreco-p.entrada)*(p.lado==='long'?1:-1)*p.tam;
+    const risco=p.stop?Math.abs(p.entrada-p.stop)*p.tam:0;
+    const r=risco? (pnl/risco):0;
+    const cls=pnl>=0?'g':'r';
+    return '<div class="pos"><div><b>'+p.lado.toUpperCase()+'</b> '+p.tam+' · entrada '+p.entrada.toFixed(0)+
+      (p.stop?' · stop '+p.stop.toFixed(0):'')+(p.alvo?' · alvo '+p.alvo.toFixed(0):'')+'</div>'+
+      '<div style="text-align:right"><span class="'+cls+'">'+(pnl>=0?'+':'')+pnl.toFixed(2)+' US$</span>'+
+      (risco?' <span style="color:#9AA3B2">('+(r>=0?'+':'')+r.toFixed(2)+' R)</span>':'')+
+      ' <button data-del="'+i+'" style="min-height:32px;min-width:32px;padding:4px 8px">×</button></div></div>';
+  }).join('');
+  el.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{ posicoes.splice(+b.dataset.del,1); salvarPos(); });
+}
+$('pAdd').onclick=()=>{
+  const entrada=parseFloat($('pEnt').value)||ultimoPreco;
+  if(!entrada){ return; }
+  posicoes.push({lado:$('pLado').value, tam:parseFloat($('pTam').value)||0.01, entrada,
+    stop:parseFloat($('pStop').value)||null, alvo:parseFloat($('pAlvo').value)||null});
+  $('pEnt').value='';$('pStop').value='';$('pAlvo').value='';
+  salvarPos();
+};
+
+/* ---------- controles ---------- */
+document.querySelectorAll('.tf').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.tf').forEach(x=>x.classList.remove('on')); b.classList.add('on');
+  TF=(+b.dataset.tf)*1000; velas=[]; semear();
+});
+$('ativo').onchange=()=>{ simb=$('ativo').value; velas=[]; carregarPos(); semear(); carregar24(); conectar(); };
+$('pausar').onclick=()=>{ pausado=!pausado; $('pausar').textContent=pausado?'Retomar':'Pausar'; $('pausar').classList.toggle('on',pausado); };
+
+function montarMas(){
+  $('mas').innerHTML=MAS.map(m=>'<button data-m="'+m.id+'" class="'+(m.on?'on':'')+'" style="border-color:'+m.cor+'66">'+m.n+'</button>').join('');
+  $('mas').querySelectorAll('button').forEach(b=>b.onclick=()=>{
+    const m=MAS.find(x=>x.id===b.dataset.m); m.on=!m.on; b.classList.toggle('on',m.on); agendar();
+  });
+}
+
+/* ---------- ciclo ---------- */
+setInterval(()=>{ if(!pausado) agendar(); }, 1000);
+setInterval(carregar24, 60000);
+window.addEventListener('resize', agendar);
+
+montarMas(); carregarPos(); semear(); carregar24(); conectar();
+</script>
+</body></html>
