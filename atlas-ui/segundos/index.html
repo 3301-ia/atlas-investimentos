@@ -369,7 +369,7 @@ function desenhar(){
   try{
     const fech=velas.map(v=>v.c), e9=ema(fech,9), e18=ema(fech,18);
     let cruzes=0;
-    for(let i=Math.max(1,ini+1); i<Math.min(velas.length,ini+qtd); i++){
+    for(let i=Math.max(1,ini+1); i<Math.min(velas.length,ini+lista.length); i++){
       const a=e9[i], b=e18[i], pa=e9[i-1], pb=e18[i-1];
       if(a==null||b==null||pa==null||pb==null) continue;
       const subiu=pa<=pb&&a>b, desceu=pa>=pb&&a<b;
