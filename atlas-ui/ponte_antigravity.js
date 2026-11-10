@@ -282,7 +282,7 @@
 
     var css = document.createElement("style");
     css.textContent =
-      '#ponte-ag{position:fixed;left:60px;bottom:8px;z-index:99999;width:420px;' +
+      '#ponte-ag{position:fixed;right:8px;bottom:8px;left:auto;z-index:99999;width:420px;max-width:calc(100vw - 16px);' +
         'background:rgba(8,14,22,.95);border:1px solid rgba(0,200,255,.35);border-radius:6px;' +
         'font:11px/1.45 ui-monospace,Consolas,monospace;color:#cfe9f7;' +
         'box-shadow:0 6px 24px rgba(0,0,0,.45);backdrop-filter:blur(4px)}' +
@@ -355,12 +355,26 @@
     document.body.appendChild(painel);
     corpo = painel.querySelector("#ponte-ag-corpo");
 
+    // abre recolhido no canto: o gráfico nasce limpo
+    recolhido = true;
+    corpo.style.display = "none";
+    painel.classList.add("recolhido");
+    var tg0 = painel.querySelector("#ponte-ag-toggle");
+    if (tg0) tg0.textContent = "+";
+
     painel.querySelector("#ponte-ag-toggle").onclick = function (e) {
       e.stopPropagation();
       recolhido = !recolhido;
       corpo.style.display = recolhido ? "none" : "block";
       painel.classList.toggle("recolhido", recolhido);
       this.textContent = recolhido ? "+" : "-";
+      // mantém sempre encostado no canto inferior direito
+      painel.style.left = "auto";
+      painel.style.top = "auto";
+      painel.style.right = "8px";
+      painel.style.bottom = "8px";
+      var r = painel.getBoundingClientRect();
+      if (r.top < 8) painel.style.bottom = (window.innerHeight - 8 - r.height) + "px";
     };
     arrastavel(painel, painel.querySelector("#ponte-ag-cab"));
   }
