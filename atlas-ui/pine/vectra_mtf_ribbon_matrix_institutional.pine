@@ -1,0 +1,88 @@
+//@version=5
+indicator("Vectra MTF EMA Ribbon Matrix (1W, 3W, 1M, 12M)", overlay=false, precision=2)
+
+// --- 1. Parâmetros das EMAs ---
+len_fast   = input.int(2,   "Período EMA Ultrarrápida", minval=1)
+len_mid    = input.int(21,  "Período EMA Intermediária", minval=1)
+len_slow   = input.int(200, "Período EMA Institucional", minval=1)
+
+// Resoluções de Longo Prazo
+tf_1w  = input.timeframe("1W",  "Timeframe 1: 1 Semana")
+tf_3w  = input.timeframe("3W",  "Timeframe 2: 3 Semanas")
+tf_1m  = input.timeframe("1M",  "Timeframe 3: 1 Mês")
+tf_12m = input.timeframe("12M", "Timeframe 4: 1 Ano")
+
+// --- 2. Função de Cálculo do Ribbon ---
+f_calc_ribbon(src_close, f_len, m_len, s_len) =>
+    e_fast = ta.ema(src_close, f_len)
+    e_mid  = ta.ema(src_close, m_len)
+    e_slow = ta.ema(src_close, s_len)
+    [e_fast, e_mid, e_slow]
+
+// --- 3. Extração dos Dados MTF sem Repaint ---
+// Semana (1W)
+[w1_f, w1_m, w1_s] = request.security(syminfo.tickerid, tf_1w, f_calc_ribbon(close, len_fast, len_mid, len_slow), barmerge.gaps_off, barmerge.lookahead_off)
+// 3 Semanas (3W)
+[w3_f, w3_m, w3_s] = request.security(syminfo.tickerid, tf_3w, f_calc_ribbon(close, len_fast, len_mid, len_slow), barmerge.gaps_off, barmerge.lookahead_off)
+// Mês (1M)
+[m1_f, m1_m, m1_s] = request.security(syminfo.tickerid, tf_1m, f_calc_ribbon(close, len_fast, len_mid, len_slow), barmerge.gaps_off, barmerge.lookahead_off)
+// Ano (12M)
+[y1_f, y1_m, y1_s] = request.security(syminfo.tickerid, tf_12m, f_calc_ribbon(close, len_fast, len_mid, len_slow), barmerge.gaps_off, barmerge.lookahead_off)
+
+// --- 4. Quantificação do Alinhamento Institucional (Score 0 a 100%) ---
+// Avalia se o preço está acima da EMA 200 e se o Ribbon (2 > 21) está alinhado
+f_eval_tf(e_f, e_m, e_s, c_price) =>
+    score = 0.0
+    if c_price > e_s
+        score += 50.0 // Preço acima da EMA 200
+    if e_f > e_m
+        score += 30.0 // Momentum (2 > 21)
+    if e_m > e_s
+        score += 20.0 // Alinhamento pleno (21 > 200)
+    score
+
+score_1w  = f_eval_tf(w1_f, w1_m, w1_s, close)
+score_3w  = f_eval_tf(w3_f, w3_m, w3_s, close)
+score_1m  = f_eval_tf(m1_f, m1_m, m1_s, close)
+score_12m = f_eval_tf(y1_f, y1_m, y1_s, close)
+
+score_total = (score_1w + score_3w + score_1m + score_12m) / 4.0
+
+// --- 5. Plots Visuais na Sub-janela ---
+// Oscilador de Confluência do Ribbon Institucional
+col_matrix = score_total >= 80 ? #00e676 : score_total <= 30 ? #ff1744 : #ff9100
+
+plot(score_total, "Confluência Ribbon MTF", color=col_matrix, linewidth=2)
+plot(score_1w,    "Score 1W",  color=color.new(#00e5ff, 40), linewidth=1, style=plot.style_stepline)
+plot(score_3w,    "Score 3W",  color=color.new(#2979ff, 40), linewidth=1, style=plot.style_stepline)
+plot(score_1m,    "Score 1M",  color=color.new(#ff9100, 30), linewidth=2, style=plot.style_stepline)
+plot(score_12m,   "Score 12M", color=color.new(#e91e63, 20), linewidth=2, style=plot.style_stepline)
+
+// Limiares de Força
+h_top = hline(80, "Expansão Plena Compradora", color=#00e676, linestyle=hline.style_dashed)
+hline(50, "Linha de Equilíbrio", color=#30363d, linestyle=hline.style_dotted)
+h_bot = hline(30, "Regime de Fraqueza / Venda", color=#ff1744, linestyle=hline.style_dashed)
+
+fill(h_top, hline(100), color=color.new(#00e676, 90), title="Zona de Alinhamento Total")
+fill(h_bot, hline(0),   color=color.new(#ff1744, 90), title="Zona de Tendência Baixista")
+
+// --- 6. HUD / Tabela Matrix no Canto Superior Direito ---
+var table hud_ribbon = table.new(position.top_right, 5, 2, bgcolor=#0c1017, border_color=#21262d, border_width=1)
+
+f_cell_color(sc) =>
+    sc >= 80 ? #00e676 : sc >= 50 ? #ffea00 : #ff1744
+
+if barstate.islast
+    // Cabeçalhos
+    table.cell(hud_ribbon, 0, 0, "MTF RIBBON", bgcolor=#161b22, text_color=#8b949e, text_size=size.tiny)
+    table.cell(hud_ribbon, 1, 0, "1W (Semanal)", bgcolor=#161b22, text_color=#8b949e, text_size=size.tiny)
+    table.cell(hud_ribbon, 2, 0, "3W (3 Semanas)", bgcolor=#161b22, text_color=#8b949e, text_size=size.tiny)
+    table.cell(hud_ribbon, 3, 0, "1M (Mensal)", bgcolor=#161b22, text_color=#8b949e, text_size=size.tiny)
+    table.cell(hud_ribbon, 4, 0, "12M (Anual)", bgcolor=#161b22, text_color=#8b949e, text_size=size.tiny)
+    
+    // Status dos Níveis
+    table.cell(hud_ribbon, 0, 1, str.tostring(score_total, "#.0") + "% TOTAL", bgcolor=#0c1017, text_color=col_matrix, text_size=size.tiny)
+    table.cell(hud_ribbon, 1, 1, close > w1_s ? "ACIMA 200" : "ABAIXO 200", bgcolor=#0c1017, text_color=f_cell_color(score_1w), text_size=size.tiny)
+    table.cell(hud_ribbon, 2, 1, close > w3_s ? "ACIMA 200" : "ABAIXO 200", bgcolor=#0c1017, text_color=f_cell_color(score_3w), text_size=size.tiny)
+    table.cell(hud_ribbon, 3, 1, close > m1_s ? "ACIMA 200" : "ABAIXO 200", bgcolor=#0c1017, text_color=f_cell_color(score_1m), text_size=size.tiny)
+    table.cell(hud_ribbon, 4, 1, close > y1_s ? "ACIMA 200" : "ABAIXO 200", bgcolor=#0c1017, text_color=f_cell_color(score_12m), text_size=size.tiny)

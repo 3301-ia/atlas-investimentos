@@ -1,0 +1,411 @@
+//@version=6
+indicator("Gann Square of Nine - Universal HUD & Cycle Engine v4", shorttitle="Gann Sq9 v4", overlay=true, max_lines_count=500, max_labels_count=500)
+
+// =============================================================================
+// 1. CONFIGURAÇÕES DE ENTRADA (INPUTS)
+// =============================================================================
+grp_anchor = "1. Ancoragem e Seleção do Ativo (Universal)"
+anchor_mode   = input.string("Automático (Pivôs Recentes)", "Modo de Ancoragem",
+     options=["Automático (Pivôs Recentes)", "Manual (Preço Fixo do Estudo)"],
+     group=grp_anchor,
+     tooltip="Automático: rastreia topos e fundos. Manual: fixa os valores (ex: BTC 87128 / 82467).")
+pivot_len     = input.int(15, "Período do Pivô (Modo Automático)", minval=3, maxval=100, group=grp_anchor)
+manual_top    = input.float(87128.0, "Preço Topo Manual (P_topo)", group=grp_anchor)
+manual_bot    = input.float(82467.0, "Preço Fundo Manual (P_fundo)", group=grp_anchor)
+
+grp_scale = "2. Escala Numérica de Gann (Normalização Decimal)"
+scale_choice  = input.string("Automático (Auto-Detectar)", "Fator de Escala (Gann Multiplier)",
+     options=["Automático (Auto-Detectar)",
+              "x1 (Cripto Alta / Índices / Preço > 20)",
+              "x10 (DASH / Médias / Preço 2-20)",
+              "x100 (Ações Baixas / Preço 0.2-2)",
+              "x1000 (Crypto Centavos)",
+              "x10000 (Forex / Pips)"],
+     group=grp_scale)
+
+grp_hud = "3. Painel HUD (Data, Grau Solar e Graus de Preço)"
+show_hud      = input.bool(true,  "Exibir Painel HUD",      group=grp_hud)
+hud_position  = input.string("Topo Direito", "Posição do Painel",
+     options=["Topo Direito", "Topo Esquerdo", "Fundo Direito", "Fundo Esquerdo"], group=grp_hud)
+hud_size_opt  = input.string("Pequeno", "Tamanho da Fonte HUD",
+     options=["Muito Pequeno", "Pequeno", "Normal"], group=grp_hud)
+
+grp_levels = "4. Exibição Gráfica dos Níveis de Gann"
+display_mode  = input.string("Aro Ativo + Próximo Aro", "Modo de Traçado dos Aros",
+     options=["Aro Ativo + Próximo Aro",
+              "Todos os Níveis (0° a 1800°)",
+              "Apenas Níveis Chave (90°, 360°, 1440°, 1620°)"],
+     group=grp_levels)
+show_sub_harm = input.bool(true,  "Exibir Harmónicos Intermediários (45°, 90°, 180°)",   group=grp_levels)
+show_crit_fill= input.bool(true,  "Destacar Zona Crítica e Exaustão (1620° - 1800°)",    group=grp_levels)
+
+grp_exp = "5. Alvos Expansivos Acima de 1080° (Espiral Superior)"
+show_exp_arcs = input.bool(false, "Exibir Alvos Expansivos do Q9 (1080° até 3600°)",    group=grp_exp,
+     tooltip="Projeta as oitavas superiores da espiral: 1080°, 1440°, 1800°, 2160°, 2520°, 2880°, 3240° e 3600°.")
+show_base9    = input.bool(false, "Exibir Extensões da Lei de Três (+1.222, +2.111, +3.333)", group=grp_exp,
+     tooltip="Harmônicos da Base 9 projetados a partir da âncora de Fundo: Pivo + (Range × N).")
+
+// =============================================================================
+// 2. CÁLCULO DO CALENDÁRIO SOLAR DE GANN
+// =============================================================================
+f_day_of_year(y, m, d) =>
+    int m_off = 0
+    if      m == 1  => m_off :=   0
+    else if m == 2  => m_off :=  31
+    else if m == 3  => m_off :=  59
+    else if m == 4  => m_off :=  90
+    else if m == 5  => m_off := 120
+    else if m == 6  => m_off := 151
+    else if m == 7  => m_off := 181
+    else if m == 8  => m_off := 212
+    else if m == 9  => m_off := 243
+    else if m == 10 => m_off := 273
+    else if m == 11 => m_off := 304
+    else            => m_off := 334
+    bool is_leap = (y % 4 == 0 and y % 100 != 0) or (y % 400 == 0)
+    int  leap_d  = (is_leap and m > 2) ? 1 : 0
+    m_off + d + leap_d
+
+cur_y = year(time)
+cur_m = month(time)
+cur_d = dayofmonth(time)
+int   doy         = f_day_of_year(cur_y, cur_m, cur_d)
+bool  cur_is_leap = (cur_y % 4 == 0 and cur_y % 100 != 0) or (cur_y % 400 == 0)
+int   days_in_yr  = cur_is_leap ? 366 : 365
+int   vernal_doy  = cur_is_leap ? 81 : 80
+int   days_vernal = doy >= vernal_doy ? (doy - vernal_doy) : (doy + (days_in_yr - vernal_doy))
+float solar_deg   = (days_vernal * 360.0 / float(days_in_yr)) % 360.0
+int   sign_idx    = math.floor(solar_deg / 30.0) % 12
+float deg_in_sign = solar_deg - (float(sign_idx) * 30.0)
+
+string sign_str = ""
+if      sign_idx == 0  => sign_str := "Áries ♈ (0° Equinócio)"
+else if sign_idx == 1  => sign_str := "Touro ♉ (30°)"
+else if sign_idx == 2  => sign_str := "Gêmeos ♊ (60°)"
+else if sign_idx == 3  => sign_str := "Câncer ♋ (90° Solstício)"
+else if sign_idx == 4  => sign_str := "Leão ♌ (120°)"
+else if sign_idx == 5  => sign_str := "Virgem ♍ (150°)"
+else if sign_idx == 6  => sign_str := "Libra ♎ (180° Equinócio)"
+else if sign_idx == 7  => sign_str := "Escorpião ♏ (210°)"
+else if sign_idx == 8  => sign_str := "Sagitário ♐ (240°)"
+else if sign_idx == 9  => sign_str := "Capricórnio ♑ (270° Solstício)"
+else if sign_idx == 10 => sign_str := "Aquário ♒ (300°)"
+else                   => sign_str := "Peixes ♓ (330°)"
+
+// =============================================================================
+// 3. ADAPTAÇÃO UNIVERSAL DE ESCALA
+// =============================================================================
+f_calc_scale(p, choice) =>
+    if choice == "x1 (Cripto Alta / Índices / Preço > 20)"
+        1.0
+    else if choice == "x10 (DASH / Médias / Preço 2-20)"
+        10.0
+    else if choice == "x100 (Ações Baixas / Preço 0.2-2)"
+        100.0
+    else if choice == "x1000 (Crypto Centavos)"
+        1000.0
+    else if choice == "x10000 (Forex / Pips)"
+        10000.0
+    else
+        if      p >= 20.0    => 1.0
+        else if p >=  2.0    => 10.0
+        else if p >=  0.2    => 100.0
+        else if p >=  0.02   => 1000.0
+        else if p >=  0.002  => 10000.0
+        else                 => 100000.0
+
+float active_scale = f_calc_scale(close, scale_choice)
+
+// =============================================================================
+// 4. DETECÇÃO DE ÂNCORAS
+// =============================================================================
+var float ref_top = manual_top
+var float ref_bot = manual_bot
+
+if anchor_mode == "Automático (Pivôs Recentes)"
+    float ph = ta.pivothigh(high, pivot_len, pivot_len)
+    float pl = ta.pivotlow(low,  pivot_len, pivot_len)
+    if not na(ph)
+        ref_top := ph
+    if not na(pl)
+        ref_bot := pl
+else
+    ref_top := manual_top
+    ref_bot := manual_bot
+
+ref_top := math.max(ref_top, 0.000001)
+ref_bot := math.max(ref_bot, 0.000001)
+
+// =============================================================================
+// 5. MATEMÁTICA DO QUADRADO DE NOVE
+// Alvo(graus) = ( sqrt(P_ref * scale) ± delta ) ^ 2 / scale
+// delta = graus / 180  (cada 180° = 1 unidade de raiz)
+// =============================================================================
+f_gann(p_ref, deg, is_up, scale) =>
+    if p_ref <= 0.0
+        0.0
+    else
+        float r      = math.sqrt(p_ref * scale)
+        float delta  = deg / 180.0
+        float r_tgt  = is_up ? (r + delta) : (r - delta)
+        r_tgt > 0.0 ? (math.pow(r_tgt, 2) / scale) : 0.0
+
+f_angle(p_curr, p_ref, is_up, scale) =>
+    if p_ref <= 0.0 or p_curr <= 0.0
+        0.0
+    else
+        float r_c = math.sqrt(p_curr * scale)
+        float r_r = math.sqrt(p_ref  * scale)
+        float d   = is_up ? (r_c - r_r) : (r_r - r_c)
+        d * 180.0
+
+// =============================================================================
+// 6. NÍVEIS BASE (0° → 1800°) — A PARTIR DO TOPO
+// =============================================================================
+float p_red_45   = f_gann(ref_top,   45.0, false, active_scale)
+float p_red_90   = f_gann(ref_top,   90.0, false, active_scale)
+float p_red_180  = f_gann(ref_top,  180.0, false, active_scale)
+float p_red_360  = f_gann(ref_top,  360.0, false, active_scale)
+float p_red_720  = f_gann(ref_top,  720.0, false, active_scale)
+float p_red_1080 = f_gann(ref_top, 1080.0, false, active_scale)
+float p_red_1440 = f_gann(ref_top, 1440.0, false, active_scale)
+float p_red_1620 = f_gann(ref_top, 1620.0, false, active_scale)
+float p_red_1800 = f_gann(ref_top, 1800.0, false, active_scale)
+
+float p_exp_90   = f_gann(ref_top,   90.0, true,  active_scale)
+float p_exp_360  = f_gann(ref_top,  360.0, true,  active_scale)
+float p_exp_720  = f_gann(ref_top,  720.0, true,  active_scale)
+
+// =============================================================================
+// 7. ALVOS EXPANSIVOS ACIMA DE 1080° (ESPIRAL SUPERIOR — 4ª A 10ª VOLTA)
+// Fórmula: Alvo = (sqrt(P_topo * scale) + delta)^2 / scale
+// onde delta = voltas * 2  (cada volta completa de 360° = +2 unidades de raiz)
+// =============================================================================
+// Descida (suporte estrutural profundo a partir do topo)
+float p_exp_1080 = f_gann(ref_top, 1080.0, true, active_scale)  // 3 voltas acima
+float p_exp_1440 = f_gann(ref_top, 1440.0, true, active_scale)  // 4 voltas acima
+float p_exp_1800 = f_gann(ref_top, 1800.0, true, active_scale)  // 5 voltas acima
+float p_exp_2160 = f_gann(ref_top, 2160.0, true, active_scale)  // 6 voltas acima
+float p_exp_2520 = f_gann(ref_top, 2520.0, true, active_scale)  // 7 voltas acima
+float p_exp_2880 = f_gann(ref_top, 2880.0, true, active_scale)  // 8 voltas acima
+float p_exp_3240 = f_gann(ref_top, 3240.0, true, active_scale)  // 9 voltas acima
+float p_exp_3600 = f_gann(ref_top, 3600.0, true, active_scale)  // 10 voltas — TETO
+
+// =============================================================================
+// 8. EXTENSÕES DA LEI DE TRÊS (HARMÔNICOS BASE 9)
+// Fórmula: Pivo_Fundo + (Range × N)   onde N = 1.222 / 2.111 / 3.333
+// =============================================================================
+float gann_range    = ref_top - ref_bot
+float p_b9_1222     = ref_bot + gann_range * 1.222
+float p_b9_2111     = ref_bot + gann_range * 2.111
+float p_b9_3333     = ref_bot + gann_range * 3.333
+
+// =============================================================================
+// 9. MÁQUINA DE ESTADOS — ANEL ATIVO E ARO DA ESPIRAL
+// =============================================================================
+float deg_down = f_angle(close, ref_top, false, active_scale)
+float deg_up   = f_angle(close, ref_bot, true,  active_scale)
+
+string ring_state    = "Fronteira Neutra"
+color  ring_color    = color.yellow
+int    active_aro_num = 1
+
+if close > p_exp_90
+    ring_state    := "🟢 Anel Verde (Expansão)"
+    ring_color    := color.green
+    active_aro_num := math.max(1, math.floor(math.abs(deg_down) / 360.0) + 1)
+else if close < p_red_90
+    ring_state    := "🔴 Anel Vermelho (Contração)"
+    ring_color    := color.red
+    active_aro_num := math.max(1, math.floor(deg_down / 360.0) + 1)
+else
+    ring_state    := "🟡 Fronteira de Decisão (90°)"
+    ring_color    := color.yellow
+    active_aro_num := 1
+
+string aro_desc = "Aro " + str.tostring(active_aro_num) + " (" +
+     str.tostring((active_aro_num - 1) * 360) + "° a " +
+     str.tostring(active_aro_num * 360) + "°)"
+if active_aro_num >= 5
+    aro_desc := "Aro " + str.tostring(active_aro_num) + " (1440°-1800°+ Zona Crítica)"
+
+// =============================================================================
+// 10. PRÓXIMO ALVO ANGULAR
+// =============================================================================
+float  next_target_p   = na
+string next_target_lbl = ""
+
+if ring_state == "🔴 Anel Vermelho (Contração)"
+    if      deg_down < 45.0   => next_target_p := p_red_45,   next_target_lbl := "45° Contração"
+    else if deg_down < 90.0   => next_target_p := p_red_90,   next_target_lbl := "90° Rejeição"
+    else if deg_down < 180.0  => next_target_p := p_red_180,  next_target_lbl := "180° Oposição"
+    else if deg_down < 360.0  => next_target_p := p_red_360,  next_target_lbl := "360° (1ª Volta)"
+    else if deg_down < 720.0  => next_target_p := p_red_720,  next_target_lbl := "720° (2ª Volta)"
+    else if deg_down < 1080.0 => next_target_p := p_red_1080, next_target_lbl := "1080° (3ª Volta)"
+    else if deg_down < 1440.0 => next_target_p := p_red_1440, next_target_lbl := "1440° (4ª Volta)"
+    else if deg_down < 1620.0 => next_target_p := p_red_1620, next_target_lbl := "1620° (Crítico)"
+    else if deg_down < 1800.0 => next_target_p := p_red_1800, next_target_lbl := "1800° (Exaustão)"
+    else                      => next_target_p := p_red_1800, next_target_lbl := "Ciclo Completo (>1800°)"
+else if ring_state == "🟢 Anel Verde (Expansão)"
+    float deg_exp = math.abs(deg_down)
+    if      deg_exp < 90.0   => next_target_p := p_exp_90,   next_target_lbl := "+90° Rompimento"
+    else if deg_exp < 360.0  => next_target_p := p_exp_360,  next_target_lbl := "+360° Expansão"
+    else if deg_exp < 720.0  => next_target_p := p_exp_720,  next_target_lbl := "+720° Expansão"
+    else if deg_exp < 1080.0 => next_target_p := p_exp_1080, next_target_lbl := "+1080° (3ª Oitava)"
+    else if deg_exp < 1440.0 => next_target_p := p_exp_1440, next_target_lbl := "+1440° (4ª Oitava)"
+    else if deg_exp < 1800.0 => next_target_p := p_exp_1800, next_target_lbl := "+1800° (5ª Oitava)"
+    else if deg_exp < 2160.0 => next_target_p := p_exp_2160, next_target_lbl := "+2160° (6ª Oitava)"
+    else if deg_exp < 2520.0 => next_target_p := p_exp_2520, next_target_lbl := "+2520° (7ª Oitava)"
+    else if deg_exp < 2880.0 => next_target_p := p_exp_2880, next_target_lbl := "+2880° (8ª Oitava)"
+    else if deg_exp < 3240.0 => next_target_p := p_exp_3240, next_target_lbl := "+3240° (9ª Oitava)"
+    else                     => next_target_p := p_exp_3600, next_target_lbl := "+3600° TETO MÁXIMO"
+else
+    next_target_p   := (close >= ref_top) ? p_exp_90  : p_red_90
+    next_target_lbl := (close >= ref_top) ? "+90° Rompimento" : "-90° Suporte"
+
+float dist_target_pct = (next_target_p > 0 and close > 0) ? ((next_target_p - close) / close) * 100.0 : 0.0
+
+f_fmt(val) =>
+    if na(val) or val == 0.0   => "-"
+    else if val >= 1000.0      => str.tostring(val, "#.##")
+    else if val >= 1.0         => str.tostring(val, "#.###")
+    else if val >= 0.01        => str.tostring(val, "#.####")
+    else                       => str.tostring(val, "#.######")
+
+// =============================================================================
+// 11. PLOTAGEM GRÁFICA DOS NÍVEIS BASE
+// =============================================================================
+bool plot_sub  = show_sub_harm and (display_mode != "Apenas Níveis Chave (90°, 360°, 1440°, 1620°)")
+bool is_dyn    = display_mode == "Aro Ativo + Próximo Aro"
+
+bool plot_aro1 = not is_dyn or (active_aro_num <= 2)
+bool plot_aro2 = not is_dyn or (active_aro_num >= 1 and active_aro_num <= 3)
+bool plot_aro3 = not is_dyn or (active_aro_num >= 2 and active_aro_num <= 4)
+bool plot_aro4 = not is_dyn or (active_aro_num >= 3 and active_aro_num <= 5)
+bool plot_aro5 = not is_dyn or (active_aro_num >= 4)
+
+plot(plot_sub and plot_aro1 ? p_red_45   : na, "Vermelho 45°",             color=color.new(color.maroon,  40), style=plot.style_linebr)
+plot(plot_aro1               ? p_red_90   : na, "GANN 90° (Rejeição Topo)", color=color.new(color.red,      0), linewidth=2, style=plot.style_linebr)
+plot(plot_sub and plot_aro1 ? p_red_180  : na, "Vermelho 180°",            color=color.new(color.maroon,  40), style=plot.style_linebr)
+plot(plot_aro1               ? p_red_360  : na, "GANN 360° (Fim Aro 1)",    color=color.new(color.red,     15), linewidth=1, style=plot.style_linebr)
+plot(plot_aro2               ? p_red_720  : na, "GANN 720° (Fim Aro 2)",    color=color.new(color.red,     15), linewidth=1, style=plot.style_linebr)
+plot(plot_aro3               ? p_red_1080 : na, "GANN 1080° (Fim Aro 3)",   color=color.new(color.red,     15), linewidth=1, style=plot.style_linebr)
+plot(plot_aro4               ? p_red_1440 : na, "GANN 1440° (Suporte)",     color=color.new(color.orange,   0), linewidth=2, style=plot.style_linebr)
+pCrit = plot(plot_aro5       ? p_red_1620 : na, "GANN 1620° (Crítico)",     color=color.new(color.fuchsia,  0), linewidth=3, style=plot.style_linebr)
+pExst = plot(plot_aro5       ? p_red_1800 : na, "GANN 1800° (Exaustão)",    color=color.new(color.purple,  10), linewidth=2, style=plot.style_linebr)
+fill(pCrit, pExst, color=show_crit_fill and plot_aro5 ? color.new(color.fuchsia, 85) : na, title="Zona Crítica 1620°-1800°")
+
+plot(p_exp_90,  "GANN +90° Rompimento",  color=color.new(color.teal,  0), linewidth=2, style=plot.style_linebr)
+plot(p_exp_360, "GANN +360° Expansão",   color=color.new(color.green, 20), linewidth=1, style=plot.style_linebr)
+plot(p_exp_720, "GANN +720° Expansão",   color=color.new(color.green, 35), linewidth=1, style=plot.style_linebr)
+
+// =============================================================================
+// 12. PLOTAGEM DOS ALVOS EXPANSIVOS ACIMA DE 1080° (ESPIRAL SUPERIOR)
+// Cores em gradiente quente: laranja → amarelo → branco (oitavas crescentes)
+// =============================================================================
+plot(show_exp_arcs ? p_exp_1080 : na, "GANN +1080° (3ª Oitava)", color=color.new(#FF6600, 10), linewidth=2, style=plot.style_linebr)
+plot(show_exp_arcs ? p_exp_1440 : na, "GANN +1440° (4ª Oitava)", color=color.new(#FF9900, 10), linewidth=2, style=plot.style_linebr)
+plot(show_exp_arcs ? p_exp_1800 : na, "GANN +1800° (5ª Oitava)", color=color.new(#FFCC00, 10), linewidth=2, style=plot.style_linebr)
+plot(show_exp_arcs ? p_exp_2160 : na, "GANN +2160° (6ª Oitava)", color=color.new(#FFFF00, 10), linewidth=2, style=plot.style_linebr)
+plot(show_exp_arcs ? p_exp_2520 : na, "GANN +2520° (7ª Oitava)", color=color.new(#CCFF00, 10), linewidth=2, style=plot.style_linebr)
+plot(show_exp_arcs ? p_exp_2880 : na, "GANN +2880° (8ª Oitava)", color=color.new(#99FF33, 10), linewidth=2, style=plot.style_linebr)
+plot(show_exp_arcs ? p_exp_3240 : na, "GANN +3240° (9ª Oitava)", color=color.new(#66FF66, 10), linewidth=2, style=plot.style_linebr)
+plot(show_exp_arcs ? p_exp_3600 : na, "GANN +3600° TETO",         color=color.new(#FFFFFF, 0),  linewidth=3, style=plot.style_linebr)
+
+// =============================================================================
+// 13. EXTENSÕES DA LEI DE TRÊS (HARMÔNICOS BASE 9)
+// =============================================================================
+plot(show_base9 ? p_b9_1222 : na, "Base9 +1.222 (122.2%)", color=color.new(color.aqua,   10), linewidth=2, style=plot.style_linebr)
+plot(show_base9 ? p_b9_2111 : na, "Base9 +2.111 (211.1%)", color=color.new(color.lime,   10), linewidth=2, style=plot.style_linebr)
+plot(show_base9 ? p_b9_3333 : na, "Base9 +3.333 (333.3%)", color=color.new(color.white,   0), linewidth=3, style=plot.style_linebr)
+
+// =============================================================================
+// 14. PAINEL HUD COMPLETO (TABLE EM TEMPO REAL)
+// =============================================================================
+position table_pos = position.top_right
+if      hud_position == "Topo Esquerdo"  => table_pos := position.top_left
+else if hud_position == "Fundo Direito"  => table_pos := position.bottom_right
+else if hud_position == "Fundo Esquerdo" => table_pos := position.bottom_left
+
+size table_sz = size.small
+if      hud_size_opt == "Muito Pequeno" => table_sz := size.tiny
+else if hud_size_opt == "Normal"        => table_sz := size.normal
+
+var table hud = table.new(table_pos, 2, 13,
+     bgcolor=color.new(color.black, 15),
+     border_color=color.new(color.gray, 60),
+     border_width=1)
+
+if barstate.islast and show_hud
+    // Header
+    table.cell(hud, 0, 0, "🏛️ GANN SQ9 v4 — ESPIRAL COMPLETA", bgcolor=color.new(color.navy, 10), text_color=color.white, text_size=table_sz)
+    table.cell(hud, 1, 0, "Motor Dinâmico Universal", bgcolor=color.new(color.navy, 10), text_color=color.yellow, text_size=table_sz)
+
+    // Data / Dia Solar
+    string day_txt = str.tostring(cur_d, "00") + "/" + str.tostring(cur_m, "00") + "/" + str.tostring(cur_y)
+    string doy_txt = "Dia " + str.tostring(doy) + " de " + str.tostring(days_in_yr)
+    table.cell(hud, 0, 1, "📅 Data / Dia do Ano",   text_color=color.white, text_size=table_sz)
+    table.cell(hud, 1, 1, day_txt + " (" + doy_txt + ")", text_color=color.white, text_size=table_sz)
+
+    // Grau Solar
+    string sol_txt = str.tostring(solar_deg, "#.#") + "° | " + sign_str + " [" + str.tostring(deg_in_sign, "#.#") + "°]"
+    table.cell(hud, 0, 2, "☀️ Grau Solar do Ano",   text_color=color.white, text_size=table_sz)
+    table.cell(hud, 1, 2, sol_txt,                  text_color=color.aqua,  text_size=table_sz)
+
+    // Anel de Mercado
+    table.cell(hud, 0, 3, "⭕ Anel de Mercado",  text_color=color.white, text_size=table_sz)
+    table.cell(hud, 1, 3, ring_state, bgcolor=color.new(ring_color, 75), text_color=color.white, text_size=table_sz)
+
+    // Aro da Espiral
+    table.cell(hud, 0, 4, "🌀 Aro da Espiral",   text_color=color.white,  text_size=table_sz)
+    table.cell(hud, 1, 4, aro_desc,              text_color=color.yellow, text_size=table_sz)
+
+    // Graus Percorridos
+    string deg_txt = "Queda: " + str.tostring(deg_down, "#.#") + "° | Subida: " + str.tostring(deg_up, "#.#") + "°"
+    table.cell(hud, 0, 5, "📐 Graus Percorridos", text_color=color.white,  text_size=table_sz)
+    table.cell(hud, 1, 5, deg_txt,               text_color=color.orange, text_size=table_sz)
+
+    // Próximo Alvo
+    string tgt_txt = next_target_lbl + " → " + f_fmt(next_target_p) + " (" + (dist_target_pct >= 0 ? "+" : "") + str.tostring(dist_target_pct, "#.##") + "%)"
+    table.cell(hud, 0, 6, "🎯 Próximo Alvo Angular", text_color=color.white, text_size=table_sz)
+    table.cell(hud, 1, 6, tgt_txt, bgcolor=color.new(color.maroon, 70), text_color=color.fuchsia, text_size=table_sz)
+
+    // Âncoras
+    string anc_txt = "Topo: " + f_fmt(ref_top) + "  |  Fundo: " + f_fmt(ref_bot) + "  |  Range: " + f_fmt(gann_range)
+    table.cell(hud, 0, 7, "⚓ Âncoras & Range",    text_color=color.white,  text_size=table_sz)
+    table.cell(hud, 1, 7, anc_txt,                text_color=color.silver, text_size=table_sz)
+
+    // Escalas Base9
+    string b9_txt = "+1.222 → " + f_fmt(p_b9_1222) + "  |  +2.111 → " + f_fmt(p_b9_2111) + "  |  +3.333 → " + f_fmt(p_b9_3333)
+    table.cell(hud, 0, 8, "🔢 Extensões Base 9",   text_color=color.white, text_size=table_sz)
+    table.cell(hud, 1, 8, b9_txt, bgcolor=color.new(color.teal, 80), text_color=color.aqua, text_size=table_sz)
+
+    // Espiral Superior (>1080°)
+    table.cell(hud, 0, 9, "🚀 Espiral >1080° (Oitavas)", text_color=color.white, text_size=table_sz)
+    string oitavas = "3ª:" + f_fmt(p_exp_1080) + "  4ª:" + f_fmt(p_exp_1440) + "  5ª:" + f_fmt(p_exp_1800)
+    table.cell(hud, 1, 9, oitavas, bgcolor=color.new(#FF6600, 80), text_color=color.white, text_size=table_sz)
+
+    table.cell(hud, 0, 10, "🌌 Oitavas Superiores", text_color=color.white, text_size=table_sz)
+    string sup = "6ª:" + f_fmt(p_exp_2160) + "  7ª:" + f_fmt(p_exp_2520) + "  8ª:" + f_fmt(p_exp_2880)
+    table.cell(hud, 1, 10, sup, bgcolor=color.new(#FFCC00, 80), text_color=color.black, text_size=table_sz)
+
+    table.cell(hud, 0, 11, "🏔️ 9ª / TETO (3600°)",  text_color=color.white, text_size=table_sz)
+    string teto = "9ª:" + f_fmt(p_exp_3240) + "  TETO:" + f_fmt(p_exp_3600)
+    table.cell(hud, 1, 11, teto, bgcolor=color.new(color.white, 70), text_color=color.black, text_size=table_sz)
+
+    // Normalização
+    string sc_info = (scale_choice == "Automático (Auto-Detectar)" ? "Auto (x" + str.tostring(active_scale, "#.######") + ")" : scale_choice)
+    table.cell(hud, 0, 12, "⚙️ Normalização Escala", text_color=color.white, text_size=table_sz)
+    table.cell(hud, 1, 12, sc_info,                  text_color=color.teal,  text_size=table_sz)
+
+// =============================================================================
+// 15. ALERTAS TÉCNICOS INTEGRADOS
+// =============================================================================
+alertcondition(ta.crossunder(close, p_red_90),  title="Perda 90° → Anel Vermelho",        message="Gann: Perda do suporte 90°. Anel Vermelho ativo.")
+alertcondition(ta.crossover(close,  p_exp_90),  title="Rompimento +90° → Anel Verde",     message="Gann: Rompimento +90° confirmado. Anel Verde ativo.")
+alertcondition(ta.cross(close, p_red_1620),     title="Toque Alvo Crítico 1620°",          message="Gann: Preço atingiu 1620° (4.5 voltas na espiral).")
+alertcondition(ta.cross(close, p_red_1800),     title="Zona de Exaustão 1800°",            message="Gann: Preço atingiu a Exaustão de 1800° (5 voltas).")
+alertcondition(ta.cross(close, p_exp_1440),     title="Oitava +1440° (4ª Volta Acima)",   message="Gann Expansivo: Preço atingiu a 4ª oitava acima do Topo.")
+alertcondition(ta.cross(close, p_exp_3600),     title="TETO MÁXIMO +3600°",                message="Gann: Preço atingiu o Teto Máximo de 10 voltas (3600°).")
+alertcondition(ta.cross(close, p_b9_1222),      title="Extensão Base9 +1.222 (122.2%)",   message="Gann Base9: Preço atingiu a extensão harmônica de 1.222.")
+alertcondition(ta.cross(close, p_b9_3333),      title="Extensão Base9 +3.333 (333.3%)",   message="Gann Base9: Preço atingiu o teto harmônico de 3.333.")

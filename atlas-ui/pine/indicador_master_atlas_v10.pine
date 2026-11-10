@@ -1,0 +1,90 @@
+//@version=6
+indicator("Indicador Master: Atlas v10 + Ribbon + Bubbles", overlay=true, max_labels_count=500, max_lines_count=500, max_boxes_count=500)
+
+// ====================================================================================================================
+// 1. BUBBLES INPUTS
+// ====================================================================================================================
+grpBubbles   = "Big Notional Bubbles"
+lowerTfInput = input.timeframe("", "Lower TF (Empty = Auto Scale)", group=grpBubbles)
+
+simple int chartSec = timeframe.in_seconds(timeframe.period)
+simple string autoTf = chartSec >= 86400 ? "60" : chartSec >= 3600 ? "5" : "1"
+simple string lowerTf = lowerTfInput == "" ? autoTf : lowerTfInput
+
+minNotional = input.float(500, "Min notional to show (USD/USDT)", step=100, group=grpBubbles)
+maxPerBar   = input.int(1, "Max bubbles per bar", minval=1, maxval=25, group=grpBubbles)
+bubblePos   = input.string("Wick Extreme", "Bubble Position", options=["Wick Extreme", "Body Close", "High/Low Offset", "Center of Bar"], group=grpBubbles)
+showText    = input.bool(true, "Show notional text", group=grpBubbles)
+textSizeOpt = input.string("Normal", "Text Size", options=["Auto", "Tiny", "Small", "Normal", "Large", "Huge"], group=grpBubbles)
+textDecoup  = input.bool(true, "Separate Text (Prevents blocking)", group=grpBubbles)
+bubbleTrans = input.int(40, "Bubble Transparency (0-100)", group=grpBubbles)
+debug       = input.bool(true, "Debug label", group=grpBubbles)
+
+t1 = input.float( 25000, "Tier 1", step=1000, group=grpBubbles)
+t2 = input.float( 50000, "Tier 2", step=1000, group=grpBubbles)
+t3 = input.float(100000, "Tier 3", step=1000, group=grpBubbles)
+t4 = input.float(250000, "Tier 4", step=1000, group=grpBubbles)
+
+// ====================================================================================================================
+// 2. RIBBON & BACKTEST INPUTS
+// ====================================================================================================================
+grpRibbonSource = "Ribbon Settings"
+sourceMode      = input.string("Predefined Crosses", "Source Mode", options = ["Predefined Crosses", "External Sources (Crossovers)", "External Signals (Triggers)"], group = grpRibbonSource)
+predefCross     = input.string("9/21 EMA Cross", "Predefined Cross", options = ["9/21 EMA Cross", "12/26 EMA Cross", "Golden/Death Cross (50/200 SMA)"], tooltip = "Used if Source Mode is Predefined Crosses.", group = grpRibbonSource)
+fastSource      = input.source(close, "External Fast Source", tooltip = "Only used if Source Mode is External Sources (Crossovers).", group = grpRibbonSource)
+slowSource      = input.source(open,  "External Slow Source", tooltip = "Only used if Source Mode is External Sources (Crossovers).", group = grpRibbonSource)
+extLongSignal   = input.source(close, "External Long Signal", tooltip = "Only used if Source Mode is External Signals (Triggers).", group = grpRibbonSource)
+extShortSignal  = input.source(close, "External Short Signal", tooltip = "Only used if Source Mode is External Signals (Triggers).", group = grpRibbonSource)
+signalLogic     = input.string("Not NA (Plotshape/Markers)", "External Signal Logic", options = ["Not NA (Plotshape/Markers)", "Crosses Over 0", "Crosses Under 0", "Value Changes", "Greater Than 0", "Less Than 0"], tooltip = "How should the script interpret the external signal?", group = grpRibbonSource)
+
+tradeDirection  = input.string("Both", "Trade Direction", options = ["Both", "Long Only", "Short Only"], group="Ribbon Filters")
+useAtrFilter    = input.bool(false, "Use ATR Choppiness Filter", group = "Ribbon Filters", tooltip = "Ignores signals when volatility (ATR) is below its average, helping to avoid choppy clustering.")
+atrFilterLen    = input.int(50, "ATR Smoothing Length", group = "Ribbon Filters")
+distType        = input.string("ATR", "Distance Type", options = ["ATR", "Ticks", "Points/Fiat"], group = "Ribbon Targets")
+atrLen          = input.int(14, "ATR Length", tooltip = "Only used if Distance Type is ATR", group = "Ribbon Targets")
+
+useTp1          = input.bool(true, "Take Profit 1", inline="tp1", group = "Ribbon TP")
+tp1Val          = input.float(1.0, "", inline="tp1", group = "Ribbon TP", step=0.5)
+useTp2          = input.bool(true, "Take Profit 2", inline="tp2", group = "Ribbon TP")
+tp2Val          = input.float(2.0, "", inline="tp2", group = "Ribbon TP", step=0.5)
+useTp3          = input.bool(true, "Take Profit 3", inline="tp3", group = "Ribbon TP")
+tp3Val          = input.float(3.0, "", inline="tp3", group = "Ribbon TP", step=0.5)
+
+useSl1          = input.bool(true, "Stop Loss 1", inline="sl1", group = "Ribbon SL")
+sl1Val          = input.float(1.5, "", inline="sl1", group = "Ribbon SL", step=0.5)
+useSl2          = input.bool(true, "Stop Loss 2", inline="sl2", group = "Ribbon SL")
+sl2Val          = input.float(2.5, "", inline="sl2", group = "Ribbon SL", step=0.5)
+useSl3          = input.bool(true, "Stop Loss 3", inline="sl3", group = "Ribbon SL")
+sl3Val          = input.float(3.5, "", inline="sl3", group = "Ribbon SL", step=0.5)
+
+useCandleColor  = input.bool(true, "Gradient Candle Coloring", group = "Ribbon Visuals")
+suggestMetric   = input.string("Hit Rate", "Suggested TP Metric", options = ["Hit Rate", "Expected Profit", "Total Profit", "Risk/Reward"], group = "Ribbon Dashboard")
+useCosts        = input.bool(false, "Simulate Spread & Commission", group = "Ribbon Costs")
+costProfile     = input.string("Manual", "Cost Profile", options = ["Manual", "Forex (Avg)", "Crypto (Tier 1)", "Stocks (US)"], group = "Ribbon Costs")
+manualSpread    = input.float(1.0, "Manual Spread (Ticks)", group = "Ribbon Costs")
+manualComm      = input.float(0.01, "Manual Commission (%)", group = "Ribbon Costs")
+
+// ====================================================================================================================
+// 3. ATLAS INPUTS (PIVÔS E FIBONACCI)
+// ====================================================================================================================
+i_swingLen   = input.int(21,    "Lookback Swing",         group="Atlas Fibonacci", minval=5,   maxval=100)
+i_sqzThr     = input.float(0.5, "Squeeze %",              group="Atlas Sinais",    minval=0.1, maxval=2.0,  step=0.1)
+i_flatThr    = input.float(0.04,"Flat EMA %",             group="Atlas Sinais",    minval=0.01,maxval=0.5,  step=0.01)
+i_atlasCd    = input.int(10,    "Cooldown ATLAS (barras)",group="Atlas Sinais",    minval=3,   maxval=50)
+i_goldCd     = input.int(15,    "Cooldown GOLD (barras)", group="Atlas Sinais",    minval=3,   maxval=100)
+
+// PIVOTS E FIBONACCI ESTRUTURAIS
+ph = ta.pivothigh(high, i_swingLen, i_swingLen)
+pl = ta.pivotlow(low,  i_swingLen, i_swingLen)
+
+var float pH1  = na
+var int   pH1B = na
+var float pL1  = na
+var int   pL1B = na
+
+if not na(ph)
+    pH1  := ph
+    pH1B := bar_index[i_swingLen]
+if not na(pl)
+    pL1  := pl
+    pL1B := bar_index[i_swingLen]

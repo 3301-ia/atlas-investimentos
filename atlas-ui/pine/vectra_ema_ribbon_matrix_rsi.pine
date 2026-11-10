@@ -1,0 +1,109 @@
+//@version=6
+indicator("Vectra 8-EMA Ribbon + Matrix RSI CVD [Atlas v6]", overlay=true, max_labels_count=500)
+
+// =============================================================================
+// 1. SELEÇÃO DE TIMEFRAME AUTO-ADAPTATIVO INTELIGENTE
+// =============================================================================
+bool is_micro = timeframe.isminutes and timeframe.multiplier <= 15
+bool is_daily = timeframe.isdaily or (timeframe.isminutes and timeframe.multiplier > 15)
+
+string tf_t1 = timeframe.period
+string tf_t2 = is_micro ? "15" : is_daily ? "240" : "3M"
+string tf_t3 = is_micro ? "60" : is_daily ? "D"   : "6M"
+string tf_t4 = is_micro ? "D"  : is_daily ? "W"   : "12M"
+
+// =============================================================================
+// 2. EXTRAÇÃO DAS 8 EMAS COM CÁLCULO FLUIDO EM TEMPO REAL
+// =============================================================================
+f_ema_live(string tf, int len) =>
+    request.security(syminfo.tickerid, tf, ta.ema(close, len), barmerge.gaps_off, barmerge.lookahead_off)
+
+// Nível 1 (Local)
+float e8_t1  = ta.ema(close, 8)
+float e16_t1 = ta.ema(close, 16)
+
+// Nível 2 (Intermediário)
+float e8_t2  = f_ema_live(tf_t2, 8)
+float e16_t2 = f_ema_live(tf_t2, 16)
+
+// Nível 3 (Macro)
+float e8_t3  = f_ema_live(tf_t3, 8)
+float e16_t3 = f_ema_live(tf_t3, 16)
+
+// Nível 4 (Secular)
+float e8_t4  = f_ema_live(tf_t4, 8)
+float e16_t4 = f_ema_live(tf_t4, 16)
+
+// =============================================================================
+// 3. PLOTAGEM DA FITA DE EMAS NO GRÁFICO PRINCIPAL
+// =============================================================================
+plot(e8_t1,  "Local EMA 8",   color=#00E5FF, linewidth=1)
+plot(e16_t1, "Local EMA 16",  color=#AB47BC, linewidth=1)
+
+plot(e8_t2,  "Intermediária EMA 8",  color=#00E676, linewidth=2)
+plot(e16_t2, "Intermediária EMA 16", color=#FF9100, linewidth=2)
+
+plot(e8_t3,  "Macro EMA 8",   color=#2979FF, linewidth=2)
+plot(e16_t3, "Macro EMA 16",  color=#E91E63, linewidth=2)
+
+plot(e8_t4,  "Secular EMA 8", color=#FFEB3B, linewidth=3)
+plot(e16_t4, "Secular EMA 16", color=#FF1744, linewidth=3)
+
+// Preenchimento da Fita
+color fill_col = e8_t1 > e8_t4 ? color.new(#00E676, 92) : color.new(#FF1744, 92)
+plot_micro = plot(e8_t1, display=display.none)
+plot_daily = plot(e8_t4, display=display.none)
+fill(plot_micro, plot_daily, color=fill_col, title="Fita de Expansão Local vs Secular")
+
+// =============================================================================
+// 4. MOTOR MATRIX RSI + ADAPTATIVE CVD CLUSTER (AJUSTADO PARA DERIV)
+// =============================================================================
+int len_rsi          = input.int(14,   "Comprimento RSI Base",          group="Contra-Indicador Matrix RSI")
+int smooth_k         = input.int(3,    "Suavização Sintética",           group="Contra-Indicador Matrix RSI")
+float rsi_overbought = input.float(70.0, "Nível Sobrecompra (Ativação Halo)", group="Contra-Indicador Matrix RSI")
+float rsi_oversold   = input.float(30.0, "Nível Sobrevenda (Ativação Halo)",  group="Contra-Indicador Matrix RSI")
+
+float rsi_local = ta.rsi(close, len_rsi)
+float rsi_mid   = request.security(syminfo.tickerid, "60", ta.rsi(close, len_rsi), barmerge.gaps_off, barmerge.lookahead_off)
+float rsi_macro = request.security(syminfo.tickerid, "D",  ta.rsi(close, len_rsi), barmerge.gaps_off, barmerge.lookahead_off)
+
+float matrix_rsi = ta.sma((rsi_local * 0.5) + (rsi_mid * 0.3) + (rsi_macro * 0.2), smooth_k)
+
+// Volume / Volatilidade Delta Sólida (Suporta Feeds sem Volume da Deriv)
+float eff_volume = volume > 0 ? volume : ta.tr
+float vol_delta  = ((close - low) - (high - close)) / (high - low == 0 ? 1 : high - low) * eff_volume
+float vol_mean   = ta.sma(vol_delta, 20)
+float vol_std    = ta.stdev(vol_delta, 20)
+
+// Gatilhos de Halos / Clusters ajustados
+bool cvd_buy_cluster  = (vol_delta > vol_mean + 1.2 * vol_std) and (matrix_rsi <= rsi_oversold)
+bool cvd_sell_cluster = (vol_delta < vol_mean - 1.2 * vol_std) and (matrix_rsi >= rsi_overbought)
+
+// Plotagem dos Clusters Neon em Destaque nas Velas
+plotshape(cvd_sell_cluster, title="Absorção Topo (CVD)", style=shape.circle, location=location.abovebar, color=#FF007F, size=size.normal)
+plotshape(cvd_buy_cluster,  title="Absorção Fundo (CVD)", style=shape.circle, location=location.belowbar, color=#00E676, size=size.normal)
+
+// =============================================================================
+// 5. PAINEL HUD COMPLETO
+// =============================================================================
+var table hud = table.new(position.top_right, 5, 3, bgcolor=#0D1117, border_color=#21262D, border_width=1)
+
+f_status(float e8, float e16) => e8 > e16 ? "BULL" : "BEAR"
+f_color(float e8, float e16)  => e8 > e16 ? #00E676 : #FF1744
+
+if barstate.islast
+    table.cell(hud, 0, 0, "HIERARQUIA", bgcolor=#161B22, text_color=#8B949E, text_size=size.tiny)
+    table.cell(hud, 1, 0, tf_t1,        bgcolor=#161B22, text_color=#8B949E, text_size=size.tiny)
+    table.cell(hud, 2, 0, tf_t2,        bgcolor=#161B22, text_color=#8B949E, text_size=size.tiny)
+    table.cell(hud, 3, 0, tf_t3,        bgcolor=#161B22, text_color=#8B949E, text_size=size.tiny)
+    table.cell(hud, 4, 0, tf_t4,        bgcolor=#161B22, text_color=#8B949E, text_size=size.tiny)
+
+    table.cell(hud, 0, 1, "STATUS 8/16", bgcolor=#0D1117, text_color=#FFFFFF, text_size=size.tiny)
+    table.cell(hud, 1, 1, f_status(e8_t1, e16_t1), bgcolor=#0D1117, text_color=f_color(e8_t1, e16_t1), text_size=size.tiny)
+    table.cell(hud, 2, 1, f_status(e8_t2, e16_t2), bgcolor=#0D1117, text_color=f_color(e8_t2, e16_t2), text_size=size.tiny)
+    table.cell(hud, 3, 1, f_status(e8_t3, e16_t3), bgcolor=#0D1117, text_color=f_color(e8_t3, e16_t3), text_size=size.tiny)
+    table.cell(hud, 4, 1, f_status(e8_t4, e16_t4), bgcolor=#0D1117, text_color=f_color(e8_t4, e16_t4), text_size=size.tiny)
+
+    table.cell(hud, 0, 2, "MATRIX RSI", bgcolor=#0D1117, text_color=#FFFFFF, text_size=size.tiny)
+    table.cell(hud, 1, 2, str.tostring(matrix_rsi, "#.0"), bgcolor=#0D1117, text_color=(matrix_rsi > 50 ? #00E676 : #FF1744), text_size=size.tiny)
+    table.cell(hud, 2, 2, matrix_rsi >= rsi_overbought ? "EXAUSTÃO" : matrix_rsi <= rsi_oversold ? "ABSORÇÃO" : "NEUTRO", bgcolor=#0D1117, text_color=#FFEB3B, text_size=size.tiny)

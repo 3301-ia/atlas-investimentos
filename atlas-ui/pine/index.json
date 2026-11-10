@@ -1,0 +1,143 @@
+{
+ "versao": "1.0.0",
+ "gerado": "2026-11-10",
+ "indicadores": [
+  {
+   "id": "indicador_master_atlas_v10",
+   "nome": "Indicador Master Atlas v10",
+   "arquivo": "pine/indicador_master_atlas_v10.pine",
+   "descricao": "Motor de sinais do painel: ATLAS, GOLD e Fibonacci, com bolhas de entrada.",
+   "sha256": "35a40afc2272b247f47a11bc279f04a72ab0356a823b4665892b64b62b3f8c24",
+   "linhas": 90,
+   "bytes": 6966
+  },
+  {
+   "id": "vectra_dynamic_indicator",
+   "nome": "Vectra Dynamic",
+   "arquivo": "pine/vectra_dynamic_indicator.pine",
+   "descricao": "Nucleo do indicador dinamico: KAMA como trailing e leitura de forca.",
+   "sha256": "37c3bae56dcbdb6a46bf25872c150c81a4d495fa94d66ce875f2629bb90dd5df",
+   "linhas": 161,
+   "bytes": 7275
+  },
+  {
+   "id": "vectra_dynamic_stepped_trailing",
+   "nome": "Vectra Dynamic Stepped Trailing",
+   "arquivo": "pine/vectra_dynamic_stepped_trailing.pine",
+   "descricao": "Trailing stop em degraus: o stop so anda quando o preco confirma o passo.",
+   "sha256": "4abccbbaba730bb5d91f42505548903d93e8fb5273679e92f4abd04f21010bf2",
+   "linhas": 151,
+   "bytes": 6867
+  },
+  {
+   "id": "vectra_mtf_ribbon_matrix_institutional",
+   "nome": "Vectra MTF Ribbon Matrix",
+   "arquivo": "pine/vectra_mtf_ribbon_matrix_institutional.pine",
+   "descricao": "Matriz multi-tempo institucional: EMAs por resolucao e forca agregada.",
+   "sha256": "d2338f4dcd5ad5cd2bb1c4cba47d3c4c682894b18136fff38ea3d34c97ab2b79",
+   "linhas": 88,
+   "bytes": 4971
+  },
+  {
+   "id": "vectra_ema_ribbon_matrix_rsi",
+   "nome": "Vectra EMA Ribbon Matrix + RSI",
+   "arquivo": "pine/vectra_ema_ribbon_matrix_rsi.pine",
+   "descricao": "Fita de EMAs com RSI e selecao automatica de tempo grafico.",
+   "sha256": "1a2b9ec727a395bdf0f596c4a3aa27b52298410799c2de37485d1791a9707671",
+   "linhas": 109,
+   "bytes": 6338
+  },
+  {
+   "id": "gann_square_of_nine",
+   "nome": "Gann Square of Nine",
+   "arquivo": "pine/gann_square_of_nine.pine",
+   "descricao": "Quadro de nove de Gann: graus, ciclos e niveis de preco.",
+   "sha256": "a731787bd5b1e7d8a837ffa8ec20625bb56cf50f953140f174fcaeb35c03e444",
+   "linhas": 411,
+   "bytes": 25472
+  }
+ ],
+ "nucleo": [
+  {
+   "id": "trailing",
+   "nome": "Trailing Stop (Chandelier)",
+   "arquivo": "core/trailing.js",
+   "descricao": "Stop a k ATR do extremo, com catraca e virada de lado.",
+   "sha256": "3cd65b8e1f8e748ba7e9dd95431b423efea1cb99ae3048e739ca4f6d77a2f680",
+   "linhas": 121,
+   "bytes": 3616
+  },
+  {
+   "id": "fibonacci",
+   "nome": "Fibonacci",
+   "arquivo": "core/fibonacci.js",
+   "descricao": "Ancora no cruzamento EMA 8/16 e alvos por extensao do swing.",
+   "sha256": "3381858e5ef0324e6d56d1c37421d1bc8f178a501d9ee0a58a12645c53f471d4",
+   "linhas": 122,
+   "bytes": 3940
+  },
+  {
+   "id": "dynamic",
+   "nome": "Vectra Dynamic",
+   "arquivo": "core/dynamic.js",
+   "descricao": "Nucleo do dinamico sem tela: medias, forca e estado.",
+   "sha256": "13e82d641a8211f250e1d788626f3e4a91d8676e5f7d0a3be727bc5b103c989b",
+   "linhas": 132,
+   "bytes": 4404
+  },
+  {
+   "id": "gann",
+   "nome": "Gann",
+   "arquivo": "core/gann.js",
+   "descricao": "Graus e niveis do quadro de nove sobre a serie.",
+   "sha256": "710ced481caea7631f8d08276c8abf36f4c9f34b88f85acb8bec28492e3df44f",
+   "linhas": 85,
+   "bytes": 3453
+  },
+  {
+   "id": "alertas",
+   "nome": "Central de Alertas",
+   "arquivo": "core/alertas.js",
+   "descricao": "Regras de cruzamento, Fibonacci e preco fixo, com assinatura.",
+   "sha256": "6946dcdd8d56fdda316171a5c56653c336009ac4c19c2768566260e8cbaacab2",
+   "linhas": 234,
+   "bytes": 8419
+  },
+  {
+   "id": "rules",
+   "nome": "Regras",
+   "arquivo": "core/rules.js",
+   "descricao": "Regras de entrada e invalidacao em nucleo puro.",
+   "sha256": "2475e4e5d9b6bbfde1e0c999f08efa96e474c10adce2caac6598951e56bd1a06",
+   "linhas": 61,
+   "bytes": 2539
+  },
+  {
+   "id": "indicators",
+   "nome": "Indicadores base",
+   "arquivo": "core/indicators.js",
+   "descricao": "EMAs, ATR e utilitarios de serie.",
+   "sha256": "4865087563216910637b402caf5b77244bc4b2f6672632559583984c5d247d74",
+   "linhas": 112,
+   "bytes": 4095
+  },
+  {
+   "id": "signature",
+   "nome": "Assinatura",
+   "arquivo": "core/signature.js",
+   "descricao": "Serializacao canonica e SHA-256 do sinal.",
+   "sha256": "2d07b31363fc0c88a7a49372d545c2a87fae9635119f735c9e7319a76d9cdc6d",
+   "linhas": 38,
+   "bytes": 1458
+  },
+  {
+   "id": "padroes",
+   "nome": "Padroes",
+   "arquivo": "core/padroes.js",
+   "descricao": "Leitura de figuras e fundo duplo.",
+   "sha256": "f0ab35e1fb8bddc92f03879e500e793cb120ef670f753578d2135276569e07b4",
+   "linhas": 202,
+   "bytes": 8992
+  }
+ ]
+}
