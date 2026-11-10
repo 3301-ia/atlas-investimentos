@@ -365,6 +365,7 @@ function desenhar(){
   }
 
   // cruzamentos EMA 9 x EMA 18
+  window.__cruzes=0;
   try{
     const fech=velas.map(v=>v.c), e9=ema(fech,9), e18=ema(fech,18);
     let cruzes=0;
@@ -382,7 +383,7 @@ function desenhar(){
       ctx.closePath(); ctx.fill();
     }
     window.__cruzes=cruzes;
-  }catch(e){}
+  }catch(e){ window.__cruzesErro=String(e).slice(0,120); }
 
   // horario das velas
   ctx.fillStyle='#6E7A8C'; ctx.font='10px ui-monospace,monospace';
