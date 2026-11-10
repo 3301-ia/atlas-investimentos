@@ -385,7 +385,7 @@
     <div class="side-nav-top">
       <div class="nav-item active" title="Inicio"><span class="nav-icon">🏠</span><span class="nav-lbl">Inicio</span></div>
       <div class="nav-item" id="nav-analise" title="Analise" onclick="switchRTab('analise')"><span class="nav-icon">📊</span><span class="nav-lbl">Analise</span></div>
-      <div class="nav-item" id="nav-alerts" title="Alertas" onclick="toggleAlerts()"><span class="nav-icon">🔔</span><span class="nav-lbl">Alertas</span></div>
+      <div class="nav-item" id="nav-alerts" title="Central de Alertas: medias, Fibonacci e preco" onclick="(window.atlasAbrirAlertas||toggleAlerts)()"><span class="nav-icon">🔔</span><span class="nav-lbl">Alertas</span></div>
       <div class="nav-item" title="Ajuda" onclick="alert('ATLAS Dashboard: chart em tempo real + motor de sinais (ATLAS/GOLD/Fibonacci) + ferramentas de desenho. Aba OPERAR prepara a ordem para a Deriv.')"><span class="nav-icon">❓</span><span class="nav-lbl">Ajuda</span></div>
       <div class="nav-item" title="Idioma"><span class="nav-icon">🌐</span><span class="nav-lbl">PT-BR</span></div>
     </div>
@@ -1859,6 +1859,7 @@
 <script defer src="./main.js?v=101_crisp_filtered_entries"></script>
 <script defer src="./ponte_antigravity.js?v=101_crisp_filtered_entries"></script>
 <script src="ui-extras.js" defer></script>
+<script src="alerta-central.js?v=1" defer></script>
 </body>
 
 </html>
