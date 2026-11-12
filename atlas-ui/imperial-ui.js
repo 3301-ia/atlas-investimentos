@@ -13,14 +13,16 @@
   var corpo = null;
   var core = null;
   var series = { st: null, a70: null, a50: null, a30: null };
+  var nuvemPrim = null;
   var ligado = false;
   var visivel = true;
   var ultimo = null;
   var ultimaContagem = -1;
   var timer = null;
 
-  var VERDE = '#00E676', VERMELHO = '#FF1744';
-  var ROSA = 'rgba(255,0,127,0.55)', CINZA = 'rgba(139,148,158,0.45)', CIANO = 'rgba(0,229,255,0.55)';
+  var VERDE = '#2ECC8F', VERMELHO = '#E2564D';
+  var NUVEM_ALTA = 'rgba(46,204,143,0.11)', NUVEM_BAIXA = 'rgba(226,86,77,0.11)';
+  var ROSA = 'rgba(217,180,91,0.65)', CINZA = 'rgba(139,148,158,0.35)', CIANO = 'rgba(90,180,205,0.55)';
 
   function texto(v, casas) {
     if (v == null || !isFinite(v)) return '--';
@@ -54,6 +56,63 @@
     return null;
   }
 
+
+  // Nuvem do SuperTrend: o Pine faz fill(p_st, p_cl), ou seja, pinta a zona
+  // entre a linha do trailing e o preco. O lightweight-charts nao tem fill
+  // entre duas series, entao a area e desenhada por uma primitiva propria,
+  // presa a serie do SuperTrend: ela recebe as coordenadas ja calculadas do
+  // grafico, entao acompanha zoom, arrasto e troca de tempo sem recalcular.
+  function Nuvem() {
+    this._dados = [];
+    this._serie = null;
+    this._grafico = null;
+    this._pedirDesenho = null;
+  }
+  Nuvem.prototype.attached = function (p) {
+    this._serie = p.series; this._grafico = p.chart; this._pedirDesenho = p.requestUpdate;
+  };
+  Nuvem.prototype.detached = function () { this._serie = null; this._grafico = null; };
+  Nuvem.prototype.updateAllViews = function () {};
+  Nuvem.prototype.paneViews = function () {
+    var eu = this;
+    // o lightweight-charts chama view.renderer() como funcao e espera um
+    // objeto com draw(); declarar renderer como objeto derrubava o quadro.
+    return [{ renderer: function () { return { draw: function (alvo) { eu._pintar(alvo); } }; } }];
+  };
+  Nuvem.prototype.setDados = function (d) {
+    this._dados = d || [];
+    if (this._pedirDesenho) { try { this._pedirDesenho(); } catch (e) {} }
+  };
+  Nuvem.prototype._pintar = function (alvo) {
+    var eu = this;
+    if (!this._serie || !this._grafico || !this._dados.length) return;
+    if (!alvo || !alvo.useMediaCoordinateSpace) return;
+    alvo.useMediaCoordinateSpace(function (escopo) {
+      var ctx = escopo.context, escala = eu._grafico.timeScale(), serie = eu._serie;
+      var trechos = [], atual = null;
+      for (var i = 0; i < eu._dados.length; i++) {
+        var d = eu._dados[i];
+        var x = escala.timeToCoordinate(d.time);
+        if (x == null) { atual = null; continue; }
+        var ySt = serie.priceToCoordinate(d.st), yPreco = serie.priceToCoordinate(d.c);
+        if (ySt == null || yPreco == null) { atual = null; continue; }
+        if (!atual || atual.dir !== d.dir) { atual = { dir: d.dir, pts: [] }; trechos.push(atual); }
+        atual.pts.push({ x: x, ys: ySt, yc: yPreco });
+      }
+      for (var t = 0; t < trechos.length; t++) {
+        var pts = trechos[t].pts;
+        if (pts.length < 2) continue;
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].ys);
+        for (var k = 1; k < pts.length; k++) ctx.lineTo(pts[k].x, pts[k].ys);
+        for (var j = pts.length - 1; j >= 0; j--) ctx.lineTo(pts[j].x, pts[j].yc);
+        ctx.closePath();
+        ctx.fillStyle = trechos[t].dir === 1 ? NUVEM_ALTA : NUVEM_BAIXA;
+        ctx.fill();
+      }
+    });
+  };
+
   function criarSeries() {
     var g = grafico();
     if (!g) return null;
@@ -64,15 +123,22 @@
         priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, title: titulo
       });
     }
-    series.st = linha(VERDE, 3, 0, 'ST');
-    series.a70 = linha(ROSA, 1, 0, 'RSI70');
-    series.a50 = linha(CINZA, 1, 2, 'RSI50');
-    series.a30 = linha(CIANO, 1, 0, 'RSI30');
+    series.st = linha(VERDE, 2, 0, 'ST');
+    series.a70 = linha(ROSA, 1, 2, 'RSI70');
+    series.a50 = linha(CINZA, 1, 3, 'RSI50');
+    series.a30 = linha(CIANO, 1, 2, 'RSI30');
+    if (series.st && typeof series.st.attachPrimitive === 'function') {
+      try {
+        nuvemPrim = new Nuvem();
+        series.st.attachPrimitive(nuvemPrim);
+      } catch (e) { nuvemPrim = null; }
+    }
     return series;
   }
 
   function apagarSeries() {
     var g = grafico();
+    if (nuvemPrim) { try { if (series.st && series.st.detachPrimitive) series.st.detachPrimitive(nuvemPrim); } catch (e) {} nuvemPrim = null; }
     if (!g || !g.removeSeries) return;
     Object.keys(series).forEach(function (k) {
       if (series[k]) { try { g.removeSeries(series[k]); } catch (e) {} series[k] = null; }
@@ -83,17 +149,21 @@
     if (!ligado || !visivel) return;
     var s = criarSeries();
     if (!s) return;
-    var st = [], a70 = [], a50 = [], a30 = [];
+    var st = [], a70 = [], a50 = [], a30 = [], nuvem = [];
     var sr = r.series;
     for (var i = 0; i < vs.length; i++) {
       var t = vs[i].time;
-      if (sr.linha[i] != null) st.push({ time: t, value: sr.linha[i], color: sr.dir[i] === 1 ? VERDE : VERMELHO });
+      if (sr.linha[i] != null) {
+        st.push({ time: t, value: sr.linha[i], color: sr.dir[i] === 1 ? VERDE : VERMELHO });
+        nuvem.push({ time: t, st: sr.linha[i], c: vs[i].c, dir: sr.dir[i] });
+      }
       if (sr.alvoTopo[i] != null) a70.push({ time: t, value: sr.alvoTopo[i] });
       if (sr.alvoMeio[i] != null) a50.push({ time: t, value: sr.alvoMeio[i] });
       if (sr.alvoFundo[i] != null) a30.push({ time: t, value: sr.alvoFundo[i] });
     }
     try {
       s.st.setData(st); s.a70.setData(a70); s.a50.setData(a50); s.a30.setData(a30);
+      if (nuvemPrim) nuvemPrim.setDados(nuvem);
     } catch (e) { apagarSeries(); }
   }
 
@@ -114,10 +184,11 @@
 
   function linha2(rotulo, valor, cor) {
     var d = document.createElement('div');
-    d.style.cssText = 'display:flex;justify-content:space-between;gap:10px;padding:3px 0;font:11px ui-monospace,Consolas,monospace';
+    d.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:5px 0;' +
+      'border-bottom:1px solid rgba(255,255,255,.04);font:11px/1.35 ui-monospace,Consolas,monospace;font-variant-numeric:tabular-nums';
     var a = document.createElement('span');
     a.textContent = rotulo;
-    a.style.color = '#8a97a8';
+    a.style.color = '#76818f'; a.style.letterSpacing = '.04em';
     var b = document.createElement('span');
     b.textContent = valor;
     b.style.color = cor || '#e6edf3';
@@ -136,7 +207,7 @@
     var e = r.estado;
     var corLado = e.dir === 1 ? VERDE : VERMELHO;
     var faixa = document.createElement('div');
-    faixa.style.cssText = 'margin-bottom:8px;padding:6px 8px;border-radius:6px;text-align:center;font:700 12px ui-monospace,Consolas,monospace;' +
+    faixa.style.cssText = 'margin-bottom:10px;padding:7px 8px;border-radius:7px;text-align:center;letter-spacing:.08em;font:700 11px ui-monospace,Consolas,monospace;' +
       'background:' + (e.dir === 1 ? 'rgba(0,230,118,.10)' : 'rgba(255,23,68,.10)') + ';color:' + corLado;
     faixa.textContent = (e.dir === 1 ? 'ALTA' : 'BAIXA') + ' · ' + (e.anguloForte ? 'ANGULO FORTE' : 'ANGULO FRACO');
     corpo.appendChild(faixa);
@@ -164,7 +235,8 @@
     }
 
     var nota = document.createElement('div');
-    nota.style.cssText = 'margin-top:8px;font:10px ui-monospace,Consolas,monospace;color:#5b6675';
+    nota.style.cssText = 'margin-top:10px;padding-top:8px;border-top:1px solid rgba(217,180,91,.12);' +
+      'font:9px ui-monospace,Consolas,monospace;color:#4e5866;letter-spacing:.06em';
     nota.textContent = 'versao ' + r.versao + ' · ' + (ligado ? 'linhas no gráfico' : 'linhas ocultas');
     corpo.appendChild(nota);
   }
@@ -183,13 +255,15 @@
     if (card) return card;
     card = document.createElement('div');
     card.id = 'imperial-card';
-    card.style.cssText = 'position:fixed;right:14px;bottom:14px;z-index:9998;width:268px;' +
-      'background:rgba(13,17,23,.96);border:1px solid rgba(217,180,91,.35);border-radius:10px;' +
-      'box-shadow:0 10px 30px rgba(0,0,0,.45);display:none;backdrop-filter:blur(6px)';
+    card.style.cssText = 'position:fixed;right:14px;bottom:14px;z-index:9999;width:262px;max-width:calc(100vw - 28px);' +
+      'background:linear-gradient(180deg,rgba(16,22,31,.97) 0%,rgba(11,15,21,.97) 100%);' +
+      'border:1px solid rgba(217,180,91,.28);border-radius:12px;' +
+      'box-shadow:0 18px 40px -12px rgba(0,0,0,.65),inset 0 1px 0 rgba(217,180,91,.10);' +
+      'display:none;backdrop-filter:blur(8px);overflow:hidden';
 
     var cab = document.createElement('div');
-    cab.style.cssText = 'display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid rgba(217,180,91,.2)';
-    cab.innerHTML = '<b style="color:#D9B45B;letter-spacing:.1em;font:700 11px ui-monospace,Consolas,monospace">IMPERIAL</b>';
+    cab.style.cssText = 'display:flex;align-items:center;gap:6px;padding:4px 6px 4px 12px;border-bottom:1px solid rgba(217,180,91,.16)';
+    cab.innerHTML = '<b style="color:#D9B45B;letter-spacing:.16em;font:700 10px ui-monospace,Consolas,monospace">IMPERIAL</b>';
     var fechar = document.createElement('button');
     fechar.type = 'button'; fechar.textContent = '\u00d7';
     fechar.style.cssText = 'margin-left:auto;min-width:40px;min-height:40px;background:transparent;border:none;color:#8a97a8;font-size:18px;cursor:pointer';
@@ -198,7 +272,7 @@
     card.appendChild(cab);
 
     corpo = document.createElement('div');
-    corpo.style.cssText = 'padding:10px';
+    corpo.style.cssText = 'padding:12px 12px 10px';
     card.appendChild(corpo);
 
     var acoes = document.createElement('div');
