@@ -14,6 +14,7 @@
   var core = null;
   var series = { st: null, a70: null, a50: null, a30: null };
   var ligado = false;
+  var visivel = true;
   var ultimo = null;
   var ultimaContagem = -1;
   var timer = null;
@@ -79,7 +80,7 @@
   }
 
   function desenhar(vs, r) {
-    if (!ligado) return;
+    if (!ligado || !visivel) return;
     var s = criarSeries();
     if (!s) return;
     var st = [], a70 = [], a50 = [], a30 = [];
@@ -274,7 +275,14 @@
     alternar: alternar,
     avaliar: function () { avaliar(true); },
     estado: function () { return ultimo ? ultimo.estado : null; },
-    ligarLinhas: function (v) { ligado = !!v; salvarEstado(); ultimaContagem = -1; avaliar(true); }
+    ligarLinhas: function (v) { ligado = !!v; salvarEstado(); ultimaContagem = -1; avaliar(true); },
+    linhasLigadas: function () { return !!ligado; },
+    linhasVisiveis: function () { return !!visivel; },
+    mostrarLinhas: function (v) {
+      visivel = !!v;
+      if (!visivel) apagarSeries();
+      ultimaContagem = -1; avaliar(true);
+    }
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', adicionarNav);

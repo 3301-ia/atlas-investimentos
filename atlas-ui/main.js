@@ -23447,6 +23447,26 @@ const INDICATORS_REGISTRY = [
     isVisible: () => !seriesOcultas['emaribbon'],
     toggleVisible: () => toggleSeriesVisibility('emaribbon'),
   },
+  {
+    id: 'imperial',
+    name: '⚔️ Vectra Imperial SuperTrend [ZEMA-KAMA + RevRSI v6]',
+    category: 'overlay',
+    desc: 'SuperTrend hibrido ZEMA 14 + KAMA 21 (60/40) com banda ATR 14 x 2,2 que so aperta, angulo normalizado pelo ATR (limiar 35 graus), alvos projetados do RSI em 70/50/30 e confluencia 1H/1D por EMA 8/21.',
+    isLigado: () => !!(window.AtlasImperial && window.AtlasImperial.linhasLigadas()),
+    toggle: () => {
+      const imp = window.AtlasImperial;
+      if (!imp) return;
+      imp.ligarLinhas(!imp.linhasLigadas());
+      if (imp.linhasLigadas()) imp.mostrarLinhas(true);
+      onIndicatorStateChanged();
+    },
+    isVisible: () => !!(window.AtlasImperial && window.AtlasImperial.linhasVisiveis()),
+    toggleVisible: () => {
+      const imp = window.AtlasImperial;
+      if (imp) { imp.mostrarLinhas(!imp.linhasVisiveis()); onIndicatorStateChanged(); }
+    },
+  },
+
 ];
 window.INDICATORS_REGISTRY = INDICATORS_REGISTRY;
 
