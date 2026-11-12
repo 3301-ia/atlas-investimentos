@@ -72,9 +72,20 @@ t('histograma colorido por sinal', hist && hist.dados.every(d => d.color.include
 const linhaMacd = seriesCriadas.filter(x => x.tipo === 'linha')[0];
 t('linha do macd com dados', linhaMacd && linhaMacd.dados.length > 20);
 
-t('legenda apareceu', (() => {
-  const el = w.document.getElementById('extras-legenda');
-  return el && el.style.display === 'block' && el.textContent.includes('MACD');
+t('valor no cabecalho do cartao', (() => {
+  const el = w.document.getElementById('macd-valor');
+  return el && /MACD/.test(el.textContent);
+})());
+t('cartao e flutuante, nao empurra o grafico', w.document.getElementById('macd-wrap').style.position === 'fixed');
+t('recolher esconde o corpo', (() => {
+  const btn = w.document.getElementById('macd-recolher');
+  btn.click();
+  return w.document.getElementById('macd-chart').style.display === 'none' && btn.textContent === '+';
+})());
+t('expandir devolve o corpo', (() => {
+  const btn = w.document.getElementById('macd-recolher');
+  btn.click();
+  return w.document.getElementById('macd-chart').style.display === 'block';
 })());
 
 bbEnt.toggle();

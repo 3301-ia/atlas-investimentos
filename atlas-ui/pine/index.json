@@ -1,5 +1,5 @@
 {
- "versao": "1.1.0",
+ "versao": "1.2.0",
  "gerado": "2026-11-12",
  "indicadores": [
   {
@@ -183,6 +183,33 @@
    "sha256": "9bdec7377d82a2c86c902450372f31f4012ce099dea13a78ff878b9123eded23",
    "linhas": 123,
    "bytes": 4945
+  },
+  {
+   "id": "viradas",
+   "nome": "Medidor de viradas",
+   "arquivo": "core/viradas.js",
+   "descricao": "Conta viradas, custo de spread por virada e liquido por ciclo, com agregacao de tempo.",
+   "sha256": "bf4d5cd6a5cac0df546f12c4e4247498424a6729f24af2fb180ede5d5f937c9e",
+   "linhas": 148,
+   "bytes": 4971
+  },
+  {
+   "id": "giro",
+   "nome": "Simulador de giro e espelhado",
+   "arquivo": "core/giro.js",
+   "descricao": "Expectativa por ciclo, mediana, p10, p90, ruina e meta em Monte Carlo deterministico.",
+   "sha256": "66bfcfb31a45ee74c663eb69928509caf858138379986a39d3dedfe34aa52533",
+   "linhas": 135,
+   "bytes": 4503
+  },
+  {
+   "id": "risco",
+   "nome": "Dimensionamento e disjuntores",
+   "arquivo": "core/risco.js",
+   "descricao": "Tamanho por risco em % do equity, stop obrigatorio, perda diaria, teto de posicoes e hierarquia.",
+   "sha256": "6537b4a58fb4c8d672b30bf18744013ec7a56de27788f00b1a09bc5873b07384",
+   "linhas": 161,
+   "bytes": 6015
   }
  ]
 }

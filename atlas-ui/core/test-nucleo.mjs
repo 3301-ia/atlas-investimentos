@@ -45,7 +45,7 @@ t('hash calculado bate com o manifesto', has.includes('\u2713'), has);
 w.AtlasNucleo.aba('nucleo');
 await new Promise(r => setTimeout(r, 350));
 const listaN = w.document.getElementById('nucleo-lista');
-t('aba nucleo lista os modulos', listaN && listaN.children.length === 12, listaN && listaN.children.length);
+t('aba nucleo lista os modulos', listaN && listaN.children.length === 15, listaN && listaN.children.length);
 const detN = w.document.getElementById('nucleo-detalhe');
 t('modulo do trailing visivel', detN.querySelector('pre').textContent.includes('trailingStop'));
 

@@ -17,7 +17,7 @@
   var CHAVE = 'atlas.extras.v1';
   var cores = { macd: null, boll: null };
   var bb = { ligado: false, series: null };
-  var mc = { ligado: false, wrap: null, chart: null, hist: null, linha: null, sinal: null };
+  var mc = { ligado: false, aberto: true, wrap: null, chart: null, hist: null, linha: null, sinal: null };
   var timer = null;
   var ultimaContagem = -1;
 
@@ -55,7 +55,9 @@
     try { return JSON.parse(localStorage.getItem(CHAVE) || '{}') || {}; } catch (e) { return {}; }
   }
   function salvaEstado() {
-    try { localStorage.setItem(CHAVE, JSON.stringify({ bollinger: bb.ligado, macd: mc.ligado })); } catch (e) {}
+    try {
+      localStorage.setItem(CHAVE, JSON.stringify({ bollinger: bb.ligado, macd: mc.ligado, macdAberto: mc.aberto }));
+    } catch (e) {}
   }
 
   // ---------------------------------------------------------------- bollinger
@@ -101,18 +103,40 @@
     if (mc.chart) return mc.chart;
     try {
       if (typeof LightweightCharts === 'undefined' || !LightweightCharts.createChart) return null;
-      var base = document.querySelector('.chart-wrap');
-      if (!base || !base.parentNode) return null;
 
+      // cartao flutuante: nao empurra mais o grafico principal
       mc.wrap = document.createElement('div');
       mc.wrap.id = 'macd-wrap';
-      mc.wrap.className = 'phi-wrap';
-      mc.wrap.style.cssText = 'display:none;height:120px;min-height:120px;position:relative';
+      mc.wrap.style.cssText = 'position:fixed;right:8px;bottom:64px;z-index:9996;width:360px;max-width:calc(100vw - 16px);' +
+        'background:#fbfbfc;border:1px solid #e3e6ea;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.18);' +
+        'overflow:hidden;display:none;font:11px/1.3 ui-monospace,Consolas,monospace;color:#4a5666';
+
+      var cab = document.createElement('div');
+      cab.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid #eceef1';
+      cab.innerHTML = '<b style="color:#3a4552;letter-spacing:.08em">MACD</b>' +
+        '<span id="macd-valor" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#6e7683"></span>';
+      var recolher = document.createElement('button');
+      recolher.type = 'button';
+      recolher.id = 'macd-recolher';
+      recolher.textContent = '\u2212';
+      recolher.title = 'recolher o painel do MACD';
+      recolher.style.cssText = 'min-width:40px;min-height:40px;background:transparent;border:none;color:#6e7683;font-size:16px;cursor:pointer';
+      cab.appendChild(recolher);
+      mc.wrap.appendChild(cab);
+
       var box = document.createElement('div');
       box.id = 'macd-chart';
-      box.style.cssText = 'width:100%;height:100%';
+      box.style.cssText = 'width:100%;height:110px';
       mc.wrap.appendChild(box);
-      base.parentNode.insertBefore(mc.wrap, base.nextSibling);
+      document.body.appendChild(mc.wrap);
+
+      recolher.addEventListener('click', function () {
+        mc.aberto = !mc.aberto;
+        box.style.display = mc.aberto ? 'block' : 'none';
+        recolher.textContent = mc.aberto ? '\u2212' : '+';
+        try { localStorage.setItem(CHAVE, JSON.stringify({ bollinger: bb.ligado, macd: mc.ligado, macdAberto: mc.aberto })); } catch (e) {}
+        if (mc.aberto && mc.chart) { try { mc.chart.timeScale().fitContent(); } catch (e) {} }
+      });
 
       mc.chart = LightweightCharts.createChart(box, {
         layout: { background: { color: '#fbfbfc' }, textColor: '#6e7683', fontFamily: 'IBM Plex Sans' },
@@ -122,7 +146,7 @@
         crosshair: { mode: 0 }
       });
 
-      mc.hist = mc.chart.addHistogramSeries({ priceFormat: { type: 'price', precision: 2, minMove: 0.01 }, priceLineVisible: false, lastValueVisible: false, title: 'MACD hist' });
+      mc.hist = mc.chart.addHistogramSeries({ priceFormat: { type: 'price', precision: 2, minMove: 0.01 }, priceLineVisible: false, lastValueVisible: false, title: 'hist' });
       mc.linha = mc.chart.addLineSeries({ color: '#2196F3', lineWidth: 1.4, priceLineVisible: false, lastValueVisible: false, title: 'MACD' });
       mc.sinal = mc.chart.addLineSeries({ color: '#FF9800', lineWidth: 1.2, priceLineVisible: false, lastValueVisible: false, title: 'Sinal' });
 
@@ -138,7 +162,13 @@
   function desenharMacd() {
     var c = criarMacd();
     if (!c) return;
-    if (mc.wrap) mc.wrap.style.display = mc.ligado ? 'block' : 'none';
+    if (mc.wrap) {
+      mc.wrap.style.display = mc.ligado ? 'block' : 'none';
+      var box = mc.wrap.querySelector('#macd-chart');
+      if (box) box.style.display = mc.aberto ? 'block' : 'none';
+      var btn = mc.wrap.querySelector('#macd-recolher');
+      if (btn) btn.textContent = mc.aberto ? '\u2212' : '+';
+    }
     if (!mc.ligado) {
       try { mc.hist.setData([]); mc.linha.setData([]); mc.sinal.setData([]); } catch (e) {}
       return;
@@ -179,28 +209,17 @@
     try {
       if (bb.ligado && cores.boll) {
         var rb = cores.boll.bandas(v);
-        if (rb) legenda += 'BB ' + rb.estado.media.toFixed(2) + (rb.estado.squeeze ? ' SQUEEZE' : '') + '  ';
+        if (rb) legenda += 'BB ' + rb.estado.media.toFixed(2) + (rb.estado.squeeze ? ' SQUEEZE' : '');
       }
       if (mc.ligado && cores.macd) {
         var rm = cores.macd.macd(v);
-        if (rm) legenda += 'MACD ' + rm.estado.macd.toFixed(2) + ' ' + (rm.estado.tendencia === 'alta' ? 'alta' : 'baixa');
+        if (rm) legenda += (legenda ? '  |  ' : '') + 'MACD ' + rm.estado.macd.toFixed(2) + ' ' + (rm.estado.tendencia === 'alta' ? 'alta' : 'baixa');
       }
     } catch (e) {}
-    var el = document.getElementById('extras-legenda');
-    if (!el) {
-      var base = document.querySelector('.chart-wrap');
-      if (base && base.parentNode) {
-        el = document.createElement('div');
-        el.id = 'extras-legenda';
-        el.style.cssText = 'position:fixed;right:12px;bottom:64px;z-index:9000;font:11px ui-monospace,monospace;' +
-          'color:#4a5666;background:rgba(251,251,252,.9);border:1px solid #e3e6ea;border-radius:5px;padding:4px 8px;display:none';
-        document.body.appendChild(el);
-      }
-    }
-    if (el) {
-      el.textContent = legenda.trim();
-      el.style.display = legenda.trim() ? 'block' : 'none';
-    }
+    var alvo = mc.wrap && mc.wrap.querySelector('#macd-valor');
+    if (alvo) alvo.textContent = legenda.trim();
+    var antigo = document.getElementById('extras-legenda');
+    if (antigo && antigo.parentNode) antigo.parentNode.removeChild(antigo);
   }
 
   function ligar(qual, valor) {
@@ -244,6 +263,7 @@
       var est = lerEstado();
       bb.ligado = est.bollinger === true;
       mc.ligado = est.macd === true;
+      mc.aberto = est.macdAberto !== false;
       registrar();
       atualizar();
       if (!timer) timer = setInterval(atualizar, 3000);
