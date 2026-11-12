@@ -98,9 +98,9 @@ if (process.env.ATLAS_ENVIAR === '1') {
 // o workflow já existente commita essa pasta e o Render publica. Nenhuma
 // chamada à Base44, portanto nenhum crédito de integração.
 try {
-  const { rodarRobo } = await import('../robo/run.mjs');
-  await rodarRobo();
-  console.log('robô papel: ok');
+  const { rodarTodas } = await import('../robo/run.mjs');
+  const saidas = await rodarTodas();
+  console.log('robô papel:', saidas.map(s => s.barra + (s.erro ? ' erro' : ' ok')).join(' | '));
 } catch (e) {
   console.error('robô papel falhou:', e.message);
 }

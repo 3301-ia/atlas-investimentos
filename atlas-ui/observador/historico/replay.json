@@ -1,0 +1,1102 @@
+{
+ "versao": "1.1.0",
+ "ativo": "BTC-USD",
+ "custo_bps": 6,
+ "filtros": {
+  "alvoR": 2,
+  "distMinPct": 1,
+  "soNaVirada": true
+ },
+ "gerado_em": "2026-11-12T21:39:26.490Z",
+ "series": {
+  "1H": {
+   "barra": "1H",
+   "dias": 1095,
+   "barras": 26269,
+   "anos": 3,
+   "de": "2023-11-13",
+   "ate": "2026-11-12",
+   "nucleo": "trailing 1.0.0 · atr 14 · mult 2.5 · janela 22",
+   "operacoes": 874,
+   "acerto_pct": 46.1,
+   "r_medio": 0.162,
+   "r_total": 141.83,
+   "r_ano": 47.3,
+   "drawdown_r": 14.5,
+   "profit_factor": 1.38,
+   "sequencia_perdas": 13,
+   "barras_media": 10,
+   "por_ano": {
+    "2023": {
+     "operacoes": 41,
+     "r": 17.17,
+     "acertos": 25
+    },
+    "2024": {
+     "operacoes": 364,
+     "r": 64.25,
+     "acertos": 172
+    },
+    "2025": {
+     "operacoes": 256,
+     "r": 11.61,
+     "acertos": 105
+    },
+    "2026": {
+     "operacoes": 213,
+     "r": 48.83,
+     "acertos": 101
+    }
+   },
+   "por_motivo": {
+    "stop": {
+     "operacoes": 420,
+     "r": -110.13
+    },
+    "alvo": {
+     "operacoes": 171,
+     "r": 333.89
+    },
+    "virada": {
+     "operacoes": 283,
+     "r": -81.94
+    }
+   },
+   "custos": [
+    {
+     "bps": 0,
+     "r_medio": 0.206,
+     "r_ano": 60.1
+    },
+    {
+     "bps": 3,
+     "r_medio": 0.184,
+     "r_ano": 53.7
+    },
+    {
+     "bps": 6,
+     "r_medio": 0.162,
+     "r_ano": 47.3
+    },
+    {
+     "bps": 12,
+     "r_medio": 0.118,
+     "r_ano": 34.5
+    },
+    {
+     "bps": 18,
+     "r_medio": 0.074,
+     "r_ano": 21.6
+    }
+   ],
+   "variantes": [
+    {
+     "nome": "sem filtro",
+     "escolhida": false,
+     "operacoes": 3692,
+     "acerto_pct": 41.1,
+     "r_medio": -0.294,
+     "r_total": -1084.67,
+     "r_ano": -361.7,
+     "drawdown_r": 1110.42,
+     "profit_factor": 0.65,
+     "sequencia_perdas": 18,
+     "barras_media": 6.1,
+     "por_ano": {
+      "2023": {
+       "operacoes": 190,
+       "r": 8.51,
+       "acertos": 91
+      },
+      "2024": {
+       "operacoes": 1276,
+       "r": -129.53,
+       "acertos": 540
+      },
+      "2025": {
+       "operacoes": 1182,
+       "r": -554.09,
+       "acertos": 471
+      },
+      "2026": {
+       "operacoes": 1044,
+       "r": -408.19,
+       "acertos": 415
+      }
+     },
+     "por_motivo": {
+      "stop": {
+       "operacoes": 2270,
+       "r": -2406.19
+      },
+      "alvo": {
+       "operacoes": 843,
+       "r": 1540.42
+      },
+      "virada": {
+       "operacoes": 579,
+       "r": -217.64
+      }
+     }
+    },
+    {
+     "nome": "só na virada",
+     "escolhida": false,
+     "operacoes": 2157,
+     "acerto_pct": 48,
+     "r_medio": -0.341,
+     "r_total": -736.18,
+     "r_ano": -245.5,
+     "drawdown_r": 777.72,
+     "profit_factor": 0.63,
+     "sequencia_perdas": 12,
+     "barras_media": 5.5,
+     "por_ano": {
+      "2023": {
+       "operacoes": 110,
+       "r": 29.71,
+       "acertos": 70
+      },
+      "2024": {
+       "operacoes": 745,
+       "r": -265.31,
+       "acertos": 375
+      },
+      "2025": {
+       "operacoes": 711,
+       "r": -402.77,
+       "acertos": 321
+      },
+      "2026": {
+       "operacoes": 591,
+       "r": -96.87,
+       "acertos": 270
+      }
+     },
+     "por_motivo": {
+      "stop": {
+       "operacoes": 1447,
+       "r": -1403.76
+      },
+      "alvo": {
+       "operacoes": 419,
+       "r": 774.36
+      },
+      "virada": {
+       "operacoes": 291,
+       "r": -105.92
+      }
+     }
+    },
+    {
+     "nome": "folga ≥ 1%",
+     "escolhida": false,
+     "operacoes": 1516,
+     "acerto_pct": 44.9,
+     "r_medio": 0.125,
+     "r_total": 188.95,
+     "r_ano": 63,
+     "drawdown_r": 22.34,
+     "profit_factor": 1.28,
+     "sequencia_perdas": 14,
+     "barras_media": 10.2,
+     "por_ano": {
+      "2023": {
+       "operacoes": 81,
+       "r": 25.68,
+       "acertos": 47
+      },
+      "2024": {
+       "operacoes": 602,
+       "r": 86.88,
+       "acertos": 278
+      },
+      "2025": {
+       "operacoes": 449,
+       "r": 5.63,
+       "acertos": 177
+      },
+      "2026": {
+       "operacoes": 384,
+       "r": 71.08,
+       "acertos": 178
+      }
+     },
+     "por_motivo": {
+      "stop": {
+       "operacoes": 718,
+       "r": -244.15
+      },
+      "alvo": {
+       "operacoes": 296,
+       "r": 578.17
+      },
+      "virada": {
+       "operacoes": 502,
+       "r": -144.69
+      }
+     }
+    },
+    {
+     "nome": "folga ≥ 1% + virada",
+     "escolhida": true,
+     "operacoes": 874,
+     "acerto_pct": 46.1,
+     "r_medio": 0.162,
+     "r_total": 141.83,
+     "r_ano": 47.3,
+     "drawdown_r": 14.5,
+     "profit_factor": 1.38,
+     "sequencia_perdas": 13,
+     "barras_media": 10,
+     "por_ano": {
+      "2023": {
+       "operacoes": 41,
+       "r": 17.17,
+       "acertos": 25
+      },
+      "2024": {
+       "operacoes": 364,
+       "r": 64.25,
+       "acertos": 172
+      },
+      "2025": {
+       "operacoes": 256,
+       "r": 11.61,
+       "acertos": 105
+      },
+      "2026": {
+       "operacoes": 213,
+       "r": 48.83,
+       "acertos": 101
+      }
+     },
+     "por_motivo": {
+      "stop": {
+       "operacoes": 420,
+       "r": -110.13
+      },
+      "alvo": {
+       "operacoes": 171,
+       "r": 333.89
+      },
+      "virada": {
+       "operacoes": 283,
+       "r": -81.94
+      }
+     }
+    },
+    {
+     "nome": "folga ≥ 2% + virada",
+     "escolhida": false,
+     "operacoes": 195,
+     "acerto_pct": 48.7,
+     "r_medio": 0.18,
+     "r_total": 35.07,
+     "r_ano": 11.7,
+     "drawdown_r": 7.84,
+     "profit_factor": 1.55,
+     "sequencia_perdas": 6,
+     "barras_media": 11.4,
+     "por_ano": {
+      "2023": {
+       "operacoes": 6,
+       "r": 4.39,
+       "acertos": 5
+      },
+      "2024": {
+       "operacoes": 97,
+       "r": 10.71,
+       "acertos": 47
+      },
+      "2025": {
+       "operacoes": 50,
+       "r": 4.88,
+       "acertos": 21
+      },
+      "2026": {
+       "operacoes": 42,
+       "r": 15.04,
+       "acertos": 22
+      }
+     },
+     "por_motivo": {
+      "stop": {
+       "operacoes": 78,
+       "r": 16.08
+      },
+      "virada": {
+       "operacoes": 96,
+       "r": -22.47
+      },
+      "alvo": {
+       "operacoes": 21,
+       "r": 41.43
+      }
+     }
+    },
+    {
+     "nome": "alvo 3R + folga ≥ 1% + virada",
+     "escolhida": false,
+     "operacoes": 863,
+     "acerto_pct": 44.8,
+     "r_medio": 0.132,
+     "r_total": 113.57,
+     "r_ano": 37.9,
+     "drawdown_r": 19.83,
+     "profit_factor": 1.3,
+     "sequencia_perdas": 13,
+     "barras_media": 11.8,
+     "por_ano": {
+      "2023": {
+       "operacoes": 41,
+       "r": 11.06,
+       "acertos": 25
+      },
+      "2024": {
+       "operacoes": 358,
+       "r": 57.29,
+       "acertos": 163
+      },
+      "2025": {
+       "operacoes": 254,
+       "r": -6.63,
+       "acertos": 100
+      },
+      "2026": {
+       "operacoes": 210,
+       "r": 51.9,
+       "acertos": 99
+      }
+     },
+     "por_motivo": {
+      "stop": {
+       "operacoes": 411,
+       "r": -116.83
+      },
+      "virada": {
+       "operacoes": 365,
+       "r": -26.49
+      },
+      "alvo": {
+       "operacoes": 87,
+       "r": 256.96
+      }
+     }
+    }
+   ],
+   "dentro": {
+    "operacoes": 511,
+    "acerto_pct": 47.4,
+    "r_medio": 0.18,
+    "r_total": 91.83,
+    "r_ano": 61.2,
+    "drawdown_r": 10.64,
+    "profit_factor": 1.42,
+    "sequencia_perdas": 7,
+    "barras_media": 9.1,
+    "por_ano": {
+     "2023": {
+      "operacoes": 41,
+      "r": 17.17,
+      "acertos": 25
+     },
+     "2024": {
+      "operacoes": 364,
+      "r": 64.25,
+      "acertos": 172
+     },
+     "2025": {
+      "operacoes": 106,
+      "r": 10.46,
+      "acertos": 45
+     }
+    },
+    "por_motivo": {
+     "stop": {
+      "operacoes": 259,
+      "r": -59.89
+     },
+     "alvo": {
+      "operacoes": 101,
+      "r": 197.26
+     },
+     "virada": {
+      "operacoes": 151,
+      "r": -45.5
+     }
+    }
+   },
+   "fora": {
+    "operacoes": 368,
+    "acerto_pct": 44.6,
+    "r_medio": 0.143,
+    "r_total": 52.73,
+    "r_ano": 35.2,
+    "drawdown_r": 14.5,
+    "profit_factor": 1.34,
+    "sequencia_perdas": 13,
+    "barras_media": 11.4,
+    "por_ano": {
+     "2025": {
+      "operacoes": 155,
+      "r": 3.89,
+      "acertos": 63
+     },
+     "2026": {
+      "operacoes": 213,
+      "r": 48.83,
+      "acertos": 101
+     }
+    },
+    "por_motivo": {
+     "stop": {
+      "operacoes": 164,
+      "r": -51.38
+     },
+     "alvo": {
+      "operacoes": 72,
+      "r": 140.52
+     },
+     "virada": {
+      "operacoes": 132,
+      "r": -36.45
+     }
+    }
+   },
+   "trades": [
+    {
+     "lado": "compra",
+     "entrada": 79590.33,
+     "saida": 80535.52,
+     "stop_inicial": 80535.52,
+     "alvo": 81480.71,
+     "motivo": "stop",
+     "barras": 1,
+     "aberta_em": 1788584400,
+     "fechada_em": 1788588000,
+     "r_bruto": 1,
+     "r": 0.949,
+     "resultado_usd": 897.44
+    },
+    {
+     "lado": "venda",
+     "entrada": 78399.35,
+     "saida": 76763.49,
+     "stop_inicial": 79217.28,
+     "alvo": 76763.49,
+     "motivo": "alvo",
+     "barras": 18,
+     "aberta_em": 1788976800,
+     "fechada_em": 1789041600,
+     "r_bruto": 2,
+     "r": 1.942,
+     "resultado_usd": 1588.82
+    },
+    {
+     "lado": "compra",
+     "entrada": 77990.86,
+     "saida": 77694.35,
+     "stop_inicial": 76937.66,
+     "alvo": 80097.26,
+     "motivo": "virada",
+     "barras": 3,
+     "aberta_em": 1789128000,
+     "fechada_em": 1789138800,
+     "r_bruto": -0.282,
+     "r": -0.326,
+     "resultado_usd": -343.3
+    },
+    {
+     "lado": "venda",
+     "entrada": 76878.62,
+     "saida": 76911.06,
+     "stop_inicial": 77809.67,
+     "alvo": 75016.52,
+     "motivo": "virada",
+     "barras": 10,
+     "aberta_em": 1789455600,
+     "fechada_em": 1789491600,
+     "r_bruto": -0.035,
+     "r": -0.084,
+     "resultado_usd": -78.57
+    },
+    {
+     "lado": "compra",
+     "entrada": 76101.98,
+     "saida": 78043.48,
+     "stop_inicial": 75131.23,
+     "alvo": 78043.48,
+     "motivo": "alvo",
+     "barras": 36,
+     "aberta_em": 1789588800,
+     "fechada_em": 1789718400,
+     "r_bruto": 2,
+     "r": 1.953,
+     "resultado_usd": 1895.84
+    },
+    {
+     "lado": "venda",
+     "entrada": 85598.67,
+     "saida": 82800.01,
+     "stop_inicial": 82800.01,
+     "alvo": 80001.35,
+     "motivo": "stop",
+     "barras": 1,
+     "aberta_em": 1790038800,
+     "fechada_em": 1790042400,
+     "r_bruto": 1,
+     "r": 0.982,
+     "resultado_usd": 2747.3
+    },
+    {
+     "lado": "compra",
+     "entrada": 87164.81,
+     "saida": 85990.87,
+     "stop_inicial": 85990.87,
+     "alvo": 89512.69,
+     "motivo": "stop",
+     "barras": 3,
+     "aberta_em": 1790136000,
+     "fechada_em": 1790146800,
+     "r_bruto": -1,
+     "r": -1.045,
+     "resultado_usd": -1226.24
+    },
+    {
+     "lado": "venda",
+     "entrada": 85848.87,
+     "saida": 84122.17,
+     "stop_inicial": 86712.22,
+     "alvo": 84122.17,
+     "motivo": "alvo",
+     "barras": 5,
+     "aberta_em": 1790154000,
+     "fechada_em": 1790172000,
+     "r_bruto": 2,
+     "r": 1.94,
+     "resultado_usd": 1675.19
+    },
+    {
+     "lado": "compra",
+     "entrada": 84236.3,
+     "saida": 83902.76,
+     "stop_inicial": 83268.36,
+     "alvo": 86172.18,
+     "motivo": "virada",
+     "barras": 24,
+     "aberta_em": 1790254800,
+     "fechada_em": 1790341200,
+     "r_bruto": -0.345,
+     "r": -0.397,
+     "resultado_usd": -384.08
+    },
+    {
+     "lado": "venda",
+     "entrada": 83676.34,
+     "saida": 83560.35,
+     "stop_inicial": 84534.14,
+     "alvo": 81960.74,
+     "motivo": "virada",
+     "barras": 11,
+     "aberta_em": 1790557200,
+     "fechada_em": 1790596800,
+     "r_bruto": 0.135,
+     "r": 0.077,
+     "resultado_usd": 65.78
+    },
+    {
+     "lado": "compra",
+     "entrada": 84221.33,
+     "saida": 83206.85,
+     "stop_inicial": 83206.85,
+     "alvo": 86250.29,
+     "motivo": "stop",
+     "barras": 6,
+     "aberta_em": 1790672400,
+     "fechada_em": 1790694000,
+     "r_bruto": -1,
+     "r": -1.05,
+     "resultado_usd": -1065.01
+    },
+    {
+     "lado": "venda",
+     "entrada": 83026.63,
+     "saida": 83883.37,
+     "stop_inicial": 84010.3,
+     "alvo": 81059.29,
+     "motivo": "virada",
+     "barras": 18,
+     "aberta_em": 1790697600,
+     "fechada_em": 1790762400,
+     "r_bruto": -0.871,
+     "r": -0.922,
+     "resultado_usd": -906.56
+    },
+    {
+     "lado": "compra",
+     "entrada": 85258.29,
+     "saida": 84255.34,
+     "stop_inicial": 84255.34,
+     "alvo": 87264.19,
+     "motivo": "stop",
+     "barras": 1,
+     "aberta_em": 1790769600,
+     "fechada_em": 1790773200,
+     "r_bruto": -1,
+     "r": -1.051,
+     "resultado_usd": -1054.1
+    },
+    {
+     "lado": "venda",
+     "entrada": 83371.84,
+     "saida": 84440.44,
+     "stop_inicial": 84440.44,
+     "alvo": 81234.64,
+     "motivo": "stop",
+     "barras": 9,
+     "aberta_em": 1790838000,
+     "fechada_em": 1790870400,
+     "r_bruto": -1,
+     "r": -1.047,
+     "resultado_usd": -1118.62
+    },
+    {
+     "lado": "compra",
+     "entrada": 84872.88,
+     "saida": 87128.06,
+     "stop_inicial": 83745.29,
+     "alvo": 87128.06,
+     "motivo": "alvo",
+     "barras": 19,
+     "aberta_em": 1790874000,
+     "fechada_em": 1790942400,
+     "r_bruto": 2,
+     "r": 1.955,
+     "resultado_usd": 2204.26
+    },
+    {
+     "lado": "venda",
+     "entrada": 84760.35,
+     "saida": 84661.85,
+     "stop_inicial": 85625.37,
+     "alvo": 83030.31,
+     "motivo": "virada",
+     "barras": 18,
+     "aberta_em": 1790960400,
+     "fechada_em": 1791025200,
+     "r_bruto": 0.114,
+     "r": 0.055,
+     "resultado_usd": 47.64
+    },
+    {
+     "lado": "compra",
+     "entrada": 83169.39,
+     "saida": 82336.53,
+     "stop_inicial": 82336.53,
+     "alvo": 84835.11,
+     "motivo": "stop",
+     "barras": 7,
+     "aberta_em": 1791543600,
+     "fechada_em": 1791568800,
+     "r_bruto": -1,
+     "r": -1.06,
+     "resultado_usd": -882.76
+    },
+    {
+     "lado": "venda",
+     "entrada": 82406.83,
+     "saida": 82350.22,
+     "stop_inicial": 83281.65,
+     "alvo": 80657.19,
+     "motivo": "virada",
+     "barras": 9,
+     "aberta_em": 1791820800,
+     "fechada_em": 1791853200,
+     "r_bruto": 0.065,
+     "r": 0.008,
+     "resultado_usd": 7.17
+    },
+    {
+     "lado": "compra",
+     "entrada": 81492.72,
+     "saida": 82633.21,
+     "stop_inicial": 82633.21,
+     "alvo": 83773.7,
+     "motivo": "stop",
+     "barras": 1,
+     "aberta_em": 1792036800,
+     "fechada_em": 1792040400,
+     "r_bruto": 1,
+     "r": 0.957,
+     "resultado_usd": 1091.59
+    },
+    {
+     "lado": "venda",
+     "entrada": 80786.39,
+     "saida": 81657.18,
+     "stop_inicial": 81657.18,
+     "alvo": 79044.81,
+     "motivo": "stop",
+     "barras": 8,
+     "aberta_em": 1792044000,
+     "fechada_em": 1792072800,
+     "r_bruto": -1,
+     "r": -1.056,
+     "resultado_usd": -919.26
+    },
+    {
+     "lado": "compra",
+     "entrada": 82332.51,
+     "saida": 81242.09,
+     "stop_inicial": 80795.41,
+     "alvo": 85406.71,
+     "motivo": "virada",
+     "barras": 24,
+     "aberta_em": 1792076400,
+     "fechada_em": 1792162800,
+     "r_bruto": -0.709,
+     "r": -0.742,
+     "resultado_usd": -1139.82
+    },
+    {
+     "lado": "venda",
+     "entrada": 81334,
+     "saida": 81620.51,
+     "stop_inicial": 82368.14,
+     "alvo": 79265.72,
+     "motivo": "virada",
+     "barras": 15,
+     "aberta_em": 1792166400,
+     "fechada_em": 1792220400,
+     "r_bruto": -0.277,
+     "r": -0.324,
+     "resultado_usd": -335.31
+    },
+    {
+     "lado": "compra",
+     "entrada": 82043.87,
+     "saida": 83731.31,
+     "stop_inicial": 81200.15,
+     "alvo": 83731.31,
+     "motivo": "alvo",
+     "barras": 24,
+     "aberta_em": 1792501200,
+     "fechada_em": 1792587600,
+     "r_bruto": 2,
+     "r": 1.942,
+     "resultado_usd": 1638.21
+    },
+    {
+     "lado": "venda",
+     "entrada": 82835.62,
+     "saida": 81158.5,
+     "stop_inicial": 83674.18,
+     "alvo": 81158.5,
+     "motivo": "alvo",
+     "barras": 12,
+     "aberta_em": 1792641600,
+     "fechada_em": 1792684800,
+     "r_bruto": 2,
+     "r": 1.941,
+     "resultado_usd": 1627.42
+    },
+    {
+     "lado": "compra",
+     "entrada": 81890.82,
+     "saida": 81010.83,
+     "stop_inicial": 81010.83,
+     "alvo": 83650.8,
+     "motivo": "stop",
+     "barras": 1,
+     "aberta_em": 1792760400,
+     "fechada_em": 1792764000,
+     "r_bruto": -1,
+     "r": -1.056,
+     "resultado_usd": -929.12
+    },
+    {
+     "lado": "venda",
+     "entrada": 80508.25,
+     "saida": 80166.81,
+     "stop_inicial": 81454.62,
+     "alvo": 78615.51,
+     "motivo": "virada",
+     "barras": 17,
+     "aberta_em": 1792800000,
+     "fechada_em": 1792861200,
+     "r_bruto": 0.361,
+     "r": 0.31,
+     "resultado_usd": 293.14
+    },
+    {
+     "lado": "compra",
+     "entrada": 80540.79,
+     "saida": 80608.49,
+     "stop_inicial": 79701.97,
+     "alvo": 82218.43,
+     "motivo": "virada",
+     "barras": 20,
+     "aberta_em": 1793116800,
+     "fechada_em": 1793188800,
+     "r_bruto": 0.081,
+     "r": 0.023,
+     "resultado_usd": 19.38
+    },
+    {
+     "lado": "venda",
+     "entrada": 79904.99,
+     "saida": 80982.19,
+     "stop_inicial": 80982.19,
+     "alvo": 77750.59,
+     "motivo": "stop",
+     "barras": 13,
+     "aberta_em": 1793235600,
+     "fechada_em": 1793282400,
+     "r_bruto": -1,
+     "r": -1.045,
+     "resultado_usd": -1125.14
+    },
+    {
+     "lado": "compra",
+     "entrada": 81698.54,
+     "saida": 80665.42,
+     "stop_inicial": 80665.42,
+     "alvo": 83764.78,
+     "motivo": "stop",
+     "barras": 2,
+     "aberta_em": 1793286000,
+     "fechada_em": 1793293200,
+     "r_bruto": -1,
+     "r": -1.047,
+     "resultado_usd": -1082.14
+    },
+    {
+     "lado": "venda",
+     "entrada": 78744.03,
+     "saida": 76794.73,
+     "stop_inicial": 79718.68,
+     "alvo": 76794.73,
+     "motivo": "alvo",
+     "barras": 4,
+     "aberta_em": 1793304000,
+     "fechada_em": 1793318400,
+     "r_bruto": 2,
+     "r": 1.952,
+     "resultado_usd": 1902.05
+    },
+    {
+     "lado": "compra",
+     "entrada": 78381.81,
+     "saida": 80000.7,
+     "stop_inicial": 80000.7,
+     "alvo": 81619.59,
+     "motivo": "stop",
+     "barras": 1,
+     "aberta_em": 1793336400,
+     "fechada_em": 1793340000,
+     "r_bruto": 1,
+     "r": 0.971,
+     "resultado_usd": 1571.86
+    },
+    {
+     "lado": "venda",
+     "entrada": 76985.4,
+     "saida": 77911.14,
+     "stop_inicial": 77911.14,
+     "alvo": 75133.92,
+     "motivo": "stop",
+     "barras": 2,
+     "aberta_em": 1793365200,
+     "fechada_em": 1793372400,
+     "r_bruto": -1,
+     "r": -1.05,
+     "resultado_usd": -971.93
+    },
+    {
+     "lado": "compra",
+     "entrada": 77630.62,
+     "saida": 79553.04,
+     "stop_inicial": 76669.41,
+     "alvo": 79553.04,
+     "motivo": "alvo",
+     "barras": 9,
+     "aberta_em": 1793768400,
+     "fechada_em": 1793800800,
+     "r_bruto": 2,
+     "r": 1.952,
+     "resultado_usd": 1875.84
+    },
+    {
+     "lado": "venda",
+     "entrada": 78206.81,
+     "saida": 76015.61,
+     "stop_inicial": 79302.41,
+     "alvo": 76015.61,
+     "motivo": "alvo",
+     "barras": 1,
+     "aberta_em": 1793887200,
+     "fechada_em": 1793890800,
+     "r_bruto": 2,
+     "r": 1.957,
+     "resultado_usd": 2144.28
+    },
+    {
+     "lado": "compra",
+     "entrada": 74382.72,
+     "saida": 75198.2,
+     "stop_inicial": 75198.2,
+     "alvo": 76013.68,
+     "motivo": "stop",
+     "barras": 1,
+     "aberta_em": 1794175200,
+     "fechada_em": 1794178800,
+     "r_bruto": 1,
+     "r": 0.945,
+     "resultado_usd": 770.85
+    },
+    {
+     "lado": "venda",
+     "entrada": 73770.07,
+     "saida": 74654.8,
+     "stop_inicial": 74654.8,
+     "alvo": 72000.61,
+     "motivo": "stop",
+     "barras": 4,
+     "aberta_em": 1794207600,
+     "fechada_em": 1794222000,
+     "r_bruto": -1,
+     "r": -1.05,
+     "resultado_usd": -928.99
+    },
+    {
+     "lado": "compra",
+     "entrada": 75431.23,
+     "saida": 74410.38,
+     "stop_inicial": 74410.38,
+     "alvo": 77472.93,
+     "motivo": "stop",
+     "barras": 3,
+     "aberta_em": 1794236400,
+     "fechada_em": 1794247200,
+     "r_bruto": -1,
+     "r": -1.044,
+     "resultado_usd": -1066.11
+    },
+    {
+     "lado": "venda",
+     "entrada": 74410.12,
+     "saida": 72779.2,
+     "stop_inicial": 75225.58,
+     "alvo": 72779.2,
+     "motivo": "alvo",
+     "barras": 6,
+     "aberta_em": 1794301200,
+     "fechada_em": 1794322800,
+     "r_bruto": 2,
+     "r": 1.945,
+     "resultado_usd": 1586.27
+    },
+    {
+     "lado": "compra",
+     "entrada": 73916.93,
+     "saida": 73493.96,
+     "stop_inicial": 73162.71,
+     "alvo": 75425.37,
+     "motivo": "virada",
+     "barras": 14,
+     "aberta_em": 1794409200,
+     "fechada_em": 1794459600,
+     "r_bruto": -0.561,
+     "r": -0.62,
+     "resultado_usd": -467.32
+    },
+    {
+     "lado": "venda",
+     "entrada": 73425.04,
+     "saida": 71553.66,
+     "stop_inicial": 74360.73,
+     "alvo": 71553.66,
+     "motivo": "alvo",
+     "barras": 8,
+     "aberta_em": 1794463200,
+     "fechada_em": 1794492000,
+     "r_bruto": 2,
+     "r": 1.953,
+     "resultado_usd": 1827.32
+    }
+   ],
+   "aberta": null
+  },
+  "15M": {
+   "barra": "15M",
+   "dias": 180,
+   "barras": 17279,
+   "anos": 0.49,
+   "de": "2026-05-16",
+   "ate": "2026-11-12",
+   "nucleo": "trailing 1.0.0 · atr 14 · mult 2.5 · janela 22",
+   "operacoes": 71,
+   "acerto_pct": 42.3,
+   "r_medio": 0.053,
+   "r_total": 3.74,
+   "r_ano": 7.6,
+   "drawdown_r": 7.95,
+   "profit_factor": 1.14,
+   "sequencia_perdas": 10,
+   "barras_media": 10.7,
+   "por_ano": {
+    "2026": {
+     "operacoes": 71,
+     "r": 3.75,
+     "acertos": 30
+    }
+   },
+   "por_motivo": {
+    "virada": {
+     "operacoes": 34,
+     "r": -10.48
+    },
+    "stop": {
+     "operacoes": 32,
+     "r": 4.51
+    },
+    "alvo": {
+     "operacoes": 5,
+     "r": 9.73
+    }
+   }
+  },
+  "5M": {
+   "barra": "5M",
+   "dias": 60,
+   "barras": 17279,
+   "anos": 0.16,
+   "de": "2026-09-13",
+   "ate": "2026-11-12",
+   "nucleo": "trailing 1.0.0 · atr 14 · mult 2.5 · janela 22",
+   "operacoes": 5,
+   "acerto_pct": 80,
+   "r_medio": 0.554,
+   "r_total": 2.77,
+   "r_ano": 16.9,
+   "drawdown_r": 1.06,
+   "profit_factor": 3.62,
+   "sequencia_perdas": 1,
+   "barras_media": 1,
+   "por_ano": {
+    "2026": {
+     "operacoes": 5,
+     "r": 2.77,
+     "acertos": 4
+    }
+   },
+   "por_motivo": {
+    "stop": {
+     "operacoes": 5,
+     "r": 2.77
+    }
+   }
+  }
+ }
+}

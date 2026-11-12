@@ -6,11 +6,18 @@
 
 (function () {
   var CFG = {
-    estado: 'https://raw.githubusercontent.com/3301-ia/atlas-investimentos/main/observador/historico/robopapel_estado.json',
-    historico: 'https://raw.githubusercontent.com/3301-ia/atlas-investimentos/main/observador/historico/robopapel_historico.json',
+    // o repositorio e privado: o robo grava, o site publica, e a leitura e
+    // do proprio dominio. Zero funcao, zero credito de integracao.
+    pasta: './observador/historico/',
+    temporadas: [
+      { id: '1H', sufixo: '' },
+      { id: '15M', sufixo: '_15m' },
+      { id: '5M', sufixo: '_5m' }
+    ],
     ativo: 'BTC-USDT',
-    intervalo: 120000
+    intervalo: 90000
   };
+  var tf = '1H';
   var CHAVE = 'atlas.robo.v1';
 
   var ultimo = { id: null, fechadas: 0, aberto: false };
@@ -83,7 +90,10 @@
         .then(function (r) { return r.ok ? r.json() : null; })
         .catch(function () { return null; });
     }
-    return Promise.all([pega(CFG.estado), pega(CFG.historico)]).then(function (par) {
+    var sufixo = '';
+    CFG.temporadas.forEach(function (t) { if (t.id === tf) sufixo = t.sufixo; });
+    return Promise.all([pega(CFG.pasta + 'robopapel_estado' + sufixo + '.json'),
+      pega(CFG.pasta + 'robopapel_historico' + sufixo + '.json')]).then(function (par) {
       var e = par[0];
       var h = par[1];
       if (!e && !h) return null;
@@ -229,11 +239,41 @@
     fechar.addEventListener('click', function () { aberto = false; card.style.display = 'none'; });
     head.appendChild(fechar);
     card.appendChild(head);
+    var seletor = document.createElement('div');
+    seletor.id = 'robo-temporadas';
+    seletor.style.cssText = 'display:flex;gap:6px;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.08)';
+    CFG.temporadas.forEach(function (t) {
+      var b = document.createElement('button');
+      b.textContent = t.id;
+      b.dataset.tf = t.id;
+      b.style.cssText = 'flex:1;min-height:40px;background:transparent;color:' + cores.fraco +
+        ';border:1px solid rgba(255,255,255,.15);border-radius:6px;font-size:13px;cursor:pointer;font-family:inherit';
+      b.addEventListener('click', function () {
+        tf = t.id;
+        dados = null;
+        pintarTemporadas();
+        desenhar();
+        buscar();
+      });
+      seletor.appendChild(b);
+    });
+    card.appendChild(seletor);
     corpo = document.createElement('div');
     corpo.id = 'robo-corpo';
     corpo.style.cssText = 'padding:10px;max-height:60vh;overflow:auto';
     card.appendChild(corpo);
     document.body.appendChild(card);
+  }
+
+  function pintarTemporadas() {
+    if (!card) return;
+    Array.prototype.forEach.call(card.querySelectorAll('[data-tf]'), function (b) {
+      var on = b.dataset.tf === tf;
+      b.style.color = on ? cores.ouro : cores.fraco;
+      b.style.borderColor = on ? cores.ouro : 'rgba(255,255,255,.15)';
+      b.style.background = on ? 'rgba(217,180,91,.12)' : 'transparent';
+      b.style.fontWeight = on ? '700' : '400';
+    });
   }
 
   function criarNav() {
@@ -270,8 +310,10 @@
     carregar();
     criarCard();
     criarNav();
+    pintarTemporadas();
     ciclo();
-    setInterval(ciclo, CFG.intervalo);
+    var tmr = setInterval(ciclo, CFG.intervalo);
+    try { if (tmr && tmr.unref) tmr.unref(); } catch (e) {}
   }
 
   window.AtlasRobo = {

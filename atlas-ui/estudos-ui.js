@@ -14,7 +14,8 @@
   var abas = [
     { id: 'viradas', nome: 'VIRADAS' },
     { id: 'simulador', nome: 'SIMULADOR' },
-    { id: 'risco', nome: 'RISCO' }
+    { id: 'risco', nome: 'RISCO' },
+    { id: 'replay', nome: 'REPLAY' }
   ];
   var abaAtual = 'viradas';
   var painel = null;
@@ -135,6 +136,118 @@
     return t;
   }
 
+
+  // ----------------------------------------------------------------- replay
+  // Le o replay que o robo gera fora da Base44 (GitHub Actions). Nada de conta
+  // na tela: o numero vem pronto e datado, e a tela so apresenta.
+  var replayCache = null;
+
+  function fmt(v, casas) {
+    var n = Number(v);
+    if (!isFinite(n)) return '--';
+    return n.toLocaleString('pt-BR', { minimumFractionDigits: casas == null ? 2 : casas, maximumFractionDigits: casas == null ? 2 : casas });
+  }
+
+  function desenharReplay() {
+    var corpo = painel.querySelector('#estudos-corpo');
+    corpo.innerHTML = '';
+    corpo.appendChild(el('div', 'color:#9fb3c6;font-size:12px;margin-bottom:10px',
+      'Replay do robo sobre o historico real, barra a barra, sem olhar o futuro. ' +
+      'O custo entra como spread de ida e volta em pontos-base do preco.'));
+
+    var saida = el('div', '');
+    saida.id = 'estudos-replay-saida';
+    saida.innerHTML = '<div style="color:#8a97a8">carregando replay...</div>';
+    corpo.appendChild(saida);
+
+    fetch('./observador/historico/replay.json?t=' + Date.now(), { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        replayCache = d;
+        pintarReplay(saida, d);
+      })
+      .catch(function () {
+        saida.innerHTML = '<div style="color:#E2685F">replay ainda nao publicado. O robo gera na primeira execucao diaria.</div>';
+      });
+  }
+
+  function pintarReplay(alvo, d) {
+    alvo.innerHTML = '';
+    if (!d || !d.series) {
+      alvo.appendChild(cartao('<div style="color:#8a97a8">sem dados de replay publicados</div>'));
+      return;
+    }
+    alvo.appendChild(cartao(
+      '<div style="display:flex;justify-content:space-between;align-items:baseline">' +
+        '<b style="color:#ffe9b0">' + (d.ativo || 'BTC-USD') + '</b>' +
+        '<span style="color:#8a97a8;font-size:11px">custo ' + d.custo_bps + ' bps &middot; ' +
+        (d.gerado_em ? new Date(d.gerado_em).toLocaleString('pt-BR') : '--') + '</span></div>' +
+      '<div style="color:#9fb3c6;font-size:12px;margin-top:4px">regra viva: alvo ' +
+        (d.filtros && d.filtros.alvoR) + 'R &middot; folga minima do stop ' +
+        (d.filtros && d.filtros.distMinPct) + '% &middot; so abre na virada</div>'
+    ));
+
+    ['1H', '15M', '5M'].forEach(function (tf) {
+      var s = d.series[tf];
+      if (!s) return;
+      if (s.erro) {
+        alvo.appendChild(cartao('<b style="color:#ffe9b0">' + tf + '</b> <span style="color:#E2685F">' + s.erro + '</span>'));
+        return;
+      }
+      var corR = Number(s.r_ano) >= 0 ? '#3FBF8F' : '#E2685F';
+      var pf = s.profit_factor == null ? '--' : fmt(s.profit_factor);
+      alvo.appendChild(cartao(
+        '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">' +
+          '<b style="color:#ffe9b0">' + tf + '</b>' +
+          '<span style="color:#8a97a8;font-size:11px">' + (s.anos || 0) + ' anos &middot; ' +
+          (s.barras || 0) + ' barras &middot; ' + (s.de || '') + ' a ' + (s.ate || '') + '</span></div>' +
+        '<div style="font-size:20px;font-weight:700;color:' + corR + '">' +
+          (Number(s.r_ano) >= 0 ? '+' : '') + fmt(s.r_ano, 1) + ' R/ano</div>' +
+        '<div style="margin-top:4px;color:#9fb3c6;font-size:12px">' +
+          s.operacoes + ' operacoes &middot; acerto ' + fmt(s.acerto_pct, 1) + '% &middot; ' +
+          fmt(s.r_medio, 3) + 'R por operacao &middot; PF ' + pf + '<br>' +
+          'drawdown ' + fmt(s.drawdown_r, 1) + 'R &middot; pior sequencia ' +
+          (s.sequencia_perdas || 0) + ' perdas &middot; ' + fmt(s.barras_media, 1) + ' barras por operacao</div>'
+      ));
+    });
+
+    var s1 = d.series['1H'];
+    if (s1 && s1.variantes) {
+      var linhas = s1.variantes.map(function (v) {
+        return [v.nome + (v.escolhida ? ' *' : ''), v.operacoes || 0,
+          v.acerto_pct == null ? '--' : fmt(v.acerto_pct, 1) + '%',
+          v.r_medio == null ? '--' : fmt(v.r_medio, 3),
+          v.r_ano == null ? '--' : fmt(v.r_ano, 1),
+          v.drawdown_r == null ? '--' : fmt(v.drawdown_r, 1)];
+      });
+      alvo.appendChild(cartao('<div style="color:#8a97a8;font-size:11px;margin-bottom:6px">VARIANTES NA 1H (a escolhida tem *)</div>' +
+        tabela(linhas, ['regra', 'ops', 'acerto', 'R/op', 'R/ano', 'dd R']).outerHTML));
+    }
+
+    if (s1 && s1.custos) {
+      var lc = s1.custos.map(function (c) {
+        return [c.bps + ' bps', c.r_medio == null ? '--' : fmt(c.r_medio, 3), c.r_ano == null ? '--' : fmt(c.r_ano, 1)];
+      });
+      alvo.appendChild(cartao('<div style="color:#8a97a8;font-size:11px;margin-bottom:6px">SENSIBILIDADE AO CUSTO (1H)</div>' +
+        tabela(lc, ['custo', 'R/op', 'R/ano']).outerHTML));
+    }
+
+    if (s1 && s1.dentro && s1.fora) {
+      var l2 = [
+        ['dentro da amostra', s1.dentro.operacoes || 0, s1.dentro.acerto_pct == null ? '--' : fmt(s1.dentro.acerto_pct, 1) + '%', s1.dentro.r_ano == null ? '--' : fmt(s1.dentro.r_ano, 1)],
+        ['fora da amostra', s1.fora.operacoes || 0, s1.fora.acerto_pct == null ? '--' : fmt(s1.fora.acerto_pct, 1) + '%', s1.fora.r_ano == null ? '--' : fmt(s1.fora.r_ano, 1)]
+      ];
+      alvo.appendChild(cartao('<div style="color:#8a97a8;font-size:11px;margin-bottom:6px">METADE DENTRO, METADE FORA (1H)</div>' +
+        tabela(l2, ['trecho', 'ops', 'acerto', 'R/ano']).outerHTML));
+    }
+
+    alvo.appendChild(cartao(
+      '<div style="color:#8a97a8;font-size:11px;line-height:1.6">Como ler: R/ano e o resultado somado dividido pelos anos da amostra. ' +
+      'A conta ja desconta o spread de ida e volta. Numeros de replay sao evidencia do passado, ' +
+      'nao promessa: a temporada em papel e que decide quando o robo vai para a conta real.</div>'
+    ));
+  }
+
   // ----------------------------------------------------------------- painel
   function montar() {
     if (painel) return painel;
@@ -175,6 +288,7 @@
     pintarAbas();
     if (id === 'viradas') desenharViradas();
     else if (id === 'simulador') desenharSimulador();
+    else if (id === 'replay') desenharReplay();
     else desenharRisco();
   }
 

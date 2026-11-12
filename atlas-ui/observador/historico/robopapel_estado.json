@@ -1,0 +1,38 @@
+{
+ "aberta": {
+  "ativo": "BTC-USDT",
+  "timeframe": "1H",
+  "lado": "venda",
+  "entrada": 71424.3,
+  "stop": 72428.09,
+  "alvo": 69416.72,
+  "tamanho": 0.0026,
+  "risco_usd": 2.6,
+  "risco_pct": 2,
+  "equity": 130,
+  "motivo": "abertura pela estrutura: lado baixa com stop no trailing",
+  "nucleo_versao": "trailing 1.0.0 + risco 1.0.0",
+  "hash": "8b10b5d2b150ab0082cbbadd27f1c026009618fd916295bd5370ab39ed01ee0b",
+  "estado": "aberta",
+  "preco_mercado": 71581.5,
+  "aberta_em": "2026-11-12T20:34:16.755Z",
+  "modo": "papel",
+  "origem": "roboPaper (servidor Base44), adotada pelo robo local em 12/11/2026"
+ },
+ "atualizado_em": "2026-11-12T21:39:12.557Z",
+ "versao": 1,
+ "preco": 71581.5,
+ "estrutura": {
+  "lado": "baixa",
+  "stop": 72428.09,
+  "viradas": 23,
+  "distancia": 985.49,
+  "folga_pct": 1.38
+ },
+ "timeframe": "1H",
+ "filtros": {
+  "alvo_r": 2,
+  "dist_min_pct": 1,
+  "so_na_virada": true
+ }
+}
