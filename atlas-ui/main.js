@@ -14380,6 +14380,22 @@ function livroTick(preco, ms) {
   });
 }
 
+let livroRelogio = null;
+
+function livroAmostrar() {
+  // o preco pode vir do tick, do ultimo candle ou do titulo; pega o primeiro
+  let p = null;
+  try { p = (typeof lastPrice !== 'undefined' && isFinite(lastPrice)) ? lastPrice : null; } catch (e) {}
+  if (p == null) { try { p = candles.length ? candles[candles.length - 1].close : null; } catch (e) {} }
+  if (p == null) return;
+  livroTick(p, Date.now());
+}
+
+function livroLigar(ligado) {
+  if (ligado && !livroRelogio) livroRelogio = setInterval(livroAmostrar, 1000);
+  if (!ligado && livroRelogio) { clearInterval(livroRelogio); livroRelogio = null; }
+}
+
 function livroVelas(sym, seg) {
   if (livroTicks.sym !== sym) return [];
   const mapa = livroTicks.porSeg[seg];
