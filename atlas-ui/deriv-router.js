@@ -64,7 +64,7 @@
           setTimeout(conectar, 1500 * S.tentativas);
         }
       };
-      ws.onerror = () => { S.erro = 'conexao recusada pela Deriv'; };
+      ws.onerror = () => { S.erro = 'conexao recusada (rede ou IP)'; pintarSeAberto(); };
       ws.onmessage = ev => {
         let msg = null;
         try { msg = JSON.parse(ev.data); } catch (e) { return; }

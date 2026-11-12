@@ -14345,11 +14345,61 @@ try {
   });
 } catch (e) {}
 
+
+// ── Livro de ticks do painel (P9) ─────────────────────────────────────────
+// A partir de 1 minuto a vela vem pronta da corretora. Abaixo disso ninguem
+// entrega vela pronta para cripto, entao ela e montada aqui, do aggTrade que
+// ja chega para o preco. O livro guarda poucos minutos e some com o ativo
+// antigo: e cache de tela, nao historico.
+const LIVRO_SEG = [1, 5, 15, 30];
+const livroTicks = { sym: null, porSeg: {} };
+
+function livroZerar(sym) {
+  if (livroTicks.sym === sym) return;
+  livroTicks.sym = sym;
+  livroTicks.porSeg = {};
+  LIVRO_SEG.forEach(function (seg) { livroTicks.porSeg[seg] = new Map(); });
+}
+
+function livroTick(preco, ms) {
+  if (!isFinite(preco) || preco <= 0 || !isFinite(ms)) return;
+  const sym = currentSym;
+  if (!sym) return;
+  livroZerar(sym);
+  const ep = Math.floor(ms / 1000);
+  LIVRO_SEG.forEach(function (seg) {
+    const balde = ep - (ep % seg);
+    const mapa = livroTicks.porSeg[seg];
+    const v = mapa.get(balde);
+    if (!v) mapa.set(balde, { time: balde, open: preco, high: preco, low: preco, close: preco, volume: 1 });
+    else { v.high = Math.max(v.high, preco); v.low = Math.min(v.low, preco); v.close = preco; v.volume++; }
+    if (mapa.size > 900) {
+      const chaves = Array.from(mapa.keys()).sort(function (a, b) { return a - b; });
+      chaves.slice(0, mapa.size - 900).forEach(function (k) { mapa.delete(k); });
+    }
+  });
+}
+
+function livroVelas(sym, seg) {
+  if (livroTicks.sym !== sym) return [];
+  const mapa = livroTicks.porSeg[seg];
+  if (!mapa) return [];
+  return Array.from(mapa.values()).sort(function (a, b) { return a.time - b.time; });
+}
+
 async function fetchCandles(sym,tf,limit=500){
   // Cambio e segundos nao existem nas fontes de cripto: quem entrega e a Deriv,
   // pelo socket do proprio navegador (o IP do dono; a Deriv recusa datacenter).
   try{
     const seg = tfToSeconds(tf);
+    if(seg < 60){
+      const locais = livroVelas(sym, seg);
+      if(locais.length > 29){
+        lastDataSource = 'tick local';
+        updateDataSourceBadge('tick local', true);
+        return locais.slice(-limit);
+      }
+    }
     const precisaDeriv = seg < 60 || !/USDT$/.test(String(sym).toUpperCase());
     if(precisaDeriv && window.DerivAtlas){
       const v = await window.DerivAtlas.velas(sym, seg, limit);
@@ -15195,6 +15245,7 @@ function openWS(){
             registraNegocio(p,q,!d.m,ts,nowSec-(nowSec%tfSec));
           }
         }catch(e){}
+        try{ livroTick(p, d.T||Date.now()); }catch(e){}
         updatePriceUI(p);
         forceChartTick(p,d.T||Date.now()); // coalescido por frame
         return;
