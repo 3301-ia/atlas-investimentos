@@ -14410,6 +14410,9 @@ async function fetchCandles(sym,tf,limit=500){
   // pelo socket do proprio navegador (o IP do dono; a Deriv recusa datacenter).
   try{
     const seg = tfToSeconds(tf);
+    // mantem o amostrador de 1s enquanto o tempo escolhido na tela for de
+    // segundos, inclusive quando a tela cai para 1m esperando aquecer
+    livroLigar(tfToSeconds(typeof currentTF !== 'undefined' ? currentTF : tf) < 60);
     if(seg < 60){
       const locais = livroVelas(sym, seg);
       if(locais.length > 29){
@@ -20535,6 +20538,7 @@ async function changeTF(tf){
   chartHasRendered = false;
   activeInteractingChart = null;
   currentTF=tf;candles=[];resetLive();
+  try{ livroLigar(tfToSeconds(tf) < 60); }catch(e){}
   // o balde da vela e o tempo grafico: mudou o tempo, os ticks da Deriv
   // precisam ser reagrupados do zero
   try{ derivDados.pedeHistorico(); }catch(e){}
