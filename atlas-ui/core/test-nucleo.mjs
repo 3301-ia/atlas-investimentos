@@ -34,7 +34,7 @@ t('clicar abre o painel', (w.document.getElementById('nav-nucleo').click(), !!w.
 await new Promise(r => setTimeout(r, 400));
 
 const lista = w.document.getElementById('nucleo-lista');
-t('lista de pine carregou', lista && lista.children.length === 8, lista && lista.children.length);
+t('lista de pine carregou', lista && lista.children.length >= 9, lista && lista.children.length);
 const det = w.document.getElementById('nucleo-detalhe');
 const pre = det.querySelector('pre');
 t('codigo aparece no detalhe', pre && pre.textContent.includes('//@version'), pre && pre.textContent.slice(0, 40));

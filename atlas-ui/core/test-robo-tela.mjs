@@ -71,4 +71,7 @@ btnFechar.click();
 t('fechar esconde o cartao', w.document.getElementById('robo-card').style.display === 'none');
 
 console.log(`\n${ok} verificacoes do robo na tela passaram`);
-if (falhas) { console.log(`${falhas} falhas`); process.exitCode = 1; }
+if (falhas) { console.log(`${falhas} falhas`); }
+// o cartao agenda um ciclo e um aviso: sai na mao para a prova terminar
+dom.window.close();
+process.exit(falhas ? 1 : 0);

@@ -1,5 +1,5 @@
 {
- "versao": "1.2.0",
+ "versao": "1.3.0",
  "gerado": "2026-11-12",
  "indicadores": [
   {
@@ -73,6 +73,15 @@
    "sha256": "1a1b8a1773d71d2b2c1119860ceab8b1309a7198f1c0fdae8076b48b94d6c532",
    "linhas": 34,
    "bytes": 1773
+  },
+  {
+   "id": "vectra_imperial_supertrend",
+   "nome": "Vectra Imperial SuperTrend",
+   "arquivo": "pine/vectra_imperial_supertrend.pine",
+   "descricao": "ZEMA + KAMA no nucleo, SuperTrend com banda ATR que so aperta, angulo normalizado, alvo projetado do RSI (70/50/30) e absorcao por delta.",
+   "sha256": "1baae1e18c0b284ea211f5eaf431fe0edd70a9a5f420decae063e7ec5059727d",
+   "linhas": 154,
+   "bytes": 8853
   }
  ],
  "nucleo": [
