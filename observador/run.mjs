@@ -104,3 +104,19 @@ try {
 } catch (e) {
   console.error('robô papel falhou:', e.message);
 }
+
+// Replay histórico uma vez por dia (por volta das 03:20 UTC), no mesmo passo.
+// Fica aqui dentro para o workflow continuar mínimo: um único comando.
+try {
+  const agora = new Date();
+  const hora = agora.getUTCHours();
+  const minuto = agora.getUTCMinutes();
+  const forcar = process.env.ATLAS_REPLAY === '1';
+  if (forcar || (hora === 3 && minuto < 12)) {
+    const { execFileSync } = await import('node:child_process');
+    execFileSync('node', ['replay/run.mjs'], { stdio: 'inherit' });
+    console.log('replay: rodado');
+  }
+} catch (e) {
+  console.error('replay falhou:', e.message);
+}
