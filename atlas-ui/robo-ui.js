@@ -6,8 +6,8 @@
 
 (function () {
   var CFG = {
-    estado: './observador/historico/robopapel_estado.json',
-    historico: './observador/historico/robopapel_historico.json',
+    estado: 'https://raw.githubusercontent.com/3301-ia/atlas-investimentos/main/observador/historico/robopapel_estado.json',
+    historico: 'https://raw.githubusercontent.com/3301-ia/atlas-investimentos/main/observador/historico/robopapel_historico.json',
     ativo: 'BTC-USDT',
     intervalo: 120000
   };
