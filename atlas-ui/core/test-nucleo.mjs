@@ -34,7 +34,7 @@ t('clicar abre o painel', (w.document.getElementById('nav-nucleo').click(), !!w.
 await new Promise(r => setTimeout(r, 400));
 
 const lista = w.document.getElementById('nucleo-lista');
-t('lista de pine carregou', lista && lista.children.length === 6, lista && lista.children.length);
+t('lista de pine carregou', lista && lista.children.length === 8, lista && lista.children.length);
 const det = w.document.getElementById('nucleo-detalhe');
 const pre = det.querySelector('pre');
 t('codigo aparece no detalhe', pre && pre.textContent.includes('//@version'), pre && pre.textContent.slice(0, 40));
@@ -45,7 +45,7 @@ t('hash calculado bate com o manifesto', has.includes('\u2713'), has);
 w.AtlasNucleo.aba('nucleo');
 await new Promise(r => setTimeout(r, 350));
 const listaN = w.document.getElementById('nucleo-lista');
-t('aba nucleo lista os modulos', listaN && listaN.children.length === 9, listaN && listaN.children.length);
+t('aba nucleo lista os modulos', listaN && listaN.children.length === 12, listaN && listaN.children.length);
 const detN = w.document.getElementById('nucleo-detalhe');
 t('modulo do trailing visivel', detN.querySelector('pre').textContent.includes('trailingStop'));
 

@@ -1,0 +1,34 @@
+//@version=6
+// =============================================================================
+//  BOLLINGER ATLAS — versao companheira
+//
+//  Tambem nao e o Pine original do projeto. Escrito para espelhar o nucleo em
+//  JavaScript (core/bollinger.js, versao 1.0.0): media simples do periodo,
+//  dois desvios-padrao populacionais em volta, largura da banda em porcentagem
+//  da media e leitura de compressao pelo mesmo criterio do painel: largura
+//  atual abaixo de 40% da media das larguras.
+// =============================================================================
+indicator("Bollinger Atlas (companheiro do nucleo)", shorttitle="BB Atlas", overlay=true)
+
+periodo  = input.int(20, "Periodo", minval=2)
+desvios  = input.float(2.0, "Desvios", minval=0.1, step=0.1)
+limiarSq = input.float(40.0, "Squeeze abaixo de (%)", minval=1, step=1)
+
+base = ta.sma(close, periodo)
+dp   = ta.stdev(close, periodo)
+sup  = base + desvios * dp
+inf  = base - desvios * dp
+
+largura = base > 0 ? (sup - inf) / base * 100 : na
+larguraMedia = ta.sma(largura, 50)
+compressao = na(larguraMedia) or larguraMedia == 0 ? na : largura / larguraMedia * 100
+squeeze = na(compressao) ? false : compressao <= limiarSq
+
+pSup = plot(sup, title="Superior", color=color.new(color.purple, 30), style=plot.style_linebr)
+pInf = plot(inf, title="Inferior", color=color.new(color.purple, 30), style=plot.style_linebr)
+plot(base, title="Media", color=color.new(color.orange, 0), linewidth=2)
+fill(pSup, pInf, color=color.new(color.purple, 92), title="Canal")
+
+plotshape(squeeze and not squeeze[1], title="Inicio do squeeze", style=shape.circle,
+          location=location.bottom, color=color.new(color.blue, 0), size=size.tiny)
+bgcolor(squeeze ? color.new(color.blue, 94) : na, title="Squeeze ligado")

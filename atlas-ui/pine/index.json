@@ -1,6 +1,6 @@
 {
- "versao": "1.0.0",
- "gerado": "2026-11-10",
+ "versao": "1.1.0",
+ "gerado": "2026-11-12",
  "indicadores": [
   {
    "id": "indicador_master_atlas_v10",
@@ -55,6 +55,24 @@
    "sha256": "a731787bd5b1e7d8a837ffa8ec20625bb56cf50f953140f174fcaeb35c03e444",
    "linhas": 411,
    "bytes": 25472
+  },
+  {
+   "id": "macd_atlas",
+   "nome": "MACD Atlas (companheiro)",
+   "arquivo": "pine/macd_atlas.pine",
+   "descricao": "Versao companheira escrita a partir do nucleo core/macd.js, para conferir o mesmo calculo nas duas plataformas.",
+   "sha256": "94661342f8fa6be13a9235a7aa1179a82c0db4a8c2fe3b1304f3aa94b1a59b0e",
+   "linhas": 31,
+   "bytes": 1691
+  },
+  {
+   "id": "bollinger_atlas",
+   "nome": "Bollinger Atlas (companheiro)",
+   "arquivo": "pine/bollinger_atlas.pine",
+   "descricao": "Versao companheira escrita a partir do nucleo core/bollinger.js, com leitura de squeeze igual ao painel.",
+   "sha256": "1a1b8a1773d71d2b2c1119860ceab8b1309a7198f1c0fdae8076b48b94d6c532",
+   "linhas": 34,
+   "bytes": 1773
   }
  ],
  "nucleo": [
@@ -138,6 +156,33 @@
    "sha256": "f0ab35e1fb8bddc92f03879e500e793cb120ef670f753578d2135276569e07b4",
    "linhas": 202,
    "bytes": 8992
+  },
+  {
+   "id": "macd",
+   "nome": "MACD (12, 26, 9)",
+   "arquivo": "core/macd.js",
+   "descricao": "EMA 12 menos EMA 26, sinal 9 e histograma, com tendencia e ultimo cruzamento.",
+   "sha256": "91c9959570c158bd65615da944cb30098adf6fdeace5ccddf58b0d458dbd7b2a",
+   "linhas": 94,
+   "bytes": 3055
+  },
+  {
+   "id": "bollinger",
+   "nome": "Bollinger (20, 2)",
+   "arquivo": "core/bollinger.js",
+   "descricao": "Media, desvios, largura da banda e leitura de compressao.",
+   "sha256": "4a53b75330818af00d2bd36a0d8bf7d84f3ff781b5232333beeee8103874dcb8",
+   "linhas": 90,
+   "bytes": 3005
+  },
+  {
+   "id": "vigia",
+   "nome": "Vigia de posicao",
+   "arquivo": "core/vigia.js",
+   "descricao": "Lucro, R, distancia ao stop e ao alvo, e aviso de aproximacao.",
+   "sha256": "9bdec7377d82a2c86c902450372f31f4012ce099dea13a78ff878b9123eded23",
+   "linhas": 123,
+   "bytes": 4945
   }
  ]
 }

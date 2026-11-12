@@ -1,0 +1,31 @@
+//@version=6
+// =============================================================================
+//  MACD ATLAS — versao companheira
+//
+//  Este arquivo NAO e o Pine original do projeto. Ele foi escrito para espelhar
+//  exatamente o que o nucleo em JavaScript faz (core/macd.js, versao 1.0.0),
+//  para que o mesmo indicador possa ser conferido nas duas plataformas.
+//  Parametros padrao: 12, 26, 9. O sinal e a EMA do MACD calculada sobre os
+//  pontos validos, o histograma e a diferenca entre a linha e o sinal.
+// =============================================================================
+indicator("MACD Atlas (companheiro do nucleo)", shorttitle="MACD Atlas", overlay=false)
+
+rapida = input.int(12, "EMA rapida", minval=1)
+lenta  = input.int(26, "EMA lenta", minval=1)
+sinalP = input.int(9, "Linha de sinal", minval=1)
+
+[linhaMACD, linhaSinal, histograma] = ta.macd(close, rapida, lenta, sinalP)
+
+plot(histograma, title="Histograma", style=plot.style_columns,
+     color=histograma >= 0 ? color.new(color.teal, 45) : color.new(color.red, 45))
+
+plot(linhaMACD, title="MACD", color=color.new(color.blue, 0), linewidth=2)
+plot(linhaSinal, title="Sinal", color=color.new(color.orange, 0), linewidth=1)
+
+// tendencia pela posicao da linha em relacao ao zero, igual ao nucleo
+tendencia = linhaMACD > 0 ? "ALTA" : "BAIXA"
+cruzAlta  = ta.crossover(linhaMACD, linhaSinal)
+cruzBaixa = ta.crossunder(linhaMACD, linhaSinal)
+
+plotshape(cruzAlta,  title="Cruzou para cima",  style=shape.triangleup,   location=location.bottom, color=color.teal, size=size.tiny)
+plotshape(cruzBaixa, title="Cruzou para baixo", style=shape.triangledown, location=location.top,    color=color.red,  size=size.tiny)
