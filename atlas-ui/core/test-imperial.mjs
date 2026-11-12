@@ -10,7 +10,7 @@ function t(nome, cond, detalhe = '') {
 }
 
 // gerador de velas sinteticas: preco base, passo por vela, ruido do range
-function velas(n, inicio, passo, range = 40, volume = 12) {
+function velas(n, inicio, passo, range = 40, volume = 12, t0 = 0) {
   const out = [];
   let p = inicio;
   for (let i = 0; i < n; i++) {
@@ -19,7 +19,7 @@ function velas(n, inicio, passo, range = 40, volume = 12) {
     const fecha = p;
     const alto = Math.max(abre, fecha) + range * 0.4;
     const baixo = Math.min(abre, fecha) - range * 0.4;
-    out.push({ time: 1700000000 + i * 3600, h: alto, l: baixo, c: fecha, v: volume });
+    out.push({ time: 1700000000 + t0 + i * 3600, h: alto, l: baixo, c: fecha, v: volume });
   }
   return out;
 }
@@ -47,7 +47,9 @@ t('queda: linha acima do preco', r2.estado.linha > queda[queda.length - 1].c);
 t('queda: angulo negativo', r2.estado.angulo < 0, 'angulo=' + r2.estado.angulo);
 
 // 3. viradas: sobe, desce, sobe de novo
-const misto = velas(120, 70000, 40).concat(velas(120, 74800, -50)).concat(velas(120, 68800, 45));
+// tempos continuos de verdade: o bloco anterior repetia o horario e o
+// limpador do nucleo (correto) descartava as velas repetidas
+const misto = velas(120, 70000, 40, 40, 12, 0).concat(velas(120, 74800, -50, 40, 12, 120 * 3600)).concat(velas(120, 68800, 45, 40, 12, 240 * 3600));
 const r3 = imperial(misto);
 const viraAlta = r3.series.viradaAlta.filter(Boolean).length;
 const viraBaixa = r3.series.viradaBaixa.filter(Boolean).length;

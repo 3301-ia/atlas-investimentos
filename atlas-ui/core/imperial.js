@@ -170,16 +170,48 @@ export function fluxoMacro(candles) {
  * @param {object} params
  * @returns {object|null}
  */
-export function imperial(candles, params = {}) {
+
+/**
+ * Limpa a serie antes de qualquer conta. Una vela com preco invalido, tempo
+ * repetido ou fora de ordem derrubava o indicador inteiro (a tela mostrava
+ * "sem velas suficientes" com o grafico cheio). Aqui a vela ruim e descartada,
+ * o tempo repetido fica com a ultima versao e a serie sai ascendente.
+ */
+export function limparVelas(candles) {
+  if (!Array.isArray(candles) || !candles.length) return [];
+  const porTempo = new Map();
+  for (let i = 0; i < candles.length; i++) {
+    const c = candles[i];
+    if (!c || typeof c !== 'object') continue;
+    let t = c.time != null ? c.time : (c.t != null ? c.t : c.openTime);
+    if (typeof t === 'string' && /^\d+$/.test(t)) t = Number(t);
+    if (t instanceof Date) t = Math.floor(t.getTime() / 1000);
+    const h = Number(c.h != null ? c.h : c.high);
+    const l = Number(c.l != null ? c.l : c.low);
+    const fe = Number(c.c != null ? c.c : c.close);
+    const v = Number(c.v != null ? c.v : (c.volume != null ? c.volume : 0));
+    if (!Number.isFinite(Number(t)) || !Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(fe)) continue;
+    if (h < l) continue;
+    porTempo.set(t, { time: t, h, l, c: fe, v: Number.isFinite(v) ? v : 0 });
+  }
+  return Array.from(porTempo.values()).sort((a, b) => a.time - b.time);
+}
+
+export function minimoVelas(params = {}) {
   const p = { ...IMPERIAL_PARAMS, ...params };
-  const n = Array.isArray(candles) ? candles.length : 0;
-  const minimo = Math.max(p.lenKama, p.lenZema, p.atrLen, p.lenRsi, p.cvdJanela) + 8;
+  return Math.max(p.lenKama, p.lenZema, p.atrLen, p.lenRsi, p.cvdJanela) + 8;
+}
+
+export function imperial(entrada, params = {}) {
+  const p = { ...IMPERIAL_PARAMS, ...params };
+  const candles = limparVelas(entrada);
+  const n = candles.length;
+  const minimo = minimoVelas(p);
   if (n < minimo) return null;
 
-  const fech = candles.map(c => Number(c.c != null ? c.c : c.close));
-  const alto = candles.map(c => Number(c.h != null ? c.h : c.high));
-  const baixo = candles.map(c => Number(c.l != null ? c.l : c.low));
-  if (fech.some(v => !Number.isFinite(v))) return null;
+  const fech = candles.map(c => c.c);
+  const alto = candles.map(c => c.h);
+  const baixo = candles.map(c => c.l);
 
   // 1) motor de media -------------------------------------------------------
   const zema = zlema(fech, p.lenZema);

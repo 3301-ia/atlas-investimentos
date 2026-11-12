@@ -1,5 +1,5 @@
 {
- "versao": "1.3.0",
+ "versao": "1.4.1",
  "gerado": "2026-11-12",
  "indicadores": [
   {
@@ -99,9 +99,9 @@
    "nome": "Fibonacci",
    "arquivo": "core/fibonacci.js",
    "descricao": "Ancora no cruzamento EMA 8/16 e alvos por extensao do swing.",
-   "sha256": "3381858e5ef0324e6d56d1c37421d1bc8f178a501d9ee0a58a12645c53f471d4",
-   "linhas": 122,
-   "bytes": 3940
+   "sha256": "a1ded802b7c4ae4fa75f739301dfee31fe55ba900074479a6ea852030371ed90",
+   "linhas": 316,
+   "bytes": 11163
   },
   {
    "id": "dynamic",
@@ -219,6 +219,15 @@
    "sha256": "6537b4a58fb4c8d672b30bf18744013ec7a56de27788f00b1a09bc5873b07384",
    "linhas": 161,
    "bytes": 6015
+  },
+  {
+   "id": "consenso",
+   "nome": "Consenso de Microtempo",
+   "arquivo": "core/consenso.js",
+   "descricao": "Le o FIB automatico em 30s, 1m e 15m e devolve lado, forca e gatilho ponderado.",
+   "sha256": "aa27843eef6987120f3c7729202e1aef5a1ca26bfd69402341c863bfa5de13bd",
+   "linhas": 138,
+   "bytes": 5798
   }
  ]
 }

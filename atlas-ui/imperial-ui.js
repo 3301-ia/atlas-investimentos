@@ -18,6 +18,9 @@
   var visivel = true;
   var ultimo = null;
   var ultimaContagem = -1;
+  var ultimaAssinatura = '';
+  var ultimoBom = null;
+  var ultimoBomEm = 0;
   var timer = null;
 
   var VERDE = '#2ECC8F', VERMELHO = '#E2564D';
@@ -37,18 +40,51 @@
     }).catch(function () { return null; });
   }
 
+  // A leitura de velas era o ponto fraco: se uma unica vela viesse com preco
+  // invalido, tempo repetido ou fora de ordem, o nucleo devolvia nulo e o
+  // cartao travava em "sem velas suficientes" com o grafico cheio. Agora a
+  // serie e limpa antes de sair daqui.
+  function serieLimpa(arr) {
+    if (!Array.isArray(arr) || !arr.length) return null;
+    var porTempo = {}, saida = [];
+    for (var i = 0; i < arr.length; i++) {
+      var c = arr[i];
+      if (!c || typeof c !== 'object') continue;
+      var t = c.time != null ? c.time : (c.t != null ? c.t : c.openTime);
+      var h = Number(c.high != null ? c.high : c.h);
+      var l = Number(c.low != null ? c.low : c.l);
+      var fe = Number(c.close != null ? c.close : c.c);
+      var vo = Number(c.volume != null ? c.volume : c.v);
+      if (!isFinite(t) || !isFinite(h) || !isFinite(l) || !isFinite(fe)) continue;
+      if (h < l) continue;
+      porTempo[t] = { time: t, h: h, l: l, c: fe, v: isFinite(vo) ? vo : 0 };
+    }
+    for (var k in porTempo) saida.push(porTempo[k]);
+    saida.sort(function (a, b) { return a.time - b.time; });
+    return saida.length ? saida : null;
+  }
+
   function velas() {
+    var candidatos = [];
+    try { if (typeof candles !== 'undefined' && Array.isArray(candles)) candidatos.push(candles); } catch (e) {}
+    try { if (Array.isArray(window.__velas)) candidatos.push(window.__velas); } catch (e) {}
     try {
-      if (typeof candles !== 'undefined' && Array.isArray(candles) && candles.length > 30) {
-        return candles.map(function (c) {
-          return { time: c.time, h: c.high != null ? c.high : c.h, l: c.low != null ? c.low : c.l, c: c.close != null ? c.close : c.c, v: c.volume != null ? c.volume : c.v };
-        });
-      }
+      var tf = null;
+      try { tf = typeof currentTF !== 'undefined' ? currentTF : null; } catch (e) {}
+      var mapa = window.__velasPorTf || window.candlesPorTf;
+      if (mapa && tf && Array.isArray(mapa[tf])) candidatos.push(mapa[tf]);
+      if (mapa && Array.isArray(mapa[window.__tfAtual])) candidatos.push(mapa[window.__tfAtual]);
     } catch (e) {}
-    try {
-      if (Array.isArray(window.__velas) && window.__velas.length > 30) return window.__velas.slice();
-    } catch (e) {}
+    for (var i = 0; i < candidatos.length; i++) {
+      var limpa = serieLimpa(candidatos[i]);
+      if (limpa && limpa.length > 30) return limpa;
+    }
     return [];
+  }
+
+  function assinatura(vs) {
+    if (!vs || !vs.length) return '0';
+    return vs.length + ':' + vs[0].time + ':' + vs[vs.length - 1].time;
   }
 
   function grafico() {
@@ -153,13 +189,14 @@
     var sr = r.series;
     for (var i = 0; i < vs.length; i++) {
       var t = vs[i].time;
-      if (sr.linha[i] != null) {
+      if (!isFinite(t)) continue;
+      if (sr.linha[i] != null && isFinite(sr.linha[i])) {
         st.push({ time: t, value: sr.linha[i], color: sr.dir[i] === 1 ? VERDE : VERMELHO });
-        nuvem.push({ time: t, st: sr.linha[i], c: vs[i].c, dir: sr.dir[i] });
+        if (isFinite(vs[i].c)) nuvem.push({ time: t, st: sr.linha[i], c: vs[i].c, dir: sr.dir[i] });
       }
-      if (sr.alvoTopo[i] != null) a70.push({ time: t, value: sr.alvoTopo[i] });
-      if (sr.alvoMeio[i] != null) a50.push({ time: t, value: sr.alvoMeio[i] });
-      if (sr.alvoFundo[i] != null) a30.push({ time: t, value: sr.alvoFundo[i] });
+      if (sr.alvoTopo[i] != null && isFinite(sr.alvoTopo[i])) a70.push({ time: t, value: sr.alvoTopo[i] });
+      if (sr.alvoMeio[i] != null && isFinite(sr.alvoMeio[i])) a50.push({ time: t, value: sr.alvoMeio[i] });
+      if (sr.alvoFundo[i] != null && isFinite(sr.alvoFundo[i])) a30.push({ time: t, value: sr.alvoFundo[i] });
     }
     try {
       s.st.setData(st); s.a70.setData(a70); s.a50.setData(a50); s.a30.setData(a30);
@@ -168,18 +205,36 @@
   }
 
   function avaliar(forcar) {
-    var vs = velas();
-    if (!vs.length) { pintar(null); return; }
-    if (!forcar && vs.length === ultimaContagem && ultimo) { return; }
-    obterCore().then(function (m) {
-      if (!m) { pintar(null); return; }
-      var r = null;
-      try { r = m.imperial(vs); } catch (e) { r = null; }
-      ultimaContagem = vs.length;
-      ultimo = r;
-      pintar(r, m);
-      if (r) desenhar(vs, r);
-    });
+    try {
+      var vs = velas();
+      if (!vs.length) {
+        // sem serie ainda: mostra progresso em vez de erro e segue tentando
+        pintar(ultimoBom, null, { antigo: !!ultimoBom, semDados: true, tem: 0 });
+        return;
+      }
+      var sig = assinatura(vs);
+      if (!forcar && sig === ultimaAssinatura && (ultimo || ultimoBom)) return;
+      obterCore().then(function (m) {
+        if (!m) { pintar(ultimoBom, null, { antigo: !!ultimoBom, semDados: true, tem: vs.length }); return; }
+        var r = null;
+        try { r = m.imperial(vs); } catch (e) { r = null; }
+        ultimaAssinatura = sig;
+        ultimo = r;
+        if (r) {
+          ultimoBom = r;
+          ultimoBomEm = Date.now();
+          pintar(r, m, { antigo: false, tem: vs.length });
+          try { desenhar(vs, r); } catch (e) {}
+        } else {
+          // poucas velas ou conta recusada: mantem a ultima leitura valida
+          pintar(ultimoBom, m, { antigo: !!ultimoBom, tem: vs.length });
+        }
+      }).catch(function () {
+        pintar(ultimoBom, null, { antigo: !!ultimoBom, tem: vs.length });
+      });
+    } catch (e) {
+      pintar(ultimoBom, null, { antigo: !!ultimoBom, tem: 0 });
+    }
   }
 
   function linha2(rotulo, valor, cor) {
@@ -197,11 +252,20 @@
     return d;
   }
 
-  function pintar(r, m) {
+  function pintar(r, m, ctx) {
     if (!corpo) return;
+    ctx = ctx || {};
     corpo.innerHTML = '';
     if (!r) {
-      corpo.appendChild(linha2('ESTADO', 'sem velas suficientes', '#8a97a8'));
+      // cartao nunca fica morto: diz o que esta faltando e quanto falta
+      var precisa = (m && typeof m.minimoVelas === 'function') ? m.minimoVelas() : 29;
+      var faltam = ctx.tem ? Math.max(0, precisa - ctx.tem) : precisa;
+      corpo.appendChild(linha2('ESTADO', ctx.semDados ? 'aguardando dados' : 'poucas velas', CINZA));
+      corpo.appendChild(linha2('VELAS', (ctx.tem || 0) + ' de ' + precisa + (faltam ? ' · faltam ' + faltam : ''), CINZA));
+      var av = document.createElement('div');
+      av.style.cssText = 'margin-top:8px;font:9px ui-monospace,Consolas,monospace;color:#4e5866;letter-spacing:.06em;text-align:center';
+      av.textContent = 'tentando de novo a cada 2s';
+      corpo.appendChild(av);
       return;
     }
     var e = r.estado;
@@ -211,6 +275,15 @@
       'background:' + (e.dir === 1 ? 'rgba(0,230,118,.10)' : 'rgba(255,23,68,.10)') + ';color:' + corLado;
     faixa.textContent = (e.dir === 1 ? 'ALTA' : 'BAIXA') + ' · ' + (e.anguloForte ? 'ANGULO FORTE' : 'ANGULO FRACO');
     corpo.appendChild(faixa);
+
+    if (ctx.antigo) {
+      var velho = document.createElement('div');
+      var h = new Date(ultimoBomEm);
+      velho.style.cssText = 'margin:-6px 0 8px;padding:4px 6px;border-radius:5px;text-align:center;font:9px ui-monospace,Consolas,monospace;' +
+        'background:rgba(217,180,91,.10);color:#b99a4e;letter-spacing:.06em';
+      velho.textContent = 'leitura anterior ' + ('0' + h.getHours()).slice(-2) + ':' + ('0' + h.getMinutes()).slice(-2) + ':' + ('0' + h.getSeconds()).slice(-2);
+      corpo.appendChild(velho);
+    }
 
     corpo.appendChild(linha2('ANGULO', e.angulo == null ? '--' : e.angulo.toFixed(1) + '°', e.anguloForte ? '#FFEB3B' : '#8a97a8'));
     corpo.appendChild(linha2('LINHA (STOP)', texto(e.linha) + (e.distLinhaPct == null ? '' : ' · ' + e.distLinhaPct.toFixed(2) + '%'), corLado));
@@ -237,7 +310,9 @@
     var nota = document.createElement('div');
     nota.style.cssText = 'margin-top:10px;padding-top:8px;border-top:1px solid rgba(217,180,91,.12);' +
       'font:9px ui-monospace,Consolas,monospace;color:#4e5866;letter-spacing:.06em';
-    nota.textContent = 'versao ' + r.versao + ' · ' + (ligado ? 'linhas no gráfico' : 'linhas ocultas');
+    var lido = ultimoBomEm ? new Date(ultimoBomEm) : null;
+    var hhmm = lido ? ('0' + lido.getHours()).slice(-2) + ':' + ('0' + lido.getMinutes()).slice(-2) : '--:--';
+    nota.textContent = 'v' + r.versao + ' · ' + (ligado ? 'linhas no gráfico' : 'linhas ocultas') + ' · lido ' + hhmm;
     corpo.appendChild(nota);
   }
 
@@ -245,8 +320,9 @@
     var b = document.createElement('button');
     b.type = 'button';
     b.textContent = txt;
-    b.style.cssText = 'min-height:40px;padding:0 12px;background:transparent;border:1px solid rgba(217,180,91,.45);' +
-      'border-radius:6px;color:#D9B45B;font:600 11px ui-monospace,Consolas,monospace;letter-spacing:.05em;cursor:pointer';
+    b.style.cssText = 'min-height:40px;flex:1 1 0;min-width:0;padding:0 8px;background:transparent;border:1px solid rgba(217,180,91,.45);' +
+      'border-radius:6px;color:#D9B45B;font:600 10px ui-monospace,Consolas,monospace;letter-spacing:.04em;cursor:pointer;' +
+      'white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
     b.addEventListener('click', fn);
     return b;
   }
@@ -282,6 +358,7 @@
       salvarEstado();
       if (!ligado) { apagarSeries(); }
       ultimaContagem = -1;
+      ultimaAssinatura = '';
       avaliar(true);
     }));
     acoes.appendChild(botao('LIVRO', function () { celulas(); }));

@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { JSDOM } from 'jsdom';
 import * as core from './imperial.js';
 
+const VERDE_TELA = '#2ECC8F', VERMELHO_TELA = '#E2564D';
 let ok = 0, f = 0;
 const t = (n, c, x) => { if (c) { ok++; console.log('  ok  ' + n); } else { f++; console.log('  FALHA ' + n + (x ? ' :: ' + x : '')); } };
 
@@ -62,7 +63,7 @@ await new Promise(r => setTimeout(r, 250));
 t('criou quatro series', seriesCriadas.length === 4, seriesCriadas.length);
 const comDados = seriesCriadas.filter(s => s.dados.length > 0);
 t('todas as series receberam dados', comDados.length === 4, comDados.length);
-t('serie do supertrend tem ponto colorido', seriesCriadas[0].dados.every(d => d.color === '#00E676' || d.color === '#FF1744'));
+t('serie do supertrend tem ponto colorido', seriesCriadas[0].dados.every(d => d.color === VERDE_TELA || d.color === VERMELHO_TELA));
 t('alvo 70 tem a mesma quantidade de pontos que o alvo 30',
   seriesCriadas[1].dados.length === seriesCriadas[3].dados.length);
 t('estado salvo ligado', JSON.parse(w.localStorage.getItem('atlas.imperial.v1')).ligado === true);
@@ -86,7 +87,10 @@ t('fechar esconde o cartao', cartao.style.display === 'none');
 w.candles = [];
 w.AtlasImperial.abrir();
 await new Promise(r => setTimeout(r, 150));
-t('sem velas avisa em vez de quebrar', /sem velas/.test(w.document.getElementById('imperial-card').textContent));
+// agora o cartao nao morre: mostra o que falta e mantem a ultima leitura boa
+const txtSem = w.document.getElementById('imperial-card').textContent;
+t('sem velas avisa em vez de quebrar', /aguardando dados|poucas velas|leitura anterior|BAIXA|ALTA/.test(txtSem), txtSem.slice(0, 80));
+t('sem velas mostra o progresso de velas', /VELAS|de 28/.test(txtSem) || /leitura anterior/.test(txtSem), txtSem.slice(0, 80));
 
 console.log(f ? '\n' + f + ' falhas' : '\n' + ok + ' verificacoes do imperial na tela passaram');
 dom.window.close();

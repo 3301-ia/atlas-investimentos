@@ -3,6 +3,8 @@ import path from 'node:path';
 import { JSDOM } from 'jsdom';
 import { sha256hex } from './signature.js';
 
+import { readFileSync } from 'node:fs';
+const qtdNucleos = () => JSON.parse(readFileSync('pine/index.json','utf8')).nucleo.length;
 let ok = 0, falhas = 0;
 function t(nome, cond, extra) { if (cond) { ok++; console.log('  ok  ' + nome); } else { falhas++; console.log('  FALHA ' + nome + (extra ? ' :: ' + extra : '')); } }
 
@@ -45,7 +47,10 @@ t('hash calculado bate com o manifesto', has.includes('\u2713'), has);
 w.AtlasNucleo.aba('nucleo');
 await new Promise(r => setTimeout(r, 350));
 const listaN = w.document.getElementById('nucleo-lista');
-t('aba nucleo lista os modulos', listaN && listaN.children.length === 15, listaN && listaN.children.length);
+// o numero de modulos vem do manifesto, nao de um literal: crescer a lista
+// (o consenso entrou em nov/2026) nao pode quebrar a prova
+const qtdManifesto = qtdNucleos();
+t('aba nucleo lista os modulos', listaN && listaN.children.length === qtdManifesto, { tela: listaN && listaN.children.length, manifesto: qtdManifesto });
 const detN = w.document.getElementById('nucleo-detalhe');
 t('modulo do trailing visivel', detN.querySelector('pre').textContent.includes('trailingStop'));
 

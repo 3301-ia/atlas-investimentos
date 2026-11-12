@@ -131,8 +131,11 @@
     if (typeof candleSeries === 'undefined' || !candleSeries || typeof candleSeries.createPriceLine !== 'function') return;
     if (!fibLigado) { limparFib(); ancoraFib = null; return; }
     obterFibo().then(function (mod) {
-      if (!mod || !mod.fiboPlan) return;
-      var plano = mod.fiboPlan(velasFechadas());
+      if (!mod) return;
+      // fiboAuto entrega a perna ATUAL (o lado que esta no comando agora) e
+      // alterna sozinha a cada cruzamento da EMA 8/16; fiboPlan fica como
+      // reserva para quando o nucleo antigo estiver em cache no navegador.
+      var plano = mod.fiboAuto ? mod.fiboAuto(velasFechadas()) : (mod.fiboPlan ? mod.fiboPlan(velasFechadas()) : null);
       if (!plano || !isFinite(plano.p0) || !isFinite(plano.p1)) { limparFib(); ancoraFib = null; return; }
       planoFib = plano;
       var chave = plano.p0 + '_' + plano.p1 + '_' + plano.lado;
