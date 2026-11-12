@@ -76,12 +76,41 @@
     try { return core.trailingStop(velas); } catch (e) { return null; }
   }
 
+  // O stop nasce das velas fechadas (e assim que tem que ser: vela em formacao
+  // nao fecha referencia). A DISTANCIA, porem, e do preco vivo — antes ela saia
+  // do fechamento da ultima vela fechada, o que numa vela de 6m punha dois
+  // precos diferentes na mesma tela. Agora convivem certo: stop do nucleo,
+  // distancia do snapshot de mercado.
+  function precoVivo() {
+    try {
+      var m = window.AtlasMercado;
+      if (!m) return null;
+      if (typeof m.fresco === 'function') return m.fresco(15000);
+      var s = m.ler();
+      return s && s.preco ? s.preco : null;
+    } catch (e) { return null; }
+  }
+
+  function comPrecoVivo(e) {
+    var vivo = precoVivo();
+    if (!vivo || !e || !num(e.stop)) return e;
+    var dist = Math.abs(vivo - e.stop);
+    var copia = {};
+    for (var k in e) if (Object.prototype.hasOwnProperty.call(e, k)) copia[k] = e[k];
+    copia.preco = vivo;
+    copia.distancia = +dist.toFixed(2);
+    copia.distanciaPercentual = +(dist / vivo * 100).toFixed(3);
+    copia.dentro = e.lado === 'alta' ? vivo > e.stop : vivo < e.stop;
+    copia.hora = Date.now();
+    return copia;
+  }
+
   function desenharTS() {
     var s = garantirSerie();
     if (!s) return;
     var plano = calcular();
     if (!plano || !plano.serie.length) return;
-    estado = plano.estado;
+    estado = comPrecoVivo(plano.estado);
     if (tsLigado) {
       try { s.setData(plano.serie.map(function (p) { return { time: p.time, value: p.value }; })); } catch (e) {}
     } else {
@@ -221,8 +250,10 @@
     }
     if (val) val.textContent = preco(estado.stop);
     if (dist) dist.textContent = preco(estado.distancia) + ' (' + estado.distanciaPercentual + '%)';
+    var idade = estado.hora ? Math.round((Date.now() - estado.hora) / 1000) : null;
     chip.title = 'stop ' + preco(estado.stop) + ' · preco ' + preco(estado.preco) +
-      ' · viradas ' + estado.viradas;
+      ' · viradas ' + estado.viradas +
+      (idade != null ? ' · leitura de ' + idade + 's atrás' : '');
   }
 
   function ciclo() {

@@ -14384,9 +14384,11 @@ let livroRelogio = null;
 
 function livroAmostrar() {
   // o preco pode vir do tick, do ultimo candle ou do titulo; pega o primeiro
-  let p = null;
-  try { p = (typeof lastPrice !== 'undefined' && isFinite(lastPrice)) ? lastPrice : null; } catch (e) {}
-  if (p == null) { try { p = candles.length ? candles[candles.length - 1].close : null; } catch (e) {} }
+  let p = mercadoPrecoFresco(5000);
+  if (p == null) {
+    try { p = candles.length ? candles[candles.length - 1].close : null; } catch (e) {}
+    if (p != null) mercadoAtualizar(p, 'vela');
+  }
   if (p == null) return;
   livroTick(p, Date.now());
 }
@@ -14416,11 +14418,27 @@ async function fetchCandles(sym,tf,limit=500){
         return locais.slice(-limit);
       }
     }
+    if(seg < 60){
+      // nem livro local nem Deriv entregaram ainda: cai para 1m em vez de
+      // deixar o grafico em branco enquanto a vela de segundos se forma
+      const livroVazio = livroVelas(sym, seg).length <= 29;
+      if(livroVazio){
+        const v = window.DerivAtlas ? await window.DerivAtlas.velas(sym, seg, limit) : null;
+        if(!(Array.isArray(v) && v.length > 29)){
+          updateDataSourceBadge('1m · segundos aquecendo', false);
+          return await fetchCandles(sym, '1m', limit);
+        }
+        lastDataSource = 'deriv';
+        updateDataSourceBadge('deriv', true);
+        return v.slice(-limit);
+      }
+    }
     const precisaDeriv = seg < 60 || !/USDT$/.test(String(sym).toUpperCase());
     if(precisaDeriv && window.DerivAtlas){
       const v = await window.DerivAtlas.velas(sym, seg, limit);
       if(Array.isArray(v) && v.length > 29){
         lastDataSource = 'deriv';
+        try{ mercadoAtualizar(v[v.length-1].close, 'deriv'); }catch(e){}
         try{ localStorage.setItem('atlas.fonteBoa','deriv'); }catch(e){}
         updateDataSourceBadge('deriv', true);
         return v;
@@ -15155,7 +15173,44 @@ function casasDoPreco(p){
   return 7;
 }
 
+
+// ── Snapshot de mercado: a unica fonte de verdade do preco ───────────────
+// Antes cada cartao pegava o preco de um lugar: o cabecalho do tick, o chip do
+// trailing do fechamento da ultima vela. Numa vela de 6 minutos isso punha na
+// mesma tela dois precos com 6 minutos de diferenca (71304 no topo, 71360 na
+// conta do chip) e a distancia do stop saia errada. Agora quem sabe o preco e
+// este objeto, com a hora da leitura; quem mostra le daqui.
+const mercado = { preco: null, hora: 0, simbolo: '', tf: '', fonte: '' };
+
+function mercadoAtualizar(preco, fonte) {
+  const p = Number(preco);
+  if (!isFinite(p) || p <= 0) return;
+  mercado.preco = p;
+  mercado.hora = Date.now();
+  try { mercado.simbolo = currentSym; mercado.tf = currentTF; } catch (e) {}
+  if (fonte) mercado.fonte = fonte;
+}
+
+function mercadoIdade() { return mercado.hora ? Date.now() - mercado.hora : null; }
+
+// preco com validade: leitura velha nao serve para calcular distancia
+function mercadoPrecoFresco(maxMs) {
+  if (!mercado.preco) return null;
+  const idade = mercadoIdade();
+  if (idade == null) return null;
+  return idade <= (maxMs || 5000) ? mercado.preco : null;
+}
+
+window.AtlasMercado = {
+  ler: function () {
+    return { preco: mercado.preco, hora: mercado.hora, idade: mercadoIdade(), simbolo: mercado.simbolo, tf: mercado.tf, fonte: mercado.fonte };
+  },
+  preco: function () { return mercado.preco; },
+  fresco: mercadoPrecoFresco,
+};
+
 function updatePriceUI(p){
+  mercadoAtualizar(p, 'tick');
   const casas=casasDoPreco(p);
   const rt=document.getElementById('rt-price');
   if(rt)rt.textContent=`$${p.toFixed(casas)}`;
