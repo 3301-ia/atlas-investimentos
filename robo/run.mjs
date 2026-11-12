@@ -139,6 +139,6 @@ async function main() {
 export async function rodarRobo() { return main(); }
 
 // roda sozinho quando chamado direto na linha de comando
-if (process.argv[1] && process.argv[1].endsWith('run.mjs')) {
+if (process.argv[1] && /robo[\\/]run\.mjs$/.test(process.argv[1])) {
   main().catch(e => { console.error('falhou:', e.message); process.exit(1); });
 }
