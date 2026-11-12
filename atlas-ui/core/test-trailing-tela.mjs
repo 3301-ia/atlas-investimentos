@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import { JSDOM } from 'jsdom';
 import * as coreTrailing from './trailing.js';
+import * as coreFibo from './fibonacci.js';
 
 let ok = 0, falhas = 0;
 function t(nome, cond, extra) { if (cond) { ok++; console.log('  ok  ' + nome); } else { falhas++; console.log('  FALHA ' + nome + (extra ? ' :: ' + extra : '')); } }
@@ -9,12 +10,16 @@ const html = `<!doctype html><html><body><div id="chart" style="width:800px;heig
 const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://atlas.test/' });
 const w = dom.window;
 
-const velas = Array.from({ length: 120 }, (_, i) => ({
-  time: 1700000000 + i * 60,
-  open: 100 + i * 0.4, high: 100.4 + i * 0.4, low: 99.6 + i * 0.4, close: 100 + i * 0.4, volume: 10
-}));
+let p = 100;
+const velas = Array.from({ length: 160 }, (_, i) => {
+  const passo = i < 45 ? 1.1 : i < 75 ? -0.8 : 1.3;
+  const o = p, c = p + passo, h = Math.max(o, c) + 0.4, l = Math.min(o, c) - 0.4;
+  p = c;
+  return { time: 1700000000 + i * 3600, open: o, high: h, low: l, close: c, volume: 10 };
+});
 w.candles = velas.slice(0, -1);
 w.AtlasTrailingCore = coreTrailing;
+w.AtlasFiboCore = coreFibo;
 
 let dadosTS = null;
 w.chart = {
@@ -40,14 +45,15 @@ t('serie acompanha o tendao de alta', dadosTS && dadosTS[dadosTS.length-1].value
 const est = w.AtlasTrailing && w.AtlasTrailing.estado();
 t('estado do trailing exposto', !!est && est.lado === 'alta');
 t('chip mostra o stop', /\d/.test(w.document.getElementById('ts-val').textContent));
-t('seis niveis de fib no preco', linhas.length === 6, linhas.length);
-t('rotulo do fib correto', linhas.some(l => l.title === 'fib 0.618'));
-t('cor do 0.618', (linhas.find(l => l.title === 'fib 0.618') || {}).color === '#009688');
+t('cinco alvos de fib no preco, como no pine', linhas.filter(l => /0\.618|1\.618|2\.618|3\.618|4\.618/.test(String(l.title))).length === 5, linhas.length);
+t('rotulo do fib correto', linhas.some(l => /^0\.618 (alta|baixa)( ok)?$/.test(String(l.title))), JSON.stringify(linhas.map(l => l.title)));
+t('cor do 0.618', (linhas.find(l => /^0\.618 /.test(String(l.title))) || {}).color === '#26A69A');
 
 w.document.getElementById('ts-fib').click();
 t('botao FIB remove os niveis', linhas.length === 0, linhas.length);
 w.document.getElementById('ts-fib').click();
-t('botao FIB devolve os niveis', linhas.length === 6, linhas.length);
+await new Promise(r => setTimeout(r, 300));
+t('botao FIB devolve os niveis', linhas.filter(l => /0\.618|1\.618|2\.618|3\.618|4\.618/.test(String(l.title))).length === 5, linhas.length);
 
 w.document.getElementById('ts-btn').click();
 t('botao TS limpa a linha', Array.isArray(dadosTS) && dadosTS.length === 0);

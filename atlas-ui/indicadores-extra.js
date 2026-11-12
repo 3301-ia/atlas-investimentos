@@ -107,26 +107,26 @@
       // cartao flutuante: nao empurra mais o grafico principal
       mc.wrap = document.createElement('div');
       mc.wrap.id = 'macd-wrap';
-      mc.wrap.style.cssText = 'position:fixed;right:8px;bottom:64px;z-index:9996;width:360px;max-width:calc(100vw - 16px);' +
-        'background:#fbfbfc;border:1px solid #e3e6ea;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.18);' +
+      mc.wrap.style.cssText = 'position:fixed;right:8px;bottom:64px;z-index:9996;width:290px;max-width:calc(100vw - 16px);' +
+        'background:rgba(8,14,22,.94);border:1px solid rgba(217,180,91,.38);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.45);' +
         'overflow:hidden;display:none;font:11px/1.3 ui-monospace,Consolas,monospace;color:#4a5666';
 
       var cab = document.createElement('div');
-      cab.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid #eceef1';
-      cab.innerHTML = '<b style="color:#3a4552;letter-spacing:.08em">MACD</b>' +
-        '<span id="macd-valor" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#6e7683"></span>';
+      cab.style.cssText = 'display:flex;align-items:center;gap:6px;padding:2px 4px 2px 8px;border-bottom:1px solid rgba(217,180,91,.16)';
+      cab.innerHTML = '<b style="color:#D9B45B;letter-spacing:.08em">MACD</b>' +
+        '<span id="macd-valor" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#8a97a8"></span>';
       var recolher = document.createElement('button');
       recolher.type = 'button';
       recolher.id = 'macd-recolher';
       recolher.textContent = '\u2212';
       recolher.title = 'recolher o painel do MACD';
-      recolher.style.cssText = 'min-width:40px;min-height:40px;background:transparent;border:none;color:#6e7683;font-size:16px;cursor:pointer';
+      recolher.style.cssText = 'min-width:40px;min-height:40px;background:transparent;border:none;color:#D9B45B;font-size:15px;cursor:pointer';
       cab.appendChild(recolher);
       mc.wrap.appendChild(cab);
 
       var box = document.createElement('div');
       box.id = 'macd-chart';
-      box.style.cssText = 'width:100%;height:110px';
+      box.style.cssText = 'width:100%;height:96px';
       mc.wrap.appendChild(box);
       document.body.appendChild(mc.wrap);
 
@@ -139,7 +139,7 @@
       });
 
       mc.chart = LightweightCharts.createChart(box, {
-        layout: { background: { color: '#fbfbfc' }, textColor: '#6e7683', fontFamily: 'IBM Plex Sans' },
+        layout: { background: { color: 'rgba(0,0,0,0)' }, textColor: '#8a97a8', fontFamily: 'ui-monospace, monospace' },
         grid: { vertLines: { color: '#f0f1f3' }, horzLines: { color: '#f0f1f3' } },
         rightPriceScale: { borderColor: '#e3e6ea', autoScale: true, scaleMargins: { top: 0.12, bottom: 0.12 } },
         timeScale: { borderColor: '#e3e6ea', timeVisible: true, secondsVisible: false, rightOffset: 5, barSpacing: 8, lockVisibleTimeRangeOnResize: true },

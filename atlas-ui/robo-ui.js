@@ -6,10 +6,10 @@
 
 (function () {
   var CFG = {
-    url: 'https://romerito-agente-9f88b64a.base44.app/functions/roboLer',
-    token: 'robo-atlas-2026',
+    estado: './observador/historico/robopapel_estado.json',
+    historico: './observador/historico/robopapel_historico.json',
     ativo: 'BTC-USDT',
-    intervalo: 1800000
+    intervalo: 120000
   };
   var CHAVE = 'atlas.robo.v1';
 
@@ -74,15 +74,52 @@
     } catch (e) {}
   }
 
+  // Le dois JSON estaticos do proprio site. Zero chamada de funcao, zero
+  // credito de integracao: o robo grava no repositorio, o Render publica.
   function buscar() {
-    return fetch(CFG.url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: CFG.token, ativo: CFG.ativo, limite: 10 })
-    }).then(function (r) { return r.json(); }).then(function (j) {
-      if (!j || !j.ok) return null;
-      return j;
-    }).catch(function () { return null; });
+    var t = Date.now();
+    function pega(caminho) {
+      return fetch(caminho + '?t=' + t, { cache: 'no-store' })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .catch(function () { return null; });
+    }
+    return Promise.all([pega(CFG.estado), pega(CFG.historico)]).then(function (par) {
+      var e = par[0];
+      var h = par[1];
+      if (!e && !h) return null;
+      e = e || {}; h = h || {};
+      return {
+        ok: true,
+        quando: e.atualizado_em || null,
+        preco: e.preco || null,
+        estrutura: e.estrutura || null,
+        aberta: e.aberta || null,
+        fechadas: (h.fechadas || []).slice(0, 10),
+        resumo: h.resumo || { fechadas: 0, acerto_pct: null, resultado_r: 0, resultado_usd: 0 }
+      };
+    });
+  }
+
+  function aviso(texto) {
+    beep();
+    if (typeof window.showInfoToast === 'function') { try { window.showInfoToast(texto); } catch (e) {} }
+    var t = document.createElement('div');
+    t.textContent = texto;
+    t.style.cssText = 'position:fixed;right:10px;top:10px;z-index:9999;background:#0b1a2b;color:#e8eef7;' +
+      'border:1px solid ' + cores.ouro + ';border-radius:8px;padding:10px 12px;font-size:13px;max-width:300px';
+    document.body.appendChild(t);
+    setTimeout(function () { try { document.body.removeChild(t); } catch (e) {} }, 9000);
+  }
+
+  function salvar() {
+    try { localStorage.setItem(CHAVE, JSON.stringify({ id: ultimo.id, fechadas: ultimo.fechadas })); } catch (e) {}
+  }
+  function carregar() {
+    try {
+      var d = JSON.parse(localStorage.getItem(CHAVE) || '{}');
+      if (d && d.id) ultimo.id = d.id;
+      if (d && typeof d.fechadas === 'number') ultimo.fechadas = d.fechadas;
+    } catch (e) {}
   }
 
   function conferir(j) {

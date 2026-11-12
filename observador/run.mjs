@@ -92,3 +92,15 @@ if (process.env.ATLAS_ENVIAR === '1') {
   });
   console.log('envio base44:', r.status, (await r.text()).slice(0, 200));
 }
+
+// Robô em modo papel, no mesmo passo do observador.
+// Roda de graça aqui: o resultado vira JSON dentro de observador/historico,
+// o workflow já existente commita essa pasta e o Render publica. Nenhuma
+// chamada à Base44, portanto nenhum crédito de integração.
+try {
+  const { rodarRobo } = await import('../robo/run.mjs');
+  await rodarRobo();
+  console.log('robô papel: ok');
+} catch (e) {
+  console.error('robô papel falhou:', e.message);
+}

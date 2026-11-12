@@ -11,11 +11,10 @@
 (function () {
   'use strict';
 
-  var NIVEIS_FIB = [0, 0.382, 0.5, 0.618, 1, 1.618];
-  var CORES_FIB = {
-    0: '#9e9e9e', 0.382: '#FF9800', 0.5: '#4CAF50',
-    0.618: '#009688', 1: '#00BCD4', 1.618: '#2196F3'
-  };
+  // Niveis exatamente como no Pine fornecido: projecao a partir da ancora de
+  // pivo, de 0.618 ate 4.618 do range. Nao e retracao.
+  var ALVOS_PINE = [0.618, 1.618, 2.618, 3.618, 4.618];
+  var CORES_PINE = { 0.618: '#26A69A', 1.618: '#42A5F5', 2.618: '#AB47BC', 3.618: '#FFA726', 4.618: '#EF5350' };
 
   var core = null;
   var serieTS = null;
@@ -108,30 +107,72 @@
     linhasFib = [];
   }
 
+  // Le o plano do nucleo Fibonacci (mesma regra do Pine) e desenha no preco.
+  function obterFibo() {
+    if (window.AtlasFiboCore) return Promise.resolve(window.AtlasFiboCore);
+    return import('./core/fibonacci.js').then(function (m) {
+      window.AtlasFiboCore = m;
+      return m;
+    }).catch(function () { return null; });
+  }
+
+  function velasFechadas() {
+    var lista = null;
+    try { if (typeof candles !== 'undefined' && candles && candles.length) lista = candles; } catch (e) {}
+    if (!lista) return [];
+    return lista.slice(0, Math.max(0, lista.length - 1)).map(function (c) {
+      return { t: c.time, o: c.open, h: c.high, l: c.low, c: c.close };
+    });
+  }
+
+  var planoFib = null;
+
   function desenharFib() {
     if (typeof candleSeries === 'undefined' || !candleSeries || typeof candleSeries.createPriceLine !== 'function') return;
-    var d = diboAtual();
-    if (!d || !d.p0 || !d.p1 || !num(d.p0.price) || !num(d.p1.price)) { limparFib(); ancoraFib = null; return; }
-    var chave = d.p0.price + '_' + d.p1.price;
-    if (chave === ancoraFib) return;
-    ancoraFib = chave;
-    limparFib();
-    if (!fibLigado) return;
-    var p0 = d.p0.price, p1 = d.p1.price;
-    NIVEIS_FIB.forEach(function (lv) {
-      var valor = p1 + (p0 - p1) * lv;
-      if (!num(valor) || valor <= 0) return;
+    if (!fibLigado) { limparFib(); ancoraFib = null; return; }
+    obterFibo().then(function (mod) {
+      if (!mod || !mod.fiboPlan) return;
+      var plano = mod.fiboPlan(velasFechadas());
+      if (!plano || !isFinite(plano.p0) || !isFinite(plano.p1)) { limparFib(); ancoraFib = null; return; }
+      planoFib = plano;
+      var chave = plano.p0 + '_' + plano.p1 + '_' + plano.lado;
+      if (chave === ancoraFib) return;
+      ancoraFib = chave;
+      limparFib();
+
+      // ancoras: P0 e P1 sao o swing que gerou a projecao
       try {
         linhasFib.push(candleSeries.createPriceLine({
-          price: valor,
-          color: CORES_FIB[lv] || '#9e9e9e',
-          lineWidth: 1,
-          lineStyle: lv === 0 || lv === 1 ? 0 : 2,
-          axisLabelVisible: true,
-          title: 'fib ' + lv
+          price: plano.p1, color: '#78909C', lineWidth: 1, lineStyle: 3,
+          axisLabelVisible: true, title: 'ancora P1'
         }));
       } catch (e) {}
+
+      (plano.niveis || []).forEach(function (a) {
+        var lv = Number(a.mult);
+        var cor = CORES_PINE[lv] || '#90A4AE';
+        try {
+          linhasFib.push(candleSeries.createPriceLine({
+            price: a.preco,
+            color: cor,
+            lineWidth: 1,
+            lineStyle: 2,
+            axisLabelVisible: true,
+            title: lv.toFixed(3) + (plano.lado === 'alta' ? ' alta' : ' baixa') + (a.bateu ? ' ok' : '')
+          }));
+        } catch (e) {}
+      });
+      pintarFibChip(plano);
     });
+  }
+
+  function pintarFibChip(plano) {
+    if (!chip || !plano) return;
+    var btn = chip.querySelector('#ts-fib');
+    if (!btn) return;
+    var primeiro = plano.niveis && plano.niveis[0];
+    btn.title = 'FIB ' + (plano.lado === 'alta' ? 'alta' : 'baixa') +
+      (primeiro ? ' | proximo alvo ' + primeiro.preco.toFixed(2) : '');
   }
 
   function montarChip() {
