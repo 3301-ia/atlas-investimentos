@@ -9,7 +9,7 @@
     url: 'https://romerito-agente-9f88b64a.base44.app/functions/roboLer',
     token: 'robo-atlas-2026',
     ativo: 'BTC-USDT',
-    intervalo: 60000
+    intervalo: 1800000
   };
   var CHAVE = 'atlas.robo.v1';
 
@@ -218,6 +218,8 @@
   }
 
   function ciclo() {
+    // sem aba visivel nao gasta chamada: o alerta volta quando ele abre
+    if (document.hidden) return;
     buscar().then(function (j) {
       if (!j) return;
       dados = j;
