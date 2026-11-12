@@ -1,5 +1,5 @@
 {
- "versao": "1.4.1",
+ "versao": "1.5.0",
  "gerado": "2026-11-12",
  "indicadores": [
   {
@@ -228,6 +228,15 @@
    "sha256": "aa27843eef6987120f3c7729202e1aef5a1ca26bfd69402341c863bfa5de13bd",
    "linhas": 138,
    "bytes": 5798
+  },
+  {
+   "id": "deriv",
+   "nome": "Roteador Deriv",
+   "arquivo": "core/deriv.js",
+   "descricao": "Traduz ativo, transforma risco em tamanho, monta contrato com stop e le a resposta sem inventar sucesso.",
+   "sha256": "91f22fe87958fed67cf2be78c69fe9827afc5e6537bd3261352ca6dbcbc7e83e",
+   "linhas": 169,
+   "bytes": 7469
   }
  ]
 }

@@ -87,6 +87,9 @@ const SYMBOLS = {
            'DASHUSDT','COMPUSDT','ALGOUSDT','IOTAUSDT','FILUSDT','XTZUSDT','APEUSDT','NEOUSDT','UNIUSDT',
            'BATUSDT','IMXUSDT','ZECUSDT','XLMUSDT'],
   metals: ['XAUUSDT','XAGUSDT'],
+  // Cambio: sem historico em corretora de cripto, entao a vela vem da Deriv
+  // (frxEURUSD e companhia) pelo socket do navegador.
+  fx: ['EURUSD','GBPUSD','USDJPY','AUDUSD','USDCAD','USDCHF'],
 };
 
 const ALL_SYMS = Object.values(SYMBOLS).flat();
@@ -14331,7 +14334,34 @@ function interpretVolumeConfirm(candles){
   return{ratio, confirmed, label:`Volume ${ratio.toFixed(1)}x a media${confirmed?' — rompimento com forca':''}`};
 }
 
+// Ordem de preferencia das fontes de vela. No navegador a OKX responde; a
+// Binance e a Bybit recusam por CORS e so entram como reserva, senao cada
+// atualizacao enfileira duas requisicoes que falham (console sujo e atraso).
+const ORDEM_FONTES = ['okx', 'kraken', 'coinbase', 'binance', 'bybit'];
+try {
+  DATA_SOURCES.sort(function (a, b) {
+    var ia = ORDEM_FONTES.indexOf(a.name), ib = ORDEM_FONTES.indexOf(b.name);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+  });
+} catch (e) {}
+
 async function fetchCandles(sym,tf,limit=500){
+  // Cambio e segundos nao existem nas fontes de cripto: quem entrega e a Deriv,
+  // pelo socket do proprio navegador (o IP do dono; a Deriv recusa datacenter).
+  try{
+    const seg = tfToSeconds(tf);
+    const precisaDeriv = seg < 60 || !/USDT$/.test(String(sym).toUpperCase());
+    if(precisaDeriv && window.DerivAtlas){
+      const v = await window.DerivAtlas.velas(sym, seg, limit);
+      if(Array.isArray(v) && v.length > 29){
+        lastDataSource = 'deriv';
+        try{ localStorage.setItem('atlas.fonteBoa','deriv'); }catch(e){}
+        updateDataSourceBadge('deriv', true);
+        return v;
+      }
+    }
+  }catch(e){ /* cai nas fontes normais */ }
+
   let fetchTf = tf;
   let aggFactor = 1;
 
@@ -14349,7 +14379,13 @@ async function fetchCandles(sym,tf,limit=500){
   const realLimit = Math.min(limit * aggFactor, isMobile ? 800 : 1500);
   const timeoutMs = isMobile ? 7500 : 4500;
 
-  for(const src of DATA_SOURCES){
+  // a fonte que respondeu por ultimo vira a primeira da fila
+  let fonteBoa = null;
+  try { fonteBoa = localStorage.getItem('atlas.fonteBoa'); } catch(e) {}
+  const fila = fonteBoa
+    ? DATA_SOURCES.filter(function(x){return x.name===fonteBoa;}).concat(DATA_SOURCES.filter(function(x){return x.name!==fonteBoa;}))
+    : DATA_SOURCES;
+  for(const src of fila){
     try{
       const url = src.build ? src.build(sym,fetchTf,realLimit) : null;
       if(!url)continue;
@@ -14486,6 +14522,7 @@ function tfToSeconds(tf) {
   if(s.includes('d') || s.includes('D')) return v * 86400;
   if(s.includes('h') || s.includes('H')) return v * 3600;
   if(s.includes('m')) return v * 60;
+  if(s.includes('s')) return v;        // 1s, 5s, 15s, 30s: vela montada de tick
   return 60;
 }
 
@@ -15110,13 +15147,22 @@ function openWS(){
     ligaTempoRealSimpleFX(fx);
     return;
   }
+  // Sem par na Binance (cambio) o socket de futuros morreria em silencio e o
+  // grafico ficaria parado. Aqui so marcamos o estado e seguimos no historico.
+  if(!/USDT$/.test(String(currentSym).toUpperCase())){
+    wsKline = null;
+    const dotC = document.getElementById('ws-dot'), stC = document.getElementById('ws-st');
+    if(dotC) dotC.className = 'dot ylw';
+    if(stC) stC.textContent = 'HISTÓRICO (Deriv)';
+    return;
+  }
   fxAtivo = null;   // voltou pra um ativo que a Binance serve
 
   const symL=currentSym.toLowerCase();
   const wantedSym=currentSym; // guarda o simbolo desta conexao
   // Multiplex: velas (kline) + todas as execucoes em tempo real (aggTrade)
   let wsTf = currentTF;
-  if (['5h', '3M', '6M', '9M', '12M'].includes(currentTF)) {
+  if (['1s', '5s', '15s', '30s', '5h', '3M', '6M', '9M', '12M'].includes(currentTF)) {
       wsTf = '1m'; // Fallback for websocket so Binance doesn't drop connection
   }
   wsKline=new WebSocket(`wss://fstream.binance.com/stream?streams=${symL}@kline_${wsTf}/${symL}@aggTrade`);
