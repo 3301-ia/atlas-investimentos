@@ -1,0 +1,41 @@
+<!doctype html><html><head><meta charset="utf-8"><title>verificacao</title>
+<style>body{font:14px/1.5 ui-monospace,monospace;background:#0b1220;color:#cfe9f7;padding:16px}h2{color:#D9B45B;font-size:15px}pre{white-space:pre-wrap;word-break:break-word}</style>
+</head><body>
+<h2>Verificação Deriv · app_id 1089</h2>
+<pre id="out">conectando...</pre>
+<script>
+var out = document.getElementById('out');
+function log(s){ out.textContent += '\n' + s; }
+var tok = decodeURIComponent((location.hash||'').replace('#',''));
+var url = 'wss://ws.derivws.com/websockets/v3?app_id=1089&l=PT';
+function show(o){ out.textContent = o; }
+try {
+  var ws = new WebSocket(url);
+  ws.onopen = function(){
+    show('conexao aberta com app_id 1089');
+    ws.send(JSON.stringify({ authorize: tok }));
+  };
+  ws.onmessage = function(ev){
+    var d = {};
+    try { d = JSON.parse(ev.data); } catch(e) {}
+    if (d.error) {
+      show('RESULTADO: ERRO ' + (d.error.code||'') + ' :: ' + (d.error.message||''));
+      ws.close(); return;
+    }
+    if (d.authorize) {
+      var a = d.authorize;
+      show('RESULTADO: OK\nconta: ' + a.loginid + '\nmoeda: ' + a.currency +
+           '\nvirtual: ' + a.is_virtual + '\npais: ' + (a.country||'-') +
+           '\nscopes: ' + JSON.stringify(a.scopes||[]));
+      ws.send(JSON.stringify({ balance: 1, subscribe: 0 }));
+    } else if (d.balance) {
+      log('saldo: ' + d.balance.balance + ' ' + d.balance.currency);
+      ws.close();
+    } else if (d.msg_type) { log('msg: ' + d.msg_type); }
+  };
+  ws.onerror = function(){ show('RESULTADO: FALHA de rede ao abrir o WebSocket da Deriv'); };
+  ws.onclose = function(e){ if (out.textContent.indexOf('RESULTADO')<0) log('conexao fechada: ' + e.code); };
+  setTimeout(function(){ if (out.textContent.indexOf('RESULTADO')<0) show('RESULTADO: TEMPO ESGOTADO sem resposta da Deriv'); }, 20000);
+} catch(e) { show('RESULTADO: EXCECAO ' + e.message); }
+</script>
+</body></html>
