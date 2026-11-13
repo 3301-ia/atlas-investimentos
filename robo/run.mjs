@@ -20,6 +20,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { trailingStop, TRAILING_VERSION } from '../atlas-ui/core/trailing.js';
 import { dimensionar, RISCO_VERSION } from '../atlas-ui/core/risco.js';
 import { assinarSinal } from '../atlas-ui/core/signature.js';
+import { ema } from '../atlas-ui/core/indicators.js';
 
 const ATIVO = process.env.ATLAS_ATIVO || 'BTC-USDT';
 const EQUITY = Number(process.env.ATLAS_EQUITY || 130);
@@ -37,9 +38,33 @@ const PUBLICADO = 'atlas-ui/observador/historico';
 // mult 2,5 (3 operações, -2,63R) em 8 dias de 15M. A folga de 1% fica.
 export const TEMPORADAS = [
   { barra: '1H', sufixo: '', okx: '1H', coinbase: 3600, mult: 2.5, folga: 1 },
-  { barra: '15M', sufixo: '_15m', okx: '15m', coinbase: 900, mult: 1.5, folga: 1 },
-  { barra: '5M', sufixo: '_5m', okx: '5m', coinbase: 300, mult: 2.5, folga: 1 }
+  { barra: '15M', sufixo: '_15m', okx: '15m', coinbase: 900, mult: 1.5, folga: 1, micro: true },
+  { barra: '5M', sufixo: '_5m', okx: '5m', coinbase: 300, mult: 2.5, folga: 1, micro: true }
 ];
+
+
+// Confluência do micro: a camada de cima (15M e 1H) vota a favor ou contra.
+// Sem nenhum voto a favor o sinal do micro era ruído: nos 1000 candles de 5m
+// medidos, 0 votos deu -0.48% e 21% de acerto, contra +0.54% e 75% com 1+.
+async function votosDaCamadaAcima(barra, lado) {
+  const mapa = { '15M': [{ b: '15m', nome: '15m' }, { b: '1H', nome: '1H' }],
+                 '5M':  [{ b: '15m', nome: '15m' }, { b: '1H', nome: '1H' }] };
+  const fontes = mapa[barra] || [];
+  const votos = [], contra = [];
+  for (const f of fontes) {
+    try {
+      const j = await (await fetch(`https://www.okx.com/api/v5/market/candles?instId=${ATIVO}&bar=${f.b}&limit=120`)).json();
+      const v = (j.data || []).map(x => ({ time: Math.floor(+x[0] / 1000), close: +x[4] })).sort((a, b) => a.time - b.time).slice(0, -1);
+      if (v.length < 40) continue;
+      const r = ema(v.map(x => x.close), 8), l = ema(v.map(x => x.close), 16);
+      const i = v.length - 1;
+      if (r[i] == null || l[i] == null) continue;
+      const ladoAcima = r[i] > l[i] ? 'alta' : 'baixa';
+      (ladoAcima === lado ? votos : contra).push('EMA ' + f.nome);
+    } catch (e) { /* sem voto quando a fonte falha: não bloqueia o robô */ }
+  }
+  return { votos, contra, forca: votos.length };
+}
 
 function ler(p, padrao) {
   try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return padrao; }
@@ -132,8 +157,15 @@ export async function rodarRobo(temporada = TEMPORADAS[0]) {
     const stop0 = r2(est.stop);
     const dist = Math.abs(entrada - stop0);
     const folga = entrada > 0 ? dist / entrada * 100 : 0;
+    if (temporada.micro) {
+      const v = await votosDaCamadaAcima(t.barra, est.lado);
+      estado.confluencia = { forca: v.forca, votos: v.votos, contra: v.contra };
+      if (v.forca < 1) acoes.push({ tipo: 'aguardando', motivo: 'sem confluencia da camada de cima: ' + lado + ' isolado' });
+    }
     if (estado.ultimo_lado === lado) {
       acoes.push({ tipo: 'aguardando', motivo: `mesmo lado da última saída (${lado}); só reabre na virada` });
+    } else if (temporada.micro && (estado.confluencia || {}).forca < 1) {
+      acoes.push({ tipo: 'aguardando', motivo: 'confluencia insuficiente: espera a camada de cima concordar' });
     } else if (folga < (temporada.folga ?? DIST_MIN_PCT)) {
       acoes.push({ tipo: 'aguardando', motivo: `stop apertado: ${folga.toFixed(2)}% < ${temporada.folga ?? DIST_MIN_PCT}%` });
     } else {
