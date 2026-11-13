@@ -284,3 +284,19 @@ body.vx .topbar > *, body.vx header > * {
   transform: none !important;
 }
 body.vx .cat-bar { margin: 0 !important; }
+
+/* ── nada por cima dos controles ──────────────────────────────────────── */
+body.vx .topbar, body.vx header { position: relative; z-index: 70; }
+body.vx .side-nav { position: relative; z-index: 70; }
+body.vx #vx-dock { z-index: 80; }
+/* o botão MAIS é da lateral: ocupa a largura dela, não vaza para a esquerda */
+body.vx #nav-mais {
+  width: calc(100% - 12px); max-width: calc(100% - 12px);
+  min-height: 40px; margin: 6px; padding: 0 8px;
+  box-sizing: border-box; position: relative; z-index: 71;
+  font-size: 10.5px; letter-spacing: .06em; text-align: center;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+body.vx #nav-mais-lista { width: 100%; }
+/* o chip do trailing não encosta mais no pé da lateral */
+@media (min-width: 821px) { body.vx #ts-chip { left: 76px; } }
