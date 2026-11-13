@@ -64,8 +64,15 @@
     if (typeof window.showInfoToast === 'function') { try { window.showInfoToast(texto); } catch (e) {} }
     var t = document.createElement('div');
     t.textContent = texto;
-    t.style.cssText = 'position:fixed;right:10px;top:10px;z-index:9999;background:#0b1a2b;color:#e8eef7;' +
-      'border:1px solid ' + cores.ouro + ';border-radius:8px;padding:10px 12px;font-size:13px;max-width:300px';
+    // o aviso nascia em cima da barra de controles e, com z-index 9999,
+    // engolia os cliques dos botões daquele canto por 9 segundos.
+    // Agora ele nasce abaixo da barra, não recebe clique e entra deslizando.
+    t.className = 'vx-aviso';
+    t.style.cssText = 'position:fixed;right:12px;top:56px;z-index:9000;pointer-events:none;' +
+      'background:linear-gradient(180deg,rgba(14,29,44,.98),rgba(10,22,34,.99));color:#CBDFEE;' +
+      'border:1px solid rgba(217,180,91,.34);border-left:2px solid ' + cores.ouro + ';border-radius:10px;' +
+      'padding:9px 12px;font-size:12.5px;line-height:1.45;max-width:280px;' +
+      'box-shadow:0 10px 26px rgba(0,0,0,.45);transition:opacity 200ms ease,transform 200ms ease';
     document.body.appendChild(t);
     setTimeout(function () { try { document.body.removeChild(t); } catch (e) {} }, 9000);
   }
@@ -115,8 +122,15 @@
     if (typeof window.showInfoToast === 'function') { try { window.showInfoToast(texto); } catch (e) {} }
     var t = document.createElement('div');
     t.textContent = texto;
-    t.style.cssText = 'position:fixed;right:10px;top:10px;z-index:9999;background:#0b1a2b;color:#e8eef7;' +
-      'border:1px solid ' + cores.ouro + ';border-radius:8px;padding:10px 12px;font-size:13px;max-width:300px';
+    // o aviso nascia em cima da barra de controles e, com z-index 9999,
+    // engolia os cliques dos botões daquele canto por 9 segundos.
+    // Agora ele nasce abaixo da barra, não recebe clique e entra deslizando.
+    t.className = 'vx-aviso';
+    t.style.cssText = 'position:fixed;right:12px;top:56px;z-index:9000;pointer-events:none;' +
+      'background:linear-gradient(180deg,rgba(14,29,44,.98),rgba(10,22,34,.99));color:#CBDFEE;' +
+      'border:1px solid rgba(217,180,91,.34);border-left:2px solid ' + cores.ouro + ';border-radius:10px;' +
+      'padding:9px 12px;font-size:12.5px;line-height:1.45;max-width:280px;' +
+      'box-shadow:0 10px 26px rgba(0,0,0,.45);transition:opacity 200ms ease,transform 200ms ease';
     document.body.appendChild(t);
     setTimeout(function () { try { document.body.removeChild(t); } catch (e) {} }, 9000);
   }
