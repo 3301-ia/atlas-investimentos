@@ -29,5 +29,15 @@ console.log('\n== controles enxutos ==');
 t('a lateral agrupa o excedente num "mais"', js.includes("botao.id = 'nav-mais'"));
 t('a aba abre o módulo quando o cartão não existe', js.includes('function abrirModulo'));
 
+console.log('\n== cliques chegam nos botões ==');
+const extras=readFileSync('ui-extras.js','utf8');
+t('a abertura sai da frente da tela', js.includes('function encerrarSplash'));
+t('qualquer toque encerra a abertura', js.includes("'pointerdown', 'keydown', 'wheel', 'touchstart'"));
+t('a abertura não recebe mais clique', css.includes('#vectra-splash { pointer-events: none; }'));
+t('o arrasto da barra ignora clique em botão', extras.includes("closest('button, a, input, select, textarea, [role=\"button\"], .cp, .chip, .btn')"));
+t('a captura do ponteiro só vem depois de arrastar de verdade', extras.includes("if (!moveu) { moveu = true; try { el.setPointerCapture"));
+t('a barra superior é uma faixa que rola, sem peça empilhada', css.includes('flex-wrap: nowrap !important'));
+t('clicar no módulo abre a aba dele', js.includes('function delegarLateral'));
+
 console.log('\n' + (falhou ? falhou+' falharam' : 'todas as '+ok+' guardas de layout passaram'));
 process.exit(falhou?1:0);
