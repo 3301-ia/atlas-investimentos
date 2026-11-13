@@ -1,0 +1,10 @@
+{
+ "atualizado_em": "2026-11-13T13:15:00-03:00",
+ "ativo": "BTC-USDT",
+ "alvo": 73000,
+ "ordens": [
+  {"id": "e1", "lado": "compra", "entrada": 69280, "stop": 68500, "nota": "primeira entrada, stop mais longo"},
+  {"id": "e2", "lado": "compra", "entrada": 69172, "stop": 68628, "nota": "segundo lote, melhora a media"}
+ ],
+ "observacoes": "posicao do dono, informada por ele; o ticket e leitura, nao manda ordem"
+}
