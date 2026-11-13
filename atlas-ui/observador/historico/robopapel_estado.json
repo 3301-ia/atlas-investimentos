@@ -1,14 +1,33 @@
 {
- "aberta": null,
- "atualizado_em": "2026-11-13T09:54:52.115Z",
+ "aberta": {
+  "ativo": "BTC-USDT",
+  "timeframe": "1H",
+  "lado": "compra",
+  "entrada": 69327,
+  "stop": 67185.32,
+  "alvo": 73610.36,
+  "tamanho": 0.0012,
+  "risco_usd": 2.6,
+  "risco_pct": 2,
+  "equity": 130,
+  "motivo": "abertura na virada: lado alta, stop com 3.09% de folga",
+  "nucleo_versao": "trailing 1.0.0 + risco 1.0.0",
+  "hash": "4f866cac5cbe785abe043eaf6f5df56af17984ae9a2d7e41eda58301ee947e88",
+  "payload_assinado": "{\"core\":\"trailing 1.0.0 + risco 1.0.0\",\"rules\":\"chandelier\",\"params\":{\"atr\":14,\"mult\":2.5,\"janela\":22,\"alvo_r\":2,\"dist_min_pct\":1},\"ativo\":\"BTC-USDT\",\"t\":1794564000,\"lado\":\"compra\",\"entrada\":69327,\"stop\":67185.32,\"alvo\":73610.36}",
+  "estado": "aberta",
+  "preco_mercado": 69327,
+  "aberta_em": "2026-11-13T11:55:08.456Z",
+  "modo": "papel"
+ },
+ "atualizado_em": "2026-11-13T11:55:08.456Z",
  "versao": 1,
- "preco": 69061.5,
+ "preco": 69327,
  "estrutura": {
-  "lado": "baixa",
-  "stop": 69159.9,
-  "viradas": 23,
-  "distancia": 445.5,
-  "folga_pct": 0.65
+  "lado": "alta",
+  "stop": 67185.32,
+  "viradas": 21,
+  "distancia": 2149.18,
+  "folga_pct": 3.1
  },
  "timeframe": "1H",
  "filtros": {
