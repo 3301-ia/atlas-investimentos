@@ -69,6 +69,7 @@
       var b = ev.target.closest('.vx-aba');
       if (!b) return;
       var chave = b.getAttribute('data-aba');
+      if (dock) dock.classList.remove('recolhido');   // toque do usuário abre a gaveta
       selecionar(chave);
       // o cartao do modulo so nasce quando a tela dele abre: a aba abre sozinha
       if (chave !== 'mercado' && !document.getElementById(chave)) setTimeout(function () { abrirModulo(chave); }, 30);
@@ -77,8 +78,6 @@
   }
 
   function selecionar(chave) {
-    // no celular a gaveta abre ao escolher uma aba
-    if (dock && ehCelular()) dock.classList.remove('recolhido');
     abaAtiva = chave;
     if (!abas) return;
     [].forEach.call(abas.querySelectorAll('.vx-aba'), function (b) {

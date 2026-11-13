@@ -244,8 +244,14 @@ body.vx .vx-titulo {
   body.vx .main-area > *:not(.chart-wrap) { display: none !important; }
 
   /* trilho inferior: rola na horizontal em vez de esconder item */
-  body.vx .side-nav { overflow-x: auto !important; overflow-y: hidden !important; }
-  body.vx .side-nav .nav-item { min-width: 46px; flex: 0 0 auto; }
+  body.vx .side-nav { overflow-x: auto !important; overflow-y: hidden !important; align-items: center; }
+  body.vx .side-nav .nav-item { min-width: 48px; height: 44px; flex: 0 0 auto; justify-content: center; }
+  /* no telefone o trilho mostra só o ícone: o rótulo de um item cobria o
+     botão do vizinho e comia o toque */
+  body.vx .side-nav .nav-lbl,
+  body.vx .side-nav .nav-item b,
+  body.vx .side-nav .nav-item span:not(.nav-icon) { display: none !important; }
+  body.vx .side-nav .nav-icon { font-size: 17px; }
 
   /* gaveta: fechada mostra só as abas */
   #vx-dock {
