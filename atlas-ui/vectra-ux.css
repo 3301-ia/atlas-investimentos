@@ -206,9 +206,10 @@ body.vx .vx-titulo {
   box-shadow: none !important;
   background: transparent !important;
   backdrop-filter: none !important;
-  display: block !important;
+  display: block;
 }
-.vx-hospedado[hidden] { display: none !important; }
+/* a aba escolhida manda: id + classe + atributo vence a regra do cartão */
+#vx-dock .vx-hospedado[hidden], .vx-hospedado[hidden] { display: none !important; visibility: hidden !important; height: 0 !important; overflow: hidden !important; }
 
 /* botão "mais" da lateral e da barra */
 #nav-mais, .vx-mais {
