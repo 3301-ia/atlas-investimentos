@@ -32,10 +32,13 @@ const PASTA = 'observador/historico';
 const PUBLICADO = 'atlas-ui/observador/historico';
 
 // temporadas: sufixo do arquivo, código de barra para cada fonte
+// `mult` e `folga` são calibrados por temporada com backtest, não por gosto.
+// 15M: mult 1,5 foi a melhor combinação testada (6 operações, -2,14R) contra
+// mult 2,5 (3 operações, -2,63R) em 8 dias de 15M. A folga de 1% fica.
 export const TEMPORADAS = [
-  { barra: '1H', sufixo: '', okx: '1H', coinbase: 3600 },
-  { barra: '15M', sufixo: '_15m', okx: '15m', coinbase: 900 },
-  { barra: '5M', sufixo: '_5m', okx: '5m', coinbase: 300 }
+  { barra: '1H', sufixo: '', okx: '1H', coinbase: 3600, mult: 2.5, folga: 1 },
+  { barra: '15M', sufixo: '_15m', okx: '15m', coinbase: 900, mult: 1.5, folga: 1 },
+  { barra: '5M', sufixo: '_5m', okx: '5m', coinbase: 300, mult: 2.5, folga: 1 }
 ];
 
 function ler(p, padrao) {
@@ -88,7 +91,7 @@ export async function rodarRobo(temporada = TEMPORADAS[0]) {
   const cs = (await velas(t)).sort((a, b) => a.time - b.time);
   const fechadas = cs.slice(0, -1);
   const preco = cs[cs.length - 1].close;
-  const plano = trailingStop(fechadas);
+  const plano = trailingStop(fechadas, { mult: temporada.mult || 2.5 });
   if (!plano) { console.error(t.barra + ': historico curto'); return { barra: t.barra, erro: 'historico curto' }; }
 
   const est = plano.estado;
@@ -131,8 +134,8 @@ export async function rodarRobo(temporada = TEMPORADAS[0]) {
     const folga = entrada > 0 ? dist / entrada * 100 : 0;
     if (estado.ultimo_lado === lado) {
       acoes.push({ tipo: 'aguardando', motivo: `mesmo lado da última saída (${lado}); só reabre na virada` });
-    } else if (folga < DIST_MIN_PCT) {
-      acoes.push({ tipo: 'aguardando', motivo: `stop apertado: ${folga.toFixed(2)}% < ${DIST_MIN_PCT}%` });
+    } else if (folga < (temporada.folga ?? DIST_MIN_PCT)) {
+      acoes.push({ tipo: 'aguardando', motivo: `stop apertado: ${folga.toFixed(2)}% < ${temporada.folga ?? DIST_MIN_PCT}%` });
     } else {
       const dim = dimensionar({ equity: EQUITY, entrada, stop: stop0, riscoPct: RISCO_PCT, valorPorPonto: 1 });
       if (!dim || !dim.ok) {
@@ -154,7 +157,7 @@ export async function rodarRobo(temporada = TEMPORADAS[0]) {
   estado.atualizado_em = agora;
   estado.preco = r2(preco);
   estado.timeframe = t.barra;
-  estado.filtros = { alvo_r: ALVO_R, dist_min_pct: DIST_MIN_PCT, so_na_virada: true };
+  estado.filtros = { alvo_r: ALVO_R, dist_min_pct: temporada.folga ?? DIST_MIN_PCT, mult: temporada.mult || 2.5, so_na_virada: true };
   estado.estrutura = { lado: est.lado, stop: r2(est.stop), viradas: est.viradas, distancia: r2(est.distancia),
     folga_pct: r2(est.distancia / preco * 100) };
   writeFileSync(f.estado, JSON.stringify(estado, null, 1));
