@@ -300,3 +300,7 @@ body.vx #nav-mais {
 body.vx #nav-mais-lista { width: 100%; }
 /* o chip do trailing não encosta mais no pé da lateral */
 @media (min-width: 821px) { body.vx #ts-chip { left: 76px; } }
+
+/* a lateral não invade a coluna das ferramentas */
+body.vx .side-nav { overflow: hidden; }
+body.vx .side-nav-top, body.vx .side-nav-bottom { max-width: 100%; overflow: hidden; }

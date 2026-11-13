@@ -264,6 +264,27 @@
     }, { passive: false });
   }
 
+  /* A barra de ferramentas de desenho caía embaixo da lateral: o bloco de
+     navegação ficava por cima e comia o clique dos 19 botões. Aqui a barra é
+     empurrada para fora da lateral e sobe de camada.                          */
+  function libertarFerramentas() {
+    var btn = document.querySelector('.tool-btn');
+    if (!btn) return;
+    var barra = btn.parentElement;
+    if (!barra || barra.__vxLivre) return;
+    barra.__vxLivre = true;
+    var c = getComputedStyle(barra);
+    if (c.position !== 'absolute' && c.position !== 'fixed') return;
+    var lateral = document.querySelector('.side-nav');
+    var largura = lateral ? Math.round(lateral.getBoundingClientRect().width) : 56;
+    barra.style.left = (largura + 12) + 'px';
+    barra.style.right = 'auto';
+    barra.style.zIndex = '85';
+    barra.style.maxHeight = 'calc(100vh - 150px)';
+    barra.style.overflowY = 'auto';
+    barra.style.overflowX = 'hidden';
+  }
+
   function ciclo() {
     adotar();
     // os módulos reescrevem o display do cartão deles; reafirma quem manda
@@ -323,6 +344,7 @@
     delegarLateral();
     agruparLateral();
     rolarBarra();
+    libertarFerramentas();
     setInterval(ciclo, 1000);
     try {
       new MutationObserver(function () { adotar(); }).observe(document.body, { childList: true, subtree: true });
