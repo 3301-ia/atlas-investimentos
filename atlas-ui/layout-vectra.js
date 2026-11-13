@@ -250,6 +250,20 @@
     }, true);
   }
 
+  /* A barra superior é uma faixa longa: a roda do mouse rola na horizontal,
+     senão o que está fora da vista parece botão morto.                        */
+  function rolarBarra() {
+    var b = document.querySelector('.topbar') || document.querySelector('header');
+    if (!b || b.__vxRoda) return;
+    b.__vxRoda = true;
+    b.addEventListener('wheel', function (e) {
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      if (b.scrollWidth <= b.clientWidth) return;
+      b.scrollLeft += e.deltaY;
+      e.preventDefault();
+    }, { passive: false });
+  }
+
   function ciclo() {
     adotar();
     // os módulos reescrevem o display do cartão deles; reafirma quem manda
@@ -308,6 +322,7 @@
     adotar();
     delegarLateral();
     agruparLateral();
+    rolarBarra();
     setInterval(ciclo, 1000);
     try {
       new MutationObserver(function () { adotar(); }).observe(document.body, { childList: true, subtree: true });
