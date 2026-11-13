@@ -16,7 +16,7 @@
     { id: 'deriv-card', aba: 'Deriv', icone: '◇' },
     { id: 'rsi-matrix-card', aba: 'RSI Matrix', icone: '🔷' }
   ];
-  var PRIMARIOS = ['inicio', 'codigo', 'vigia', 'estudos', 'imperial', 'consenso', 'analise', 'alertas'];
+  var PRIMARIOS = ['inicio', 'codigo', 'vigia', 'estudos', 'imperial', 'consenso', 'rsi matrix', 'analise', 'alertas'];
 
   var dock, corpo, abas, idadeEl, abaAtiva = 'mercado';
   var adotados = {};      // id do cartão -> elemento
@@ -239,7 +239,7 @@
       var it = ev.target.closest ? ev.target.closest('.nav-item') : null;
       if (!it) return;
       var t = (it.innerText || it.title || '').toLowerCase();
-      var mapa = [['vigia', 'vg-card'], ['imperial', 'imperial-card'], ['consenso', 'consenso-card'], ['deriv', 'deriv-card']];
+      var mapa = [['vigia', 'vg-card'], ['imperial', 'imperial-card'], ['consenso', 'consenso-card'], ['deriv', 'deriv-card'], ['rsi matrix', 'rsi-matrix-card']];
       for (var i = 0; i < mapa.length; i++) {
         if (t.indexOf(mapa[i][0]) >= 0) {
           (function (id) {
