@@ -142,7 +142,7 @@ body.vx #drawing-toolbar .tool-btn .vx-palavra {
 body.vx .side-nav, body.vx .layout > .side-nav { width: 78px !important; min-width: 78px !important; flex-basis: 78px !important; }
 body.vx .side-nav .nav-item { padding-left: 6px !important; padding-right: 6px !important; }
 body.vx .side-nav .nav-item .nav-lbl { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
-body.vx #nav-mais { min-width: 66px !important; font-size: 12px !important; }
+body.vx #nav-mais { min-width: 92px !important; max-width: 100%; font-size: 11.5px !important; }
 body.vx .topbar :is(button, .chip) { min-height: 36px; }
 /* 4.2 lateral: cada item com alvo de toque real e ícone legível */
 body.vx .side-nav .nav-item {
