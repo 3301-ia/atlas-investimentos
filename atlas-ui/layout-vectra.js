@@ -51,7 +51,8 @@
       this.title = r ? 'abrir o painel' : 'recolher o painel';
       try { localStorage.setItem('vxDockRecolhido', r ? '1' : '0'); } catch (e) {}
     });
-    try { if (localStorage.getItem('vxDockRecolhido') === '1') { dock.classList.add('recolhido'); dock.querySelector('#vx-dock-toggle').textContent = '⟨'; } } catch (e) {}
+    if (ehCelular()) dock.classList.add('recolhido');
+    try { if (localStorage.getItem('vxDockRecolhido') === '1' && !ehCelular()) { dock.classList.add('recolhido'); dock.querySelector('#vx-dock-toggle').textContent = '⟨'; } } catch (e) {}
 
     montarPainelMercado();
     montarAbas();
@@ -284,6 +285,10 @@
     barra.style.maxHeight = 'calc(100vh - 150px)';
     barra.style.overflowY = 'auto';
     barra.style.overflowX = 'hidden';
+  }
+
+  function ehCelular() {
+    try { return window.matchMedia('(max-width: 820px)').matches; } catch (e) { return false; }
   }
 
   function ciclo() {

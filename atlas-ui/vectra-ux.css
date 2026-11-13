@@ -230,15 +230,45 @@ body.vx .vx-titulo {
   #vx-dock { width: 288px; }
   body.vx .main-area { margin-right: 300px; }
 }
+/* ── celular: gráfico em primeiro lugar ────────────────────────────────
+   No telefone a coluna da direita ficava com a largura e sobravam 55px de
+   gráfico. Aqui a direita sai de cena (o conteúdo dela já vive no dock), o
+   gráfico ocupa a largura toda e o dock vira uma gaveta que abre e fecha.  */
 @media (max-width: 820px) {
+  body.vx .layout { flex-direction: column !important; width: 100% !important; }
+  body.vx .main-area { width: 100% !important; flex: 1 1 auto !important; min-width: 0 !important; }
+  body.vx .rpanel, body.vx .rpanel-col { display: none !important; }
+  body.vx .chart-wrap, body.vx #chart { width: 100% !important; }
+  body.vx .chart-wrap { height: calc(100vh - 49px - 46px) !important; }
+
+  /* gaveta: fechada mostra só as abas */
   #vx-dock {
-    top: auto; left: 8px; right: 8px; bottom: 8px; width: auto;
-    max-height: 58vh; border-radius: var(--vx-raio);
+    top: auto !important; left: 8px; right: 8px; bottom: 52px !important;
+    width: auto !important; max-width: none;
+    max-height: 46px !important; overflow: hidden;
+    transition: max-height 220ms ease;
   }
-  #vx-dock.recolhido { width: auto; max-height: 46px; }
-  .vx-dock-corpo { padding: var(--vx-e2) var(--vx-e2) var(--vx-e4); }
-  .vx-aba { min-height: 42px; padding: 0 14px; font-size: 12px; }
-  body.vx #ts-chip { left: 8px; right: 8px; width: auto; max-width: none; bottom: calc(58vh + 16px); }
+  #vx-dock:not(.recolhido) { max-height: 44vh !important; }
+  #vx-dock .vx-dock-topo { min-height: 34px; padding: 2px 8px; }
+  #vx-dock .vx-dock-abas { padding: 4px 6px; gap: 4px; overflow-x: auto; flex-wrap: nowrap; }
+  .vx-aba { min-height: 38px; padding: 0 11px; font-size: 11px; white-space: nowrap; }
+  .vx-dock-corpo { padding: 8px 8px 10px; overflow-y: auto; max-height: calc(44vh - 46px); }
+  #vx-dock.recolhido .vx-dock-corpo { display: none; }
+
+  /* leitura de preço: faixa fina colada embaixo da barra superior */
+  body.vx #ts-chip {
+    left: 8px !important; right: 8px !important; width: auto !important; max-width: none !important;
+    top: 52px !important; bottom: auto !important;
+    min-height: 34px; padding: 3px 8px !important; font-size: 10px !important;
+    flex-wrap: nowrap; overflow-x: auto; gap: 6px !important;
+  }
+  body.vx #ts-chip * { white-space: nowrap; }
+
+  /* a lateral vira trilho inferior e não come o rodapé do gráfico */
+  body.vx .side-nav { z-index: 70; }
+
+  /* controles do gráfico não cobrem o dedo */
+  body.vx #chart-price-overlay { top: 4px !important; left: 8px !important; }
 }
 
 @media (prefers-reduced-motion: reduce) {
