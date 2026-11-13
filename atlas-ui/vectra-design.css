@@ -169,3 +169,28 @@ body.vx #ts-chip > * { min-height: 18px; }
   body.vx #drawing-toolbar .tool-btn { width: 52px !important; min-width: 52px !important; max-width: 52px !important; }
   body.vx .side-nav { width: 100% !important; min-width: 0 !important; }
 }
+
+/* ── 4.5 avisos empilhados e o dock sem buraco ─────────────────────────────
+   Dois avisos do robô nasciam no mesmo pixel e um cobria o outro. Agora eles
+   caem numa coluna, à esquerda do dock, com espaço entre eles. O dock também
+   para de esticar até o rodapé quando tem pouco conteúdo: altura é do conteúdo. */
+#vx-avisos {
+  position: fixed; top: 56px; right: 344px; z-index: 9600;
+  display: flex; flex-direction: column; gap: 8px;
+  width: 320px; max-width: calc(100vw - 24px); pointer-events: none;
+}
+#vx-avisos .vx-aviso {
+  position: static !important; inset: auto !important;
+  width: 100% !important; margin: 0 !important; pointer-events: auto;
+}
+body.vx #vx-dock { bottom: auto !important; max-height: calc(100vh - 130px); }
+body.vx #vx-dock .vx-dock-corpo {
+  flex: 0 1 auto; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+}
+@media (max-width: 1100px) {
+  #vx-avisos { right: 12px; width: 300px; }
+}
+@media (max-width: 820px) {
+  #vx-avisos { top: 108px; left: 8px; right: 8px; width: auto; }
+  body.vx #drawing-toolbar { left: auto !important; right: 6px !important; }
+}
