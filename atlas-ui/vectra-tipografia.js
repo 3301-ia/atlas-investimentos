@@ -78,3 +78,54 @@
 
   window.AtlasRegua = { piso: PISO, ajustar: rodar, corrigidos: function () { return vistos; } };
 })();
+
+/* ── conserta o que o CSS não alcança ─────────────────────────────────────
+   1. avisos do robô em coluna (nasciam no mesmo pixel, um cobria o outro);
+   2. dock sem esticar até o rodapé quando tem pouco conteúdo;
+   3. barra de desenho dentro da tela no celular.
+   Usa style com important porque essas três coisas são posicionadas por JS. */
+(function () {
+  var caixa = null;
+  function arrumar() {
+    var avisos = [].slice.call(document.querySelectorAll('.vx-aviso'));
+    if (avisos.length) {
+      if (!caixa || !document.body.contains(caixa)) {
+        caixa = document.createElement('div');
+        caixa.id = 'vx-avisos';
+        document.body.appendChild(caixa);
+      }
+      var estreito = window.innerWidth <= 820;
+      caixa.style.cssText = 'position:fixed;top:' + (estreito ? 108 : 56) + 'px;' +
+        (estreito ? 'left:8px;right:8px;' : 'right:344px;width:320px;') +
+        'display:flex;flex-direction:column;gap:8px;z-index:9600;pointer-events:none;';
+      avisos.forEach(function (a) {
+        if (a.parentElement !== caixa) caixa.appendChild(a);
+        a.style.setProperty('position', 'static', 'important');
+        a.style.setProperty('inset', 'auto', 'important');
+        a.style.setProperty('width', '100%', 'important');
+        a.style.setProperty('margin', '0', 'important');
+        a.style.setProperty('left', 'auto', 'important');
+        a.style.setProperty('right', 'auto', 'important');
+        a.style.setProperty('top', 'auto', 'important');
+        a.style.setProperty('bottom', 'auto', 'important');
+        a.style.setProperty('pointer-events', 'auto', 'important');
+      });
+      while (caixa.children.length > 3) caixa.removeChild(caixa.firstChild);
+    }
+    var dock = document.getElementById('vx-dock');
+    if (dock) {
+      dock.style.setProperty('bottom', 'auto', 'important');
+      dock.style.setProperty('max-height', 'calc(100vh - 130px)', 'important');
+    }
+    var barra = document.getElementById('drawing-toolbar');
+    if (barra && window.innerWidth <= 820) {
+      barra.style.setProperty('left', 'auto', 'important');
+      barra.style.setProperty('right', '6px', 'important');
+    }
+  }
+  var t = null;
+  function agendar() { clearTimeout(t); t = setTimeout(arrumar, 120); }
+  if (document.readyState !== 'loading') agendar(); else document.addEventListener('DOMContentLoaded', agendar);
+  window.addEventListener('resize', agendar);
+  new MutationObserver(agendar).observe(document.documentElement, { childList: true, subtree: true });
+})();
