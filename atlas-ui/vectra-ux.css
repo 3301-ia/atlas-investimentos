@@ -244,3 +244,20 @@ body.vx .vx-titulo {
 @media (prefers-reduced-motion: reduce) {
   #vx-dock, body.vx button, body.vx .side-nav .nav-item { transition: none; }
 }
+
+/* ── botões: o que está escrito tem que caber, e o alvo tem que ser o botão ── */
+body.vx button, body.vx [role="button"], body.vx .tool-btn, body.vx .cp, body.vx .chip {
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+body.vx .tool-btn { min-width: 40px; min-height: 40px; }
+body.vx .tool-btn.ativo, body.vx .tool-btn.active { border-color: var(--vx-linha-forte); color: var(--vx-ouro); }
+/* a barra de ferramentas não pode ser atropelada pelo gráfico */
+body.vx .draw-bar, body.vx .tools-bar, body.vx #drawbar { z-index: 60; }
+/* nada invisível por cima da interface */
+body.vx #vectra-splash { pointer-events: none; }

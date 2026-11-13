@@ -234,8 +234,53 @@
     pintarMercado();
   }
 
+  /* ── a abertura não pode segurar a tela ────────────────────────────────
+     O splash ficava no DOM com z-index 99999, opacidade 1 e pointer-events
+     auto depois de "terminar": a tela parecia pronta e NENHUM clique chegava
+     nos botões — tudo caía nele. Aqui ele se despede sozinho e, no primeiro
+     toque ou tecla, sai na hora.                                              */
+  function encerrarSplash() {
+    var s = document.getElementById('vectra-splash');
+    if (!s) return;
+    if (getComputedStyle(s).display === 'none') return;
+    s.style.pointerEvents = 'none';
+    s.style.transition = 'opacity 420ms ease';
+    s.style.opacity = '0';
+    try { s.classList.add('fechando'); } catch (e) {}
+    setTimeout(function () {
+      try {
+        s.style.display = 'none';
+        s.setAttribute('aria-hidden', 'true');
+        if (s.parentNode) s.parentNode.removeChild(s);
+      } catch (e) {}
+    }, 520);
+    try {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+      document.body.classList.remove('vx-travado', 'sem-scroll', 'loading');
+    } catch (e) {}
+  }
+
+  function vigiarSplash() {
+    var tentativas = 0;
+    var t = setInterval(function () {
+      tentativas++;
+      var s = document.getElementById('vectra-splash');
+      if (!s) { clearInterval(t); return; }
+      var c = getComputedStyle(s);
+      // assim que ele deixa de ser necessário (ou passa de 5s), sai de cena
+      var pronto = c.opacity === '0' || c.display === 'none' || tentativas > 5;
+      if (pronto) { encerrarSplash(); clearInterval(t); }
+      if (tentativas > 20) clearInterval(t);
+    }, 1000);
+    ['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach(function (ev) {
+      window.addEventListener(ev, function () { encerrarSplash(); }, { once: true, passive: true });
+    });
+  }
+
   function iniciar() {
     document.body.classList.add('vx');
+    vigiarSplash();
     montarDock();
     adotar();
     agruparLateral();
