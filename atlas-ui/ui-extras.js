@@ -29,17 +29,22 @@
 
     el.addEventListener('pointerdown', function (e) {
       if (e.pointerType === 'touch') return;
+      // clique em botao, chip, campo ou seletor é CLIQUE, não arrasto:
+      // capturar o ponteiro aqui redirecionava o clique para a barra e
+      // nenhum botao dela funcionava
+      if (e.target && e.target.closest && e.target.closest('button, a, input, select, textarea, [role="button"], .cp, .chip, .btn')) return;
       ativo = true; moveu = false;
       x0 = e.clientX; s0 = el.scrollLeft;
       el.classList.add('arrastando');
-      try { el.setPointerCapture(e.pointerId); } catch (err) {}
     });
 
     el.addEventListener('pointermove', function (e) {
       if (!ativo) return;
       var d = e.clientX - x0;
-      if (Math.abs(d) > 3) moveu = true;
-      el.scrollLeft = s0 - d;
+      if (Math.abs(d) > 4) {
+        if (!moveu) { moveu = true; try { el.setPointerCapture(e.pointerId); } catch (err) {} }
+        el.scrollLeft = s0 - d;
+      }
     });
 
     function soltar() {

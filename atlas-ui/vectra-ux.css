@@ -261,3 +261,26 @@ body.vx .tool-btn.ativo, body.vx .tool-btn.active { border-color: var(--vx-linha
 body.vx .draw-bar, body.vx .tools-bar, body.vx #drawbar { z-index: 60; }
 /* nada invisível por cima da interface */
 body.vx #vectra-splash { pointer-events: none; }
+
+/* ── barra superior: uma linha que rola, sem peças empilhadas ─────────── */
+body.vx .topbar, body.vx header {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  gap: 6px !important;
+  min-height: 44px !important;
+  height: auto !important;
+  padding: 4px 10px !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  scrollbar-width: none;
+}
+body.vx .topbar::-webkit-scrollbar { height: 0; }
+body.vx .topbar > *, body.vx header > * {
+  flex: 0 0 auto !important;
+  position: static !important;
+  margin: 0 !important;
+  inset: auto !important;
+  transform: none !important;
+}
+body.vx .cat-bar { margin: 0 !important; }
