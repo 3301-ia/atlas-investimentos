@@ -94,7 +94,21 @@ export function trailingStop(candles, params = {}) {
       }
     }
 
-    serie.push({ time: candles[i].time, value: arred(stop), lado });
+    // ── trava do lado certo ────────────────────────────────────────────────
+    // Quando a queda (ou a alta) é violenta, o candidato do lado novo pode
+    // nascer do lado errado do preço: uma compra com stop acima da entrada,
+    // que não protege nada. Nesse caso o stop volta para o extremo da janela,
+    // com meia folga de ATR, e a leitura passa a dizer que houve saneamento.
+    let saneado = false;
+    if (lado === 'alta' && stop >= candles[i].close) {
+      stop = ll - p.mult * 0.2 * a[i];
+      saneado = true;
+    } else if (lado === 'baixa' && stop <= candles[i].close) {
+      stop = hh + p.mult * 0.2 * a[i];
+      saneado = true;
+    }
+
+    serie.push({ time: candles[i].time, value: arred(stop), lado, saneado });
   }
 
   if (!serie.length) return null;
