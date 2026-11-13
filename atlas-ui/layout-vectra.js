@@ -83,8 +83,9 @@
     if (painelMercado) painelMercado.hidden = chave !== 'mercado';
     Object.keys(adotados).forEach(function (id) {
       var el = adotados[id];
+      // visibilidade pelo atributo + CSS !important: o módulo dono do cartão
+      // costuma reescrever o display dele a cada ciclo, e assim não briga
       el.hidden = id !== chave;
-      el.style.display = id === chave ? 'block' : 'none';
     });
     if (chave === 'mercado') pintarMercado();
   }
@@ -160,7 +161,7 @@
       el.style.zIndex = 'auto';
       el.classList.add('vx-hospedado');
       el.hidden = true;
-      el.style.display = 'none';
+      el.style.removeProperty('display');
       corpo.appendChild(el);
       adotados[c.id] = el;
     });
@@ -226,7 +227,12 @@
     });
   }
 
-  function ciclo() { adotar(); pintarMercado(); }
+  function ciclo() {
+    adotar();
+    // os módulos reescrevem o display do cartão deles; reafirma quem manda
+    Object.keys(adotados).forEach(function (id) { adotados[id].hidden = id !== abaAtiva; });
+    pintarMercado();
+  }
 
   function iniciar() {
     document.body.classList.add('vx');
