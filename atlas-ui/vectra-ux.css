@@ -253,10 +253,13 @@ body.vx .vx-titulo {
   body.vx .side-nav .nav-item span:not(.nav-icon) { display: none !important; }
   body.vx .side-nav .nav-icon { font-size: 17px; }
   /* MAIS no trilho: só o símbolo, e a lista sobe acima do trilho */
+  /* dentro do trilho, como último item: fixed aqui escapava da tela porque
+     a lateral tem transform próprio */
   body.vx #nav-mais {
-    position: fixed !important; right: 56px; bottom: 6px; z-index: 90;
-    margin: 0 !important; min-width: 46px; height: 44px; font-size: 0 !important;
-    background: var(--vx-navy-800); border: 1px solid var(--vx-linha); border-radius: 10px;
+    position: static !important; margin: 0 !important;
+    min-width: 48px; height: 44px; padding: 0 !important; font-size: 0 !important;
+    flex: 0 0 auto; background: var(--vx-navy-800);
+    border: 1px solid var(--vx-linha); border-radius: 10px;
   }
   body.vx #nav-mais::before { content: '⋯'; font-size: 17px; color: var(--vx-ouro); }
   body.vx #nav-mais-lista {

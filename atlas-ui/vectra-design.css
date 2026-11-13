@@ -1,0 +1,156 @@
+/* ══ Vectra Design Language ═══════════════════════════════════════════════
+   A linguagem visual do painel em um só lugar. Não é só cor: é a régua que
+   decide tipografia, espaço, densidade, alvo de toque e movimento, para que
+   qualquer cartão, botão ou número nasça legível em vez de "renderizado por
+   acaso". Três azuis, um dourado, uma mono para número, nada de borda branca.
+
+   Camadas, nesta ordem:
+     1. tokens     — a régua (escala fluida com clamp, espaço base 4, toque)
+     2. base       — tipografia, foco, seleção, rolagem, números alinhados
+     3. componentes— botão, campo, etiqueta, cartão, valor
+     4. correções  — o que estava cortado, minúsculo ou fora da tela
+   Quem usar os tokens herda tudo; quem não usar, ainda assim é corrigido
+   pelas camadas 2 e 4.                                                    */
+
+/* ── 1. TOKENS ─────────────────────────────────────────────────────────── */
+:root {
+  /* escala tipográfica fluida: 12 no telefone, 13 no desktop, sem salto */
+  --vx-t-micro: clamp(10.5px, .26vw + 10px, 11.5px);
+  --vx-t-mini:  clamp(11px, .28vw + 10.4px, 12.5px);
+  --vx-t-corpo: clamp(12px, .3vw + 11.2px, 13.5px);
+  --vx-t-titulo: clamp(12.5px, .34vw + 11.6px, 14.5px);
+  --vx-t-secao:  clamp(15px, .6vw + 12.6px, 19px);
+  --vx-t-numero: clamp(19px, 1.2vw + 15px, 30px);
+  --vx-t-heroi:  clamp(24px, 2vw + 17px, 40px);
+
+  --vx-peso-normal: 450;
+  --vx-peso-medio: 550;
+  --vx-peso-forte: 650;
+
+  /* espaço base 4, com passo fluido nos vãos grandes */
+  --vx-s1: 4px;  --vx-s2: 8px;  --vx-s3: 12px;
+  --vx-s4: 16px; --vx-s5: 24px; --vx-s6: 32px;
+  --vx-respiro: clamp(8px, 1.1vw, 14px);
+
+  /* alvo de toque: 40 no mouse, 44 no dedo */
+  --vx-toque: 40px;
+  --vx-toque-largo: 44px;
+
+  /* superfícies e movimento */
+  --vx-vidro: rgba(14, 29, 44, .96);
+  --vx-vidro-fundo: rgba(7, 15, 24, .72);
+  --vx-foco: 0 0 0 2px var(--vx-navy-900), 0 0 0 4px rgba(217, 180, 91, .55);
+  --vx-realce: inset 0 1px 0 rgba(255, 255, 255, .05);
+  --vx-curva: cubic-bezier(.32, .72, .24, 1);
+  --vx-lento: 220ms var(--vx-curva);
+}
+
+/* ── 2. BASE ───────────────────────────────────────────────────────────── */
+body.vx {
+  font-family: var(--vx-fonte);
+  font-size: var(--vx-t-corpo);
+  line-height: 1.45;
+  color: var(--vx-texto);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-variant-numeric: tabular-nums;
+}
+/* número é número: alinhado na coluna, sem dançar quando muda de dígito */
+body.vx :is(.vx-valor, .vx-num, #ts-chip, #rm-rsi, .preco, .valor, [data-num]) {
+  font-family: var(--vx-num);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1, 'zero' 1;
+  letter-spacing: -.01em;
+}
+body.vx :is(.vx-rotulo, small, label > span:first-child) {
+  letter-spacing: .06em;
+  text-transform: none;
+}
+/* foco de teclado visível de verdade (antes era contorno do navegador) */
+body.vx :is(button, [role="button"], .vx-aba, .nav-item, a, input, select, textarea):focus-visible {
+  outline: none;
+  box-shadow: var(--vx-foco);
+}
+body.vx ::selection { background: rgba(217, 180, 91, .28); color: #FFFFFF; }
+body.vx * { scrollbar-width: thin; scrollbar-color: rgba(217, 180, 91, .28) transparent; }
+body.vx ::-webkit-scrollbar { width: 9px; height: 9px; }
+body.vx ::-webkit-scrollbar-thumb { background: rgba(217, 180, 91, .26); border-radius: 8px; }
+body.vx ::-webkit-scrollbar-track { background: transparent; }
+/* nada de zoom acidental em campo no telefone: 16px é a régua do iOS */
+@media (pointer: coarse) {
+  :root { --vx-toque: var(--vx-toque-largo); }
+  body.vx :is(input, select, textarea) { font-size: 16px !important; }
+}
+
+/* ── 3. COMPONENTES ────────────────────────────────────────────────────── */
+body.vx .vx-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: var(--vx-toque); padding: 0 var(--vx-s3);
+  font-size: var(--vx-t-mini); font-weight: var(--vx-peso-medio);
+  color: var(--vx-texto); background: rgba(19, 39, 58, .9);
+  border: 1px solid rgba(255, 255, 255, .09); border-radius: var(--vx-raio-sm);
+  transition: background var(--vx-transicao), border-color var(--vx-transicao), color var(--vx-transicao);
+  cursor: pointer;
+}
+body.vx .vx-btn:hover { background: rgba(24, 48, 70, .95); border-color: var(--vx-linha-forte); }
+body.vx .vx-btn--ouro { color: #13202E; background: linear-gradient(180deg, #E6C878, var(--vx-ouro)); border-color: rgba(217, 180, 91, .8); }
+body.vx .vx-btn--ouro:hover { filter: brightness(1.06); }
+body.vx .vx-btn--fantasma { background: transparent; border-color: var(--vx-linha); color: var(--vx-texto-fraco); }
+body.vx .vx-btn--fantasma:hover { color: var(--vx-texto); }
+
+body.vx .vx-campo {
+  min-height: var(--vx-toque); padding: 0 var(--vx-s2);
+  font-family: var(--vx-fonte); font-size: var(--vx-t-mini); color: var(--vx-texto);
+  background: rgba(7, 15, 24, .85); border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: var(--vx-raio-sm);
+}
+body.vx .vx-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  min-height: 26px; padding: 0 9px; border-radius: 999px;
+  font-size: var(--vx-t-micro); font-weight: var(--vx-peso-medio);
+  border: 1px solid var(--vx-linha); color: var(--vx-texto-fraco);
+  background: rgba(10, 22, 34, .8);
+}
+body.vx .vx-card {
+  background: linear-gradient(180deg, var(--vx-vidro), rgba(10, 22, 34, .99));
+  border: 1px solid var(--vx-linha); border-radius: var(--vx-raio);
+  box-shadow: var(--vx-sombra), var(--vx-realce);
+  padding: var(--vx-respiro);
+}
+body.vx .vx-divisor { height: 1px; background: linear-gradient(90deg, transparent, rgba(217, 180, 91, .22), transparent); }
+
+/* ── 4. CORREÇÕES DO QUE ESTAVA MAL RENDERIZADO ────────────────────────── */
+/* 4.1 barra de desenho: o rótulo quebra em duas linhas em vez de ser cortado */
+body.vx :is(.draw-bar, .tools-bar, #drawbar) button,
+body.vx :is(.draw-bar, .tools-bar, #drawbar) .tool-btn {
+  min-width: 54px; max-width: 96px; min-height: var(--vx-toque);
+  height: auto !important; padding: 3px 5px !important;
+  white-space: normal !important; overflow: visible !important; text-overflow: clip !important;
+  line-height: 1.15 !important; font-size: var(--vx-t-micro) !important;
+  text-align: center;
+}
+/* 4.2 lateral: cada item com alvo de toque real e ícone legível */
+body.vx .side-nav .nav-item {
+  min-height: var(--vx-toque); border-radius: var(--vx-raio-sm);
+  transition: background var(--vx-transicao), color var(--vx-transicao);
+}
+body.vx .side-nav .nav-icon { font-size: 15px; line-height: 1; }
+body.vx .side-nav .nav-lbl, body.vx .side-nav .nav-item b { font-size: var(--vx-t-mini) !important; }
+/* 4.3 leitura de preço: uma linha, sem esmagar o número */
+body.vx #ts-chip { gap: var(--vx-s2) !important; font-size: var(--vx-t-mini) !important; }
+body.vx #ts-chip > * { min-height: 18px; }
+/* 4.4 cartões do dock respirando por igual */
+.vx-dock-corpo > * { padding: var(--vx-respiro); container-type: inline-size; }
+@media (hover: none) {
+  body.vx :is(button, .nav-item, .vx-aba):hover { background: inherit; }
+}
+
+/* ── responsivo de verdade: a régua muda com o espaço, não com o modelo ── */
+@media (max-width: 1100px) {
+  body.vx :is(.draw-bar, .tools-bar, #drawbar) { overflow-x: auto; overflow-y: hidden; flex-wrap: nowrap; }
+}
+@media (max-width: 820px) {
+  body.vx :is(.draw-bar, .tools-bar, #drawbar) button,
+  body.vx :is(.draw-bar, .tools-bar, #drawbar) .tool-btn { min-width: 48px; max-width: 76px; }
+}
