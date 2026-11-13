@@ -114,8 +114,14 @@
     }
     var dock = document.getElementById('vx-dock');
     if (dock) {
-      dock.style.setProperty('bottom', 'auto', 'important');
-      dock.style.setProperty('max-height', 'calc(100vh - 130px)', 'important');
+      if (window.innerWidth > 820) {
+        dock.style.setProperty('bottom', 'auto', 'important');
+        dock.style.setProperty('max-height', 'calc(100vh - 130px)', 'important');
+      } else {
+        dock.style.setProperty('top', 'auto', 'important');
+        dock.style.setProperty('bottom', '12px', 'important');
+        dock.style.setProperty('max-height', '60vh', 'important');
+      }
     }
     var barra = document.getElementById('drawing-toolbar');
     if (barra && window.innerWidth <= 820) {
