@@ -227,6 +227,29 @@
     });
   }
 
+  /* O item da lateral é o comando: se ele abre um módulo que tem cartão,
+     o cartão entra no dock já na aba dele — antes o módulo mostrava o cartão
+     e o dock escondia, então o clique parecia morto.                        */
+  function delegarLateral() {
+    var nav = document.querySelector('.side-nav');
+    if (!nav || nav.__vxDelegado) return;
+    nav.__vxDelegado = true;
+    nav.addEventListener('click', function (ev) {
+      var it = ev.target.closest ? ev.target.closest('.nav-item') : null;
+      if (!it) return;
+      var t = (it.innerText || it.title || '').toLowerCase();
+      var mapa = [['vigia', 'vg-card'], ['imperial', 'imperial-card'], ['consenso', 'consenso-card'], ['deriv', 'deriv-card']];
+      for (var i = 0; i < mapa.length; i++) {
+        if (t.indexOf(mapa[i][0]) >= 0) {
+          (function (id) {
+            setTimeout(function () { adotar(); selecionar(id); }, 180);
+          })(mapa[i][1]);
+          return;
+        }
+      }
+    }, true);
+  }
+
   function ciclo() {
     adotar();
     // os módulos reescrevem o display do cartão deles; reafirma quem manda
@@ -283,6 +306,7 @@
     vigiarSplash();
     montarDock();
     adotar();
+    delegarLateral();
     agruparLateral();
     setInterval(ciclo, 1000);
     try {
