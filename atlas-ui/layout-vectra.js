@@ -77,6 +77,8 @@
   }
 
   function selecionar(chave) {
+    // no celular a gaveta abre ao escolher uma aba
+    if (dock && ehCelular()) dock.classList.remove('recolhido');
     abaAtiva = chave;
     if (!abas) return;
     [].forEach.call(abas.querySelectorAll('.vx-aba'), function (b) {

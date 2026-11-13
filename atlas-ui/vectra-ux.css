@@ -239,7 +239,13 @@ body.vx .vx-titulo {
   body.vx .main-area { width: 100% !important; flex: 1 1 auto !important; min-width: 0 !important; }
   body.vx .rpanel, body.vx .rpanel-col { display: none !important; }
   body.vx .chart-wrap, body.vx #chart { width: 100% !important; }
-  body.vx .chart-wrap { height: calc(100vh - 49px - 46px) !important; }
+  body.vx .chart-wrap { height: calc(100vh - 49px - 46px) !important; flex: 1 1 auto !important; }
+  /* sub-painéis antigos do desktop não roubam altura no celular */
+  body.vx .main-area > *:not(.chart-wrap) { display: none !important; }
+
+  /* trilho inferior: rola na horizontal em vez de esconder item */
+  body.vx .side-nav { overflow-x: auto !important; overflow-y: hidden !important; }
+  body.vx .side-nav .nav-item { min-width: 46px; flex: 0 0 auto; }
 
   /* gaveta: fechada mostra só as abas */
   #vx-dock {
