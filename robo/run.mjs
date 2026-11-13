@@ -186,6 +186,7 @@ export async function rodarRobo(temporada = TEMPORADAS[0]) {
     }
   }
 
+  estado.acoes = acoes.slice(-4);
   estado.atualizado_em = agora;
   estado.preco = r2(preco);
   estado.timeframe = t.barra;

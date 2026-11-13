@@ -1,0 +1,362 @@
+{
+ "versao": "ema-cascata 1.0.0",
+ "gerado_em": "2026-11-13T12:2x",
+ "agora": {
+  "ladoMicro": "alta",
+  "alinhamento": 3,
+  "total": 4,
+  "concorda": [
+   "1m",
+   "5m",
+   "15m"
+  ],
+  "contra": [
+   "1H"
+  ],
+  "camadas": {
+   "1m": {
+    "lado": "alta",
+    "cruzou": false,
+    "emaRapida": 69443.67,
+    "emaLenta": 69422.33,
+    "distanciaPct": 0.031,
+    "preco": 69460.3
+   },
+   "5m": {
+    "lado": "alta",
+    "cruzou": false,
+    "emaRapida": 69388.93,
+    "emaLenta": 69349.24,
+    "distanciaPct": 0.057,
+    "preco": 69460.3
+   },
+   "15m": {
+    "lado": "alta",
+    "cruzou": false,
+    "emaRapida": 69309.47,
+    "emaLenta": 69209.61,
+    "distanciaPct": 0.144,
+    "preco": 69460.3
+   },
+   "1H": {
+    "lado": "baixa",
+    "cruzou": false,
+    "emaRapida": 69250.49,
+    "emaLenta": 69836.73,
+    "distanciaPct": 0.839,
+    "preco": 69321.5
+   }
+  },
+  "gatilho": false,
+  "forca": 75
+ },
+ "sinais_1m": [
+  {
+   "hora": 1794557220,
+   "lado": "alta",
+   "preco": 68796.5,
+   "concordam": [],
+   "forca": 0
+  },
+  {
+   "hora": 1794557820,
+   "lado": "baixa",
+   "preco": 68682.2,
+   "concordam": [
+    "5m",
+    "15m",
+    "1H"
+   ],
+   "forca": 100
+  },
+  {
+   "hora": 1794558480,
+   "lado": "alta",
+   "preco": 68724.1,
+   "concordam": [],
+   "forca": 0
+  },
+  {
+   "hora": 1794560220,
+   "lado": "baixa",
+   "preco": 68765.6,
+   "concordam": [
+    "5m",
+    "15m",
+    "1H"
+   ],
+   "forca": 100
+  },
+  {
+   "hora": 1794560580,
+   "lado": "alta",
+   "preco": 68932.3,
+   "concordam": [
+    "5m"
+   ],
+   "forca": 33
+  },
+  {
+   "hora": 1794560880,
+   "lado": "baixa",
+   "preco": 68723.7,
+   "concordam": [
+    "5m",
+    "15m",
+    "1H"
+   ],
+   "forca": 100
+  },
+  {
+   "hora": 1794561240,
+   "lado": "alta",
+   "preco": 68805.5,
+   "concordam": [
+    "5m"
+   ],
+   "forca": 33
+  },
+  {
+   "hora": 1794563400,
+   "lado": "baixa",
+   "preco": 68969.9,
+   "concordam": [
+    "15m",
+    "1H"
+   ],
+   "forca": 67
+  },
+  {
+   "hora": 1794563520,
+   "lado": "alta",
+   "preco": 69097.5,
+   "concordam": [
+    "5m"
+   ],
+   "forca": 33
+  },
+  {
+   "hora": 1794565560,
+   "lado": "baixa",
+   "preco": 69259.5,
+   "concordam": [
+    "1H"
+   ],
+   "forca": 33
+  },
+  {
+   "hora": 1794566160,
+   "lado": "alta",
+   "preco": 69334.5,
+   "concordam": [
+    "5m",
+    "15m"
+   ],
+   "forca": 67
+  },
+  {
+   "hora": 1794567840,
+   "lado": "baixa",
+   "preco": 69306.9,
+   "concordam": [
+    "1H"
+   ],
+   "forca": 33
+  },
+  {
+   "hora": 1794568020,
+   "lado": "alta",
+   "preco": 69400,
+   "concordam": [
+    "5m",
+    "15m"
+   ],
+   "forca": 67
+  },
+  {
+   "hora": 1794568260,
+   "lado": "baixa",
+   "preco": 69302.3,
+   "concordam": [
+    "1H"
+   ],
+   "forca": 33
+  },
+  {
+   "hora": 1794568620,
+   "lado": "alta",
+   "preco": 69393.1,
+   "concordam": [
+    "5m",
+    "15m"
+   ],
+   "forca": 67
+  },
+  {
+   "hora": 1794569220,
+   "lado": "baixa",
+   "preco": 69322.9,
+   "concordam": [
+    "1H"
+   ],
+   "forca": 33
+  },
+  {
+   "hora": 1794570180,
+   "lado": "alta",
+   "preco": 69312.2,
+   "concordam": [
+    "5m",
+    "15m"
+   ],
+   "forca": 67
+  },
+  {
+   "hora": 1794570960,
+   "lado": "baixa",
+   "preco": 69309.6,
+   "concordam": [
+    "1H"
+   ],
+   "forca": 33
+  },
+  {
+   "hora": 1794571200,
+   "lado": "alta",
+   "preco": 69384.6,
+   "concordam": [
+    "5m",
+    "15m"
+   ],
+   "forca": 67
+  }
+ ],
+ "sinais_5m": [
+  {
+   "hora": 1794499500,
+   "lado": "alta",
+   "preco": 72098.9,
+   "concordam": [],
+   "forca": 0
+  },
+  {
+   "hora": 1794501900,
+   "lado": "baixa",
+   "preco": 71714.4,
+   "concordam": [
+    "15m",
+    "1H"
+   ],
+   "forca": 100
+  },
+  {
+   "hora": 1794502200,
+   "lado": "alta",
+   "preco": 71830.5,
+   "concordam": [],
+   "forca": 0
+  },
+  {
+   "hora": 1794503100,
+   "lado": "baixa",
+   "preco": 71718,
+   "concordam": [
+    "15m",
+    "1H"
+   ],
+   "forca": 100
+  },
+  {
+   "hora": 1794503700,
+   "lado": "alta",
+   "preco": 71808.9,
+   "concordam": [],
+   "forca": 0
+  },
+  {
+   "hora": 1794509100,
+   "lado": "baixa",
+   "preco": 71626.4,
+   "concordam": [
+    "15m",
+    "1H"
+   ],
+   "forca": 100
+  },
+  {
+   "hora": 1794518700,
+   "lado": "alta",
+   "preco": 71615.2,
+   "concordam": [],
+   "forca": 0
+  },
+  {
+   "hora": 1794520800,
+   "lado": "baixa",
+   "preco": 71521.4,
+   "concordam": [
+    "15m",
+    "1H"
+   ],
+   "forca": 100
+  },
+  {
+   "hora": 1794528000,
+   "lado": "alta",
+   "preco": 71494.9,
+   "concordam": [],
+   "forca": 0
+  },
+  {
+   "hora": 1794528300,
+   "lado": "baixa",
+   "preco": 71363,
+   "concordam": [
+    "15m",
+    "1H"
+   ],
+   "forca": 100
+  },
+  {
+   "hora": 1794551400,
+   "lado": "alta",
+   "preco": 68881.3,
+   "concordam": [],
+   "forca": 0
+  },
+  {
+   "hora": 1794555900,
+   "lado": "baixa",
+   "preco": 68708.5,
+   "concordam": [
+    "15m",
+    "1H"
+   ],
+   "forca": 100
+  },
+  {
+   "hora": 1794560400,
+   "lado": "alta",
+   "preco": 68899.1,
+   "concordam": [],
+   "forca": 0
+  },
+  {
+   "hora": 1794560700,
+   "lado": "baixa",
+   "preco": 68693.8,
+   "concordam": [
+    "15m",
+    "1H"
+   ],
+   "forca": 100
+  },
+  {
+   "hora": 1794561000,
+   "lado": "alta",
+   "preco": 68805.5,
+   "concordam": [],
+   "forca": 0
+  }
+ ]
+}

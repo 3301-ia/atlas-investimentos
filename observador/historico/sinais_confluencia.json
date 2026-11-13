@@ -1,0 +1,947 @@
+{
+ "versao": "confluencia 1.0.0",
+ "gerado_em": "2026-11-13",
+ "criterio": "EMA 8/16 no micro, EMA 15m/1H, Fibonacci da perna e Imperial SuperTrend; resultado medido 4h depois",
+ "resumo": {
+  "0": {
+   "n": 29,
+   "soma": -13.940766469912209,
+   "acerto": 6
+  },
+  "1": {
+   "n": 16,
+   "soma": 8.627746726906715,
+   "acerto": 12
+  },
+  "2": {
+   "n": 1,
+   "soma": -0.03158251440190161,
+   "acerto": 0
+  },
+  "3": {
+   "n": 7,
+   "soma": 1.495165985396569,
+   "acerto": 6
+  },
+  "4": {
+   "n": 1,
+   "soma": -0.5269148537310783,
+   "acerto": 0
+  },
+  "5": {
+   "n": 2,
+   "soma": 1.1822111786956284,
+   "acerto": 2
+  }
+ },
+ "sinais": [
+  {
+   "tempo": 1794285000,
+   "hora": "11-10 04:30",
+   "lado": "alta",
+   "preco": 74800,
+   "confluencias": [],
+   "n": 0,
+   "resultado": -0.36751336898394943,
+   "maxima": 75000,
+   "minima": 74457.3,
+   "alvoFibo": null,
+   "p0": 75443.5,
+   "p1": 74777.9
+  },
+  {
+   "tempo": 1794291000,
+   "hora": "11-10 06:10",
+   "lado": "baixa",
+   "preco": 74640.3,
+   "confluencias": [
+    "Fibo"
+   ],
+   "n": 1,
+   "resultado": 0.3069387448871532,
+   "maxima": 74996,
+   "minima": 74177.4,
+   "alvoFibo": 74366.56,
+   "p0": 75443.5,
+   "p1": 74777.9
+  },
+  {
+   "tempo": 1794295200,
+   "hora": "11-10 07:20",
+   "lado": "alta",
+   "preco": 74828.6,
+   "confluencias": [],
+   "n": 0,
+   "resultado": -0.7411604653835643,
+   "maxima": 74996,
+   "minima": 74116.1,
+   "alvoFibo": null,
+   "p0": 75443.5,
+   "p1": 74777.9
+  },
+  {
+   "tempo": 1794298800,
+   "hora": "11-10 08:20",
+   "lado": "baixa",
+   "preco": 74736.7,
+   "confluencias": [
+    "Fibo"
+   ],
+   "n": 1,
+   "resultado": 0.5238390242009615,
+   "maxima": 74809.1,
+   "minima": 74116.1,
+   "alvoFibo": 73986.16,
+   "p0": 75000,
+   "p1": 74373.4
+  },
+  {
+   "tempo": 1794311100,
+   "hora": "11-10 11:45",
+   "lado": "alta",
+   "preco": 74427.7,
+   "confluencias": [],
+   "n": 0,
+   "resultado": -1.4717638728591562,
+   "maxima": 74843.4,
+   "minima": 72858.5,
+   "alvoFibo": null,
+   "p0": 75000,
+   "p1": 74373.4
+  },
+  {
+   "tempo": 1794313500,
+   "hora": "11-10 12:25",
+   "lado": "baixa",
+   "preco": 74269.4,
+   "confluencias": [
+    "Fibo"
+   ],
+   "n": 1,
+   "resultado": 1.360587267434502,
+   "maxima": 74843.4,
+   "minima": 72858.5,
+   "alvoFibo": 73986.16,
+   "p0": 75000,
+   "p1": 74373.4
+  },
+  {
+   "tempo": 1794315300,
+   "hora": "11-10 12:55",
+   "lado": "alta",
+   "preco": 74391.1,
+   "confluencias": [],
+   "n": 0,
+   "resultado": -2.0378781870411915,
+   "maxima": 74843.4,
+   "minima": 72727.3,
+   "alvoFibo": null,
+   "p0": 75000,
+   "p1": 74373.4
+  },
+  {
+   "tempo": 1794317400,
+   "hora": "11-10 13:30",
+   "lado": "baixa",
+   "preco": 73982.6,
+   "confluencias": [
+    "EMA15m",
+    "Imp15m",
+    "Fibo"
+   ],
+   "n": 3,
+   "resultado": 1.1606783216594327,
+   "maxima": 74843.4,
+   "minima": 72727.3,
+   "alvoFibo": 73359.56,
+   "p0": 75000,
+   "p1": 74373.4
+  },
+  {
+   "tempo": 1794321600,
+   "hora": "11-10 14:40",
+   "lado": "alta",
+   "preco": 74311.2,
+   "confluencias": [],
+   "n": 0,
+   "resultado": -1.0190926805111518,
+   "maxima": 74843.4,
+   "minima": 72727.3,
+   "alvoFibo": null,
+   "p0": 75000,
+   "p1": 74373.4
+  },
+  {
+   "tempo": 1794324600,
+   "hora": "11-10 15:30",
+   "lado": "baixa",
+   "preco": 73784.2,
+   "confluencias": [
+    "EMA15m",
+    "Imp15m",
+    "Fibo"
+   ],
+   "n": 3,
+   "resultado": 0.43396824794467803,
+   "maxima": 74094.5,
+   "minima": 72727.3,
+   "alvoFibo": 73359.56,
+   "p0": 75000,
+   "p1": 74373.4
+  },
+  {
+   "tempo": 1794333600,
+   "hora": "11-10 18:00",
+   "lado": "alta",
+   "preco": 73331,
+   "confluencias": [],
+   "n": 0,
+   "resultado": 0.778661139218066,
+   "maxima": 74060.8,
+   "minima": 73111.2,
+   "alvoFibo": 73986.16,
+   "p0": 75000,
+   "p1": 74373.4
+  },
+  {
+   "tempo": 1794349500,
+   "hora": "11-10 22:25",
+   "lado": "baixa",
+   "preco": 73672.7,
+   "confluencias": [],
+   "n": 0,
+   "resultado": 0.42145869501185645,
+   "maxima": 74030.1,
+   "minima": 73250.4,
+   "alvoFibo": null,
+   "p0": 72727.3,
+   "p1": 74843.4
+  },
+  {
+   "tempo": 1794354300,
+   "hora": "11-10 23:45",
+   "lado": "alta",
+   "preco": 73775,
+   "confluencias": [
+    "EMA15m",
+    "Fibo"
+   ],
+   "n": 2,
+   "resultado": -0.03158251440190161,
+   "maxima": 74030.1,
+   "minima": 73221.4,
+   "alvoFibo": 76151.15,
+   "p0": 72727.3,
+   "p1": 74843.4
+  },
+  {
+   "tempo": 1794355800,
+   "hora": "11-11 00:10",
+   "lado": "baixa",
+   "preco": 73668.3,
+   "confluencias": [],
+   "n": 0,
+   "resultado": -0.06569990077142296,
+   "maxima": 74030.1,
+   "minima": 73221.4,
+   "alvoFibo": null,
+   "p0": 72727.3,
+   "p1": 74843.4
+  },
+  {
+   "tempo": 1794360600,
+   "hora": "11-11 01:30",
+   "lado": "alta",
+   "preco": 73783.4,
+   "confluencias": [
+    "EMA15m"
+   ],
+   "n": 1,
+   "resultado": 0.08877335552441336,
+   "maxima": 74030.1,
+   "minima": 73221.4,
+   "alvoFibo": null,
+   "p0": 74060.8,
+   "p1": 73310
+  },
+  {
+   "tempo": 1794362700,
+   "hora": "11-11 02:05",
+   "lado": "baixa",
+   "preco": 73470,
+   "confluencias": [
+    "Fibo"
+   ],
+   "n": 1,
+   "resultado": -0.5471621069824418,
+   "maxima": 73977.9,
+   "minima": 73221.4,
+   "alvoFibo": 72846.01,
+   "p0": 74060.8,
+   "p1": 73310
+  },
+  {
+   "tempo": 1794365100,
+   "hora": "11-11 02:45",
+   "lado": "alta",
+   "preco": 73729.9,
+   "confluencias": [],
+   "n": 0,
+   "resultado": -0.18771217647113883,
+   "maxima": 73977.9,
+   "minima": 73480,
+   "alvoFibo": null,
+   "p0": 74060.8,
+   "p1": 73356.8
+  },
+  {
+   "tempo": 1794370500,
+   "hora": "11-11 04:15",
+   "lado": "baixa",
+   "preco": 73510,
+   "confluencias": [
+    "Imp15m"
+   ],
+   "n": 1,
+   "resultado": -0.6639912937015451,
+   "maxima": 74179.7,
+   "minima": 73480,
+   "alvoFibo": null,
+   "p0": 73221.4,
+   "p1": 74030.1
+  },
+  {
+   "tempo": 1794371700,
+   "hora": "11-11 04:35",
+   "lado": "alta",
+   "preco": 73785.4,
+   "confluencias": [
+    "Fibo"
+   ],
+   "n": 1,
+   "resultado": -0.049332252722075344,
+   "maxima": 74179.7,
+   "minima": 73539.2,
+   "alvoFibo": 74529.88,
+   "p0": 73221.4,
+   "p1": 74030.1
+  },
+  {
+   "tempo": 1794379200,
+   "hora": "11-11 06:40",
+   "lado": "baixa",
+   "preco": 73664,
+   "confluencias": [],
+   "n": 0,
+   "resultado": -0.4760805821025156,
+   "maxima": 74179.7,
+   "minima": 73539.2,
+   "alvoFibo": null,
+   "p0": 73221.4,
+   "p1": 74030.1
+  },
+  {
+   "tempo": 1794381900,
+   "hora": "11-11 07:25",
+   "lado": "alta",
+   "preco": 73920,
+   "confluencias": [
+    "Fibo"
+   ],
+   "n": 1,
+   "resultado": 0.1282467532467572,
+   "maxima": 74179.7,
+   "minima": 73555.6,
+   "alvoFibo": 74445.42,
+   "p0": 73221.4,
+   "p1": 73977.9
+  },
+  {
+   "tempo": 1794385800,
+   "hora": "11-11 08:30",
+   "lado": "baixa",
+   "preco": 73747.2,
+   "confluencias": [],
+   "n": 0,
+   "resultado": -0.20231276577279828,
+   "maxima": 74149.7,
+   "minima": 73555.6,
+   "alvoFibo": null,
+   "p0": 73221.4,
+   "p1": 73977.9
+  },
+  {
+   "tempo": 1794392400,
+   "hora": "11-11 10:20",
+   "lado": "alta",
+   "preco": 73892.3,
+   "confluencias": [
+    "Fibo"
+   ],
+   "n": 1,
+   "resultado": -0.36228402688777733,
+   "maxima": 74149.7,
+   "minima": 73612,
+   "alvoFibo": 74575.53,
+   "p0": 73539.2,
+   "p1": 74179.7
+  },
+  {
+   "tempo": 1794399000,
+   "hora": "11-11 12:10",
+   "lado": "baixa",
+   "preco": 73961.9,
+   "confluencias": [],
+   "n": 0,
+   "resultado": -0.30826682386471954,
+   "maxima": 74484.7,
+   "minima": 73388,
+   "alvoFibo": null,
+   "p0": 73539.2,
+   "p1": 74179.7
+  },
+  {
+   "tempo": 1794399300,
+   "hora": "11-11 12:15",
+   "lado": "alta",
+   "preco": 74070.5,
+   "confluencias": [
+    "EMA15m",
+    "Imp15m",
+    "Fibo"
+   ],
+   "n": 3,
+   "resultado": 0.09855475526694163,
+   "maxima": 74484.7,
+   "minima": 73388,
+   "alvoFibo": 74575.53,
+   "p0": 73539.2,
+   "p1": 74179.7
+  },
+  {
+   "tempo": 1794399900,
+   "hora": "11-11 12:25",
+   "lado": "baixa",
+   "preco": 73949.9,
+   "confluencias": [],
+   "n": 0,
+   "resultado": -0.4918194615543925,
+   "maxima": 74484.7,
+   "minima": 73388,
+   "alvoFibo": null,
+   "p0": 73539.2,
+   "p1": 74179.7
+  },
+  {
+   "tempo": 1794400500,
+   "hora": "11-11 12:35",
+   "lado": "alta",
+   "preco": 74074.1,
+   "confluencias": [
+    "Fibo"
+   ],
+   "n": 1,
+   "resultado": 0.28889989888503537,
+   "maxima": 74484.7,
+   "minima": 73388,
+   "alvoFibo": 74575.53,
+   "p0": 73539.2,
+   "p1": 74179.7
+  },
+  {
+   "tempo": 1794400800,
+   "hora": "11-11 12:40",
+   "lado": "baixa",
+   "preco": 73971.4,
+   "confluencias": [],
+   "n": 0,
+   "resultado": -0.3270182800379724,
+   "maxima": 74484.7,
+   "minima": 73388,
+   "alvoFibo": null,
+   "p0": 73539.2,
+   "p1": 74179.7
+  },
+  {
+   "tempo": 1794401100,
+   "hora": "11-11 12:45",
+   "lado": "alta",
+   "preco": 74036.2,
+   "confluencias": [
+    "EMA15m",
+    "Imp15m",
+    "Fibo"
+   ],
+   "n": 3,
+   "resultado": 0.344966381310776,
+   "maxima": 74484.7,
+   "minima": 73388,
+   "alvoFibo": 74575.53,
+   "p0": 73539.2,
+   "p1": 74179.7
+  },
+  {
+   "tempo": 1794401700,
+   "hora": "11-11 12:55",
+   "lado": "baixa",
+   "preco": 73889,
+   "confluencias": [],
+   "n": 0,
+   "resultado": -0.4956082772807821,
+   "maxima": 74484.7,
+   "minima": 73388,
+   "alvoFibo": null,
+   "p0": 73539.2,
+   "p1": 74179.7
+  },
+  {
+   "tempo": 1794411000,
+   "hora": "11-11 15:30",
+   "lado": "alta",
+   "preco": 74039.4,
+   "confluencias": [],
+   "n": 0,
+   "resultado": 0.4712355853775271,
+   "maxima": 74778.8,
+   "minima": 73628,
+   "alvoFibo": null,
+   "p0": 74149.7,
+   "p1": 73555.6
+  },
+  {
+   "tempo": 1794423900,
+   "hora": "11-11 19:05",
+   "lado": "baixa",
+   "preco": 74279.6,
+   "confluencias": [],
+   "n": 0,
+   "resultado": 0.7776024642028306,
+   "maxima": 74803.3,
+   "minima": 73668.5,
+   "alvoFibo": null,
+   "p0": 73388,
+   "p1": 74484.7
+  },
+  {
+   "tempo": 1794427200,
+   "hora": "11-11 20:00",
+   "lado": "alta",
+   "preco": 74414.3,
+   "confluencias": [
+    "EMA15m",
+    "EMA1H",
+    "Imp15m",
+    "Fibo"
+   ],
+   "n": 4,
+   "resultado": -0.5269148537310783,
+   "maxima": 74803.3,
+   "minima": 73481,
+   "alvoFibo": 75162.46,
+   "p0": 73388,
+   "p1": 74484.7
+  },
+  {
+   "tempo": 1794433500,
+   "hora": "11-11 21:45",
+   "lado": "baixa",
+   "preco": 74475.1,
+   "confluencias": [],
+   "n": 0,
+   "resultado": 1.0851949174959303,
+   "maxima": 74559.9,
+   "minima": 73481,
+   "alvoFibo": null,
+   "p0": 73388,
+   "p1": 74484.7
+  },
+  {
+   "tempo": 1794442800,
+   "hora": "11-12 00:20",
+   "lado": "alta",
+   "preco": 74107.4,
+   "confluencias": [],
+   "n": 0,
+   "resultado": -0.4713429428100141,
+   "maxima": 74229.5,
+   "minima": 73586.6,
+   "alvoFibo": null,
+   "p0": 74803.3,
+   "p1": 74192.8
+  },
+  {
+   "tempo": 1794445200,
+   "hora": "11-12 01:00",
+   "lado": "baixa",
+   "preco": 73829.9,
+   "confluencias": [
+    "EMA15m",
+    "EMA1H",
+    "Imp15m",
+    "Imp1H",
+    "Fibo"
+   ],
+   "n": 5,
+   "resultado": 0.2671004565900768,
+   "maxima": 74100,
+   "minima": 73586.6,
+   "alvoFibo": 73815.51,
+   "p0": 74803.3,
+   "p1": 74192.8
+  },
+  {
+   "tempo": 1794450000,
+   "hora": "11-12 02:20",
+   "lado": "alta",
+   "preco": 73920,
+   "confluencias": [],
+   "n": 0,
+   "resultado": -0.24824134199134198,
+   "maxima": 74100,
+   "minima": 73527,
+   "alvoFibo": null,
+   "p0": 74803.3,
+   "p1": 74192.8
+  },
+  {
+   "tempo": 1794453000,
+   "hora": "11-12 03:10",
+   "lado": "baixa",
+   "preco": 73720.3,
+   "confluencias": [
+    "Fibo"
+   ],
+   "n": 1,
+   "resultado": 0.2556961922292774,
+   "maxima": 73890,
+   "minima": 73419.5,
+   "alvoFibo": 73205.01,
+   "p0": 74803.3,
+   "p1": 74192.8
+  },
+  {
+   "tempo": 1794464400,
+   "hora": "11-12 06:20",
+   "lado": "alta",
+   "preco": 73736.5,
+   "confluencias": [],
+   "n": 0,
+   "resultado": -0.2221423582621943,
+   "maxima": 73740.1,
+   "minima": 73254.9,
+   "alvoFibo": 73815.51,
+   "p0": 74803.3,
+   "p1": 74192.8
+  },
+  {
+   "tempo": 1794465600,
+   "hora": "11-12 06:40",
+   "lado": "baixa",
+   "preco": 73561.8,
+   "confluencias": [
+    "Fibo"
+   ],
+   "n": 1,
+   "resultado": 0.08387505471589478,
+   "maxima": 73698.8,
+   "minima": 73254.9,
+   "alvoFibo": 73205.01,
+   "p0": 74803.3,
+   "p1": 74192.8
+  },
+  {
+   "tempo": 1794469800,
+   "hora": "11-12 07:50",
+   "lado": "alta",
+   "preco": 73640.6,
+   "confluencias": [],
+   "n": 0,
+   "resultado": -1.0999367196899537,
+   "maxima": 73698.8,
+   "minima": 72781.6,
+   "alvoFibo": 73815.51,
+   "p0": 74803.3,
+   "p1": 74192.8
+  },
+  {
+   "tempo": 1794471600,
+   "hora": "11-12 08:20",
+   "lado": "baixa",
+   "preco": 73548.1,
+   "confluencias": [
+    "Fibo"
+   ],
+   "n": 1,
+   "resultado": 0.8337400966170595,
+   "maxima": 73631,
+   "minima": 72736.3,
+   "alvoFibo": 73205.01,
+   "p0": 74803.3,
+   "p1": 74192.8
+  },
+  {
+   "tempo": 1794478800,
+   "hora": "11-12 10:20",
+   "lado": "alta",
+   "preco": 73572.7,
+   "confluencias": [],
+   "n": 0,
+   "resultado": -2.2671452862270924,
+   "maxima": 73631,
+   "minima": 71889,
+   "alvoFibo": 73815.51,
+   "p0": 74803.3,
+   "p1": 74192.8
+  },
+  {
+   "tempo": 1794480900,
+   "hora": "11-12 10:55",
+   "lado": "baixa",
+   "preco": 73461.8,
+   "confluencias": [
+    "Fibo"
+   ],
+   "n": 1,
+   "resultado": 2.4792477178615315,
+   "maxima": 73489.5,
+   "minima": 71291.8,
+   "alvoFibo": 73205.01,
+   "p0": 74803.3,
+   "p1": 74192.8
+  },
+  {
+   "tempo": 1794499500,
+   "hora": "11-12 16:05",
+   "lado": "alta",
+   "preco": 72098.9,
+   "confluencias": [],
+   "n": 0,
+   "resultado": -0.6755997664319308,
+   "maxima": 72227.9,
+   "minima": 71437.5,
+   "alvoFibo": 73815.51,
+   "p0": 74803.3,
+   "p1": 74192.8
+  },
+  {
+   "tempo": 1794501900,
+   "hora": "11-12 16:45",
+   "lado": "baixa",
+   "preco": 71714.4,
+   "confluencias": [
+    "EMA15m",
+    "Imp15m",
+    "Fibo"
+   ],
+   "n": 3,
+   "resultado": 0.19229053021428638,
+   "maxima": 72076.5,
+   "minima": 71414.5,
+   "alvoFibo": 71373.51,
+   "p0": 74803.3,
+   "p1": 74192.8
+  },
+  {
+   "tempo": 1794502200,
+   "hora": "11-12 16:50",
+   "lado": "alta",
+   "preco": 71830.5,
+   "confluencias": [],
+   "n": 0,
+   "resultado": -0.38409867674594245,
+   "maxima": 72076.5,
+   "minima": 71414.5,
+   "alvoFibo": 73815.51,
+   "p0": 74803.3,
+   "p1": 74192.8
+  },
+  {
+   "tempo": 1794503100,
+   "hora": "11-12 17:05",
+   "lado": "baixa",
+   "preco": 71718,
+   "confluencias": [
+    "Fibo"
+   ],
+   "n": 1,
+   "resultado": 0.3558381438411516,
+   "maxima": 72076.5,
+   "minima": 71388,
+   "alvoFibo": 71373.51,
+   "p0": 74803.3,
+   "p1": 74192.8
+  },
+  {
+   "tempo": 1794503700,
+   "hora": "11-12 17:15",
+   "lado": "alta",
+   "preco": 71808.9,
+   "confluencias": [],
+   "n": 0,
+   "resultado": -0.3131923758754057,
+   "maxima": 72076.5,
+   "minima": 71388,
+   "alvoFibo": 73815.51,
+   "p0": 74803.3,
+   "p1": 74192.8
+  },
+  {
+   "tempo": 1794509100,
+   "hora": "11-12 18:45",
+   "lado": "baixa",
+   "preco": 71626.4,
+   "confluencias": [
+    "EMA15m",
+    "Imp15m",
+    "Fibo"
+   ],
+   "n": 3,
+   "resultado": 0.28816190678296577,
+   "maxima": 71808.3,
+   "minima": 71350.1,
+   "alvoFibo": 71373.51,
+   "p0": 74803.3,
+   "p1": 74192.8
+  },
+  {
+   "tempo": 1794518700,
+   "hora": "11-12 21:25",
+   "lado": "alta",
+   "preco": 71615.2,
+   "confluencias": [],
+   "n": 0,
+   "resultado": -0.6689920575520159,
+   "maxima": 71645.6,
+   "minima": 70678,
+   "alvoFibo": 73815.51,
+   "p0": 74803.3,
+   "p1": 74192.8
+  },
+  {
+   "tempo": 1794520800,
+   "hora": "11-12 22:00",
+   "lado": "baixa",
+   "preco": 71521.4,
+   "confluencias": [
+    "EMA15m",
+    "EMA1H",
+    "Imp15m",
+    "Imp1H",
+    "Fibo"
+   ],
+   "n": 5,
+   "resultado": 0.9151107221055517,
+   "maxima": 71559.1,
+   "minima": 70678,
+   "alvoFibo": 71373.51,
+   "p0": 74803.3,
+   "p1": 74192.8
+  },
+  {
+   "tempo": 1794528000,
+   "hora": "11-13 00:00",
+   "lado": "alta",
+   "preco": 71494.9,
+   "confluencias": [],
+   "n": 0,
+   "resultado": -3.523607977631967,
+   "maxima": 71518.9,
+   "minima": 68522,
+   "alvoFibo": 73815.51,
+   "p0": 74803.3,
+   "p1": 74192.8
+  },
+  {
+   "tempo": 1794528300,
+   "hora": "11-13 00:05",
+   "lado": "baixa",
+   "preco": 71363,
+   "confluencias": [
+    "Fibo"
+   ],
+   "n": 1,
+   "resultado": 3.5448341577568168,
+   "maxima": 71517.7,
+   "minima": 68522,
+   "alvoFibo": null,
+   "p0": 74803.3,
+   "p1": 74192.8
+  },
+  {
+   "tempo": 1794551400,
+   "hora": "11-13 06:30",
+   "lado": "alta",
+   "preco": 68881.3,
+   "confluencias": [],
+   "n": 0,
+   "resultado": 0.5913070746341937,
+   "maxima": 69496.8,
+   "minima": 68511.9,
+   "alvoFibo": 73815.51,
+   "p0": 74803.3,
+   "p1": 74192.8
+  },
+  {
+   "tempo": 1794555900,
+   "hora": "11-13 07:45",
+   "lado": "baixa",
+   "preco": 68708.5,
+   "confluencias": [
+    "EMA15m",
+    "Imp15m",
+    "Fibo"
+   ],
+   "n": 3,
+   "resultado": -1.0234541577825118,
+   "maxima": 69575.8,
+   "minima": 68511.9,
+   "alvoFibo": null,
+   "p0": 74803.3,
+   "p1": 74192.8
+  },
+  {
+   "tempo": 1794560400,
+   "hora": "11-13 09:00",
+   "lado": "alta",
+   "preco": 68899.1,
+   "confluencias": [],
+   "n": 0,
+   "resultado": null,
+   "maxima": null,
+   "minima": null,
+   "alvoFibo": 73815.51,
+   "p0": 74803.3,
+   "p1": 74192.8
+  },
+  {
+   "tempo": 1794560700,
+   "hora": "11-13 09:05",
+   "lado": "baixa",
+   "preco": 68693.8,
+   "confluencias": [
+    "Fibo"
+   ],
+   "n": 1,
+   "resultado": null,
+   "maxima": null,
+   "minima": null,
+   "alvoFibo": null,
+   "p0": 74803.3,
+   "p1": 74192.8
+  },
+  {
+   "tempo": 1794561000,
+   "hora": "11-13 09:10",
+   "lado": "alta",
+   "preco": 68805.5,
+   "confluencias": [],
+   "n": 0,
+   "resultado": null,
+   "maxima": null,
+   "minima": null,
+   "alvoFibo": 73815.51,
+   "p0": 74803.3,
+   "p1": 74192.8
+  }
+ ]
+}

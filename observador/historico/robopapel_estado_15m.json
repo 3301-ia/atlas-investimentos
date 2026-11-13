@@ -1,9 +1,9 @@
 {
  "aberta": null,
- "atualizado_em": "2026-11-13T12:22:27.812Z",
+ "atualizado_em": "2026-11-13T12:25:33.254Z",
  "versao": 2,
  "ultimo_lado": null,
- "preco": 69322.7,
+ "preco": 69231,
  "timeframe": "15M",
  "filtros": {
   "alvo_r": 2,
@@ -26,5 +26,11 @@
   "contra": [
    "EMA 1H"
   ]
- }
+ },
+ "acoes": [
+  {
+   "tipo": "aguardando",
+   "motivo": "stop apertado: 0.04% < 1%"
+  }
+ ]
 }
