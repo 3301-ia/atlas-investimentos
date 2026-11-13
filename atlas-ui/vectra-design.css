@@ -139,7 +139,10 @@ body.vx #drawing-toolbar .tool-btn .vx-palavra {
   max-width: 54px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 /* 4.2 a lateral respira: 60px esmagava o rótulo em uma letra */
-body.vx .side-nav { width: 78px !important; min-width: 78px !important; }
+body.vx .side-nav, body.vx .layout > .side-nav { width: 78px !important; min-width: 78px !important; flex-basis: 78px !important; }
+body.vx .side-nav .nav-item { padding-left: 6px !important; padding-right: 6px !important; }
+body.vx .side-nav .nav-item .nav-lbl { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+body.vx #nav-mais { min-width: 66px !important; font-size: 12px !important; }
 body.vx .topbar :is(button, .chip) { min-height: 36px; }
 /* 4.2 lateral: cada item com alvo de toque real e ícone legível */
 body.vx .side-nav .nav-item {
