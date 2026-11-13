@@ -121,15 +121,26 @@ body.vx .vx-card {
 body.vx .vx-divisor { height: 1px; background: linear-gradient(90deg, transparent, rgba(217, 180, 91, .22), transparent); }
 
 /* ── 4. CORREÇÕES DO QUE ESTAVA MAL RENDERIZADO ────────────────────────── */
-/* 4.1 barra de desenho: o rótulo quebra em duas linhas em vez de ser cortado */
-body.vx :is(.draw-bar, .tools-bar, #drawbar) button,
-body.vx :is(.draw-bar, .tools-bar, #drawbar) .tool-btn {
-  min-width: 54px; max-width: 96px; min-height: var(--vx-toque);
-  height: auto !important; padding: 3px 5px !important;
-  white-space: normal !important; overflow: visible !important; text-overflow: clip !important;
-  line-height: 1.15 !important; font-size: var(--vx-t-micro) !important;
-  text-align: center;
+/* 4.1 barra de desenho: símbolo grande e uma palavra embaixo, sem corte.
+   O antes era um botão de 40px com 137px de texto escondido.              */
+body.vx #drawing-toolbar {
+  width: 62px !important; overflow-x: hidden !important; overflow-y: auto !important;
 }
+body.vx #drawing-toolbar .tool-btn {
+  width: 58px !important; min-width: 58px !important; max-width: 58px !important;
+  height: auto !important; min-height: 42px !important; padding: 3px 2px !important;
+  flex-direction: column; gap: 1px;
+  white-space: normal !important; overflow: visible !important; text-overflow: clip !important;
+  line-height: 1.12 !important; text-align: center;
+}
+body.vx #drawing-toolbar .tool-btn .vx-simbolo { font-size: 15px; line-height: 1; }
+body.vx #drawing-toolbar .tool-btn .vx-palavra {
+  font-size: 9.5px; letter-spacing: .01em; color: var(--vx-texto-fraco);
+  max-width: 54px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 4.2 a lateral respira: 60px esmagava o rótulo em uma letra */
+body.vx .side-nav { width: 78px !important; min-width: 78px !important; }
+body.vx .topbar :is(button, .chip) { min-height: 36px; }
 /* 4.2 lateral: cada item com alvo de toque real e ícone legível */
 body.vx .side-nav .nav-item {
   min-height: var(--vx-toque); border-radius: var(--vx-raio-sm);
@@ -148,9 +159,10 @@ body.vx #ts-chip > * { min-height: 18px; }
 
 /* ── responsivo de verdade: a régua muda com o espaço, não com o modelo ── */
 @media (max-width: 1100px) {
-  body.vx :is(.draw-bar, .tools-bar, #drawbar) { overflow-x: auto; overflow-y: hidden; flex-wrap: nowrap; }
+  body.vx #drawing-toolbar { overflow-y: auto !important; }
 }
 @media (max-width: 820px) {
-  body.vx :is(.draw-bar, .tools-bar, #drawbar) button,
-  body.vx :is(.draw-bar, .tools-bar, #drawbar) .tool-btn { min-width: 48px; max-width: 76px; }
+  body.vx #drawing-toolbar { width: 56px !important; }
+  body.vx #drawing-toolbar .tool-btn { width: 52px !important; min-width: 52px !important; max-width: 52px !important; }
+  body.vx .side-nav { width: 100% !important; min-width: 0 !important; }
 }

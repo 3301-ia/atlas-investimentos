@@ -33,8 +33,33 @@
     return mudou;
   }
 
+  /* barra de desenho: símbolo em cima, palavra embaixo, nome inteiro no title.
+     Antes o rótulo de 137px vivia escondido dentro de um botão de 40px.     */
+  function compactarBarra() {
+    var barra = document.getElementById('drawing-toolbar');
+    if (!barra) return 0;
+    var mudou = 0;
+    [].forEach.call(barra.querySelectorAll('.tool-btn'), function (b) {
+      if (b.getAttribute('data-vx-compacto')) return;
+      if (b.querySelector('input, select, canvas')) return;
+      var texto = (b.innerText || '').replace(/\s+/g, ' ').trim();
+      if (!texto) return;
+      var partes = texto.split(' ');
+      var simbolo = partes.shift() || '•';
+      var palavra = (partes.join(' ').split(/[(\[]/)[0] || '').trim().split(' ')[0] || '';
+      if (!palavra) palavra = simbolo;
+      b.setAttribute('title', texto);
+      b.setAttribute('data-vx-compacto', '1');
+      b.innerHTML = '<span class="vx-simbolo">' + simbolo + '</span>' +
+                    '<span class="vx-palavra">' + palavra.toLowerCase() + '</span>';
+      mudou++;
+    });
+    return mudou;
+  }
+
   function rodar() {
     try { ajustar(document.body); } catch (e) {}
+    try { compactarBarra(); } catch (e) {}
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', rodar);
