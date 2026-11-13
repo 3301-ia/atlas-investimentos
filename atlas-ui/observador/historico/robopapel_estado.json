@@ -14,20 +14,20 @@
   "nucleo_versao": "trailing 1.0.0 + risco 1.0.0",
   "hash": "8b10b5d2b150ab0082cbbadd27f1c026009618fd916295bd5370ab39ed01ee0b",
   "estado": "aberta",
-  "preco_mercado": 71581.5,
+  "preco_mercado": 70578.2,
   "aberta_em": "2026-11-12T20:34:16.755Z",
   "modo": "papel",
   "origem": "roboPaper (servidor Base44), adotada pelo robo local em 12/11/2026"
  },
- "atualizado_em": "2026-11-12T21:39:12.557Z",
+ "atualizado_em": "2026-11-13T02:29:14.713Z",
  "versao": 1,
- "preco": 71581.5,
+ "preco": 70578.2,
  "estrutura": {
   "lado": "baixa",
-  "stop": 72428.09,
+  "stop": 71859.59,
   "viradas": 23,
-  "distancia": 985.49,
-  "folga_pct": 1.38
+  "distancia": 910.29,
+  "folga_pct": 1.29
  },
  "timeframe": "1H",
  "filtros": {
