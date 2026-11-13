@@ -13,7 +13,8 @@
     { id: 'vg-card', aba: 'Vigia', icone: '🛡' },
     { id: 'imperial-card', aba: 'Imperial', icone: '⚔' },
     { id: 'consenso-card', aba: 'Consenso', icone: '◈' },
-    { id: 'deriv-card', aba: 'Deriv', icone: '◇' }
+    { id: 'deriv-card', aba: 'Deriv', icone: '◇' },
+    { id: 'rsi-matrix-card', aba: 'RSI Matrix', icone: '🔷' }
   ];
   var PRIMARIOS = ['inicio', 'codigo', 'vigia', 'estudos', 'imperial', 'consenso', 'analise', 'alertas'];
 
@@ -170,7 +171,7 @@
 
   // abre a tela do módulo quando o cartão dela ainda não existe
   function abrirModulo(id) {
-    var alvo = { 'vg-card': 'vigia', 'imperial-card': 'imperial', 'consenso-card': 'consenso', 'deriv-card': 'deriv' }[id];
+    var alvo = { 'vg-card': 'vigia', 'imperial-card': 'imperial', 'consenso-card': 'consenso', 'deriv-card': 'deriv', 'rsi-matrix-card': 'rsi matrix' }[id];
     if (!alvo) return;
     var itens = [].slice.call(document.querySelectorAll('.side-nav .nav-item'));
     for (var i = 0; i < itens.length; i++) {

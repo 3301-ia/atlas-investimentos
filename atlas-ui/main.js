@@ -23639,6 +23639,26 @@ const INDICATORS_REGISTRY = [
     },
   },
 
+  {
+    id: 'rsimatrix',
+    name: '🔷 RSI Matrix (RSI + EMA do RSI e preço de cada nível)',
+    category: 'overlay',
+    desc: 'RSI de Wilder com EMA do RSI e a volta do caminho: o preço que faz o RSI chegar num valor escolhido (sobrecompra, sobrevenda ou o RSI digitado), desenhado como linha de preço presa ao eixo. Ajustes editáveis no cartão: fonte, comprimento do RSI e da EMA, níveis, mostrar painel, deslocamento, RSI digitado, RSI de um preço digitado, decimais e fundo invisível.',
+    isLigado: () => !!(window.AtlasRsiMatrix && window.AtlasRsiMatrix.ligado()),
+    toggle: () => {
+      const rm = window.AtlasRsiMatrix;
+      if (!rm) return;
+      rm.ligar(!rm.ligado());
+      if (rm.ligado()) rm.mostrar(true);
+      onIndicatorStateChanged();
+    },
+    isVisible: () => !!(window.AtlasRsiMatrix && window.AtlasRsiMatrix.visivel()),
+    toggleVisible: () => {
+      const rm = window.AtlasRsiMatrix;
+      if (rm) { rm.mostrar(!rm.visivel()); onIndicatorStateChanged(); }
+    },
+  },
+
 ];
 window.INDICATORS_REGISTRY = INDICATORS_REGISTRY;
 

@@ -1,5 +1,5 @@
 {
- "versao": "1.6.0",
+ "versao": "1.7.0",
  "gerado": "2026-11-12",
  "indicadores": [
   {
@@ -237,6 +237,15 @@
    "sha256": "91f22fe87958fed67cf2be78c69fe9827afc5e6537bd3261352ca6dbcbc7e83e",
    "linhas": 169,
    "bytes": 7469
+  },
+  {
+   "id": "rsi-matrix",
+   "nome": "RSI Matrix",
+   "arquivo": "core/rsi-matrix.js",
+   "descricao": "RSI de Wilder, EMA do RSI e o preço que leva o RSI a um valor escolhido.",
+   "sha256": "1c39b4588a30972da0276d6304425150b6aa8e52a642855b7f1ccd110cf8241e",
+   "linhas": 307,
+   "bytes": 12653
   }
  ]
 }
