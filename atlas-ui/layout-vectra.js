@@ -65,7 +65,11 @@
     }).join('');
     abas.addEventListener('click', function (ev) {
       var b = ev.target.closest('.vx-aba');
-      if (b) selecionar(b.getAttribute('data-aba'));
+      if (!b) return;
+      var chave = b.getAttribute('data-aba');
+      selecionar(chave);
+      // o cartao do modulo so nasce quando a tela dele abre: a aba abre sozinha
+      if (chave !== 'mercado' && !document.getElementById(chave)) setTimeout(function () { abrirModulo(chave); }, 30);
     });
     selecionar(abaAtiva);
   }
@@ -161,6 +165,21 @@
       adotados[c.id] = el;
     });
     if (abaAtiva !== 'mercado' && adotados[abaAtiva]) selecionar(abaAtiva);
+  }
+
+  // abre a tela do módulo quando o cartão dela ainda não existe
+  function abrirModulo(id) {
+    var alvo = { 'vg-card': 'vigia', 'imperial-card': 'imperial', 'consenso-card': 'consenso', 'deriv-card': 'deriv' }[id];
+    if (!alvo) return;
+    var itens = [].slice.call(document.querySelectorAll('.side-nav .nav-item'));
+    for (var i = 0; i < itens.length; i++) {
+      var t = (itens[i].innerText || itens[i].title || '').toLowerCase();
+      if (t.indexOf(alvo) >= 0) {
+        try { itens[i].click(); } catch (e) {}
+        setTimeout(function () { adotar(); selecionar(id); }, 260);
+        return;
+      }
+    }
   }
 
   /* ── lateral: oito itens e um "mais" ───────────────────────────────── */

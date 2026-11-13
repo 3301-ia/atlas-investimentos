@@ -219,8 +219,15 @@ body.vx .vx-titulo {
 #nav-mais-lista { display: none; flex-direction: column; }
 #nav-mais-lista.aberto { display: flex; }
 
+/* o gráfico cede o canto do dock: nada de painel por cima de vela */
+@media (min-width: 821px) {
+  body.vx .main-area { margin-right: 330px; }
+  #vx-dock.recolhido ~ * .main-area, body.vx .main-area { transition: margin var(--vx-transicao); }
+}
+
 @media (max-width: 1100px) {
   #vx-dock { width: 288px; }
+  body.vx .main-area { margin-right: 300px; }
 }
 @media (max-width: 820px) {
   #vx-dock {
