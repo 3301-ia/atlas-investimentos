@@ -15,19 +15,19 @@
   "hash": "4f866cac5cbe785abe043eaf6f5df56af17984ae9a2d7e41eda58301ee947e88",
   "payload_assinado": "{\"core\":\"trailing 1.0.0 + risco 1.0.0\",\"rules\":\"chandelier\",\"params\":{\"atr\":14,\"mult\":2.5,\"janela\":22,\"alvo_r\":2,\"dist_min_pct\":1},\"ativo\":\"BTC-USDT\",\"t\":1794564000,\"lado\":\"compra\",\"entrada\":69327,\"stop\":67185.32,\"alvo\":73610.36}",
   "estado": "aberta",
-  "preco_mercado": 68429.7,
+  "preco_mercado": 67657.7,
   "aberta_em": "2026-11-13T11:55:08.456Z",
   "modo": "papel"
  },
- "atualizado_em": "2026-11-13T22:53:59.521Z",
+ "atualizado_em": "2026-11-14T02:54:28.745Z",
  "versao": 1,
- "preco": 68429.7,
+ "preco": 67657.7,
  "estrutura": {
   "lado": "alta",
-  "stop": 67210.96,
+  "stop": 67240.42,
   "viradas": 19,
-  "distancia": 1189.04,
-  "folga_pct": 1.74
+  "distancia": 1050.58,
+  "folga_pct": 1.55
  },
  "timeframe": "1H",
  "filtros": {
