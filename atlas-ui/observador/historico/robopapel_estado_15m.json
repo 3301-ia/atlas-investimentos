@@ -1,9 +1,9 @@
 {
  "aberta": null,
- "atualizado_em": "2026-11-14T02:54:28.867Z",
+ "atualizado_em": "2026-11-14T09:50:06.756Z",
  "versao": 2,
  "ultimo_lado": null,
- "preco": 67659.6,
+ "preco": 67419,
  "timeframe": "15M",
  "filtros": {
   "alvo_r": 2,
@@ -13,10 +13,10 @@
  },
  "estrutura": {
   "lado": "alta",
-  "stop": 66819.97,
-  "viradas": 26,
-  "distancia": 656.63,
-  "folga_pct": 0.97
+  "stop": 67082.67,
+  "viradas": 22,
+  "distancia": 88.43,
+  "folga_pct": 0.13
  },
  "confluencia": {
   "forca": 0,
