@@ -1,9 +1,9 @@
 {
  "aberta": null,
- "atualizado_em": "2026-11-14T16:23:06.126Z",
+ "atualizado_em": "2026-11-14T20:51:59.030Z",
  "versao": 2,
  "ultimo_lado": null,
- "preco": 65545.9,
+ "preco": 65274,
  "timeframe": "5M",
  "filtros": {
   "alvo_r": 2,
@@ -12,28 +12,24 @@
   "so_na_virada": true
  },
  "estrutura": {
-  "lado": "alta",
-  "stop": 64944.9,
-  "viradas": 18,
-  "distancia": 665.1,
-  "folga_pct": 1.01
+  "lado": "baixa",
+  "stop": 65764.28,
+  "viradas": 22,
+  "distancia": 316.38,
+  "folga_pct": 0.48
  },
  "confluencia": {
-  "forca": 0,
-  "votos": [],
-  "contra": [
+  "forca": 2,
+  "votos": [
    "EMA 15m",
    "EMA 1H"
-  ]
+  ],
+  "contra": []
  },
  "acoes": [
   {
    "tipo": "aguardando",
-   "motivo": "sem confluencia da camada de cima: compra isolado"
-  },
-  {
-   "tipo": "aguardando",
-   "motivo": "confluencia insuficiente: espera a camada de cima concordar"
+   "motivo": "stop apertado: 0.75% < 1%"
   }
  ]
 }
