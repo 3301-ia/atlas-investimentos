@@ -2,32 +2,32 @@
  "aberta": {
   "ativo": "BTC-USDT",
   "timeframe": "1H",
-  "lado": "compra",
-  "entrada": 69327,
-  "stop": 67185.32,
-  "alvo": 73610.36,
-  "tamanho": 0.0012,
+  "lado": "venda",
+  "entrada": 65524.2,
+  "stop": 66552.37,
+  "alvo": 63467.86,
+  "tamanho": 0.0025,
   "risco_usd": 2.6,
   "risco_pct": 2,
   "equity": 130,
-  "motivo": "abertura na virada: lado alta, stop com 3.09% de folga",
+  "motivo": "abertura na virada: lado baixa, stop com 1.57% de folga",
   "nucleo_versao": "trailing 1.0.0 + risco 1.0.0",
-  "hash": "4f866cac5cbe785abe043eaf6f5df56af17984ae9a2d7e41eda58301ee947e88",
-  "payload_assinado": "{\"core\":\"trailing 1.0.0 + risco 1.0.0\",\"rules\":\"chandelier\",\"params\":{\"atr\":14,\"mult\":2.5,\"janela\":22,\"alvo_r\":2,\"dist_min_pct\":1},\"ativo\":\"BTC-USDT\",\"t\":1794564000,\"lado\":\"compra\",\"entrada\":69327,\"stop\":67185.32,\"alvo\":73610.36}",
+  "hash": "7bd0ab8b757abef575c07587efafbd8cb9e95e2df0b93f0c528513cc293a0dc0",
+  "payload_assinado": "{\"core\":\"trailing 1.0.0 + risco 1.0.0\",\"rules\":\"chandelier\",\"params\":{\"atr\":14,\"mult\":2.5,\"janela\":22,\"alvo_r\":2,\"dist_min_pct\":1},\"ativo\":\"BTC-USDT\",\"t\":1794668400,\"lado\":\"venda\",\"entrada\":65524.2,\"stop\":66552.37,\"alvo\":63467.86}",
   "estado": "aberta",
-  "preco_mercado": 67419,
-  "aberta_em": "2026-11-13T11:55:08.456Z",
+  "preco_mercado": 65524.2,
+  "aberta_em": "2026-11-14T16:23:05.460Z",
   "modo": "papel"
  },
- "atualizado_em": "2026-11-14T09:50:06.491Z",
+ "atualizado_em": "2026-11-14T16:23:05.460Z",
  "versao": 1,
- "preco": 67419,
+ "preco": 65524.2,
  "estrutura": {
-  "lado": "alta",
-  "stop": 66159.52,
-  "viradas": 19,
-  "distancia": 844.18,
-  "folga_pct": 1.25
+  "lado": "baixa",
+  "stop": 66552.37,
+  "viradas": 20,
+  "distancia": 812.67,
+  "folga_pct": 1.24
  },
  "timeframe": "1H",
  "filtros": {
@@ -36,6 +36,21 @@
   "mult": 2.5,
   "so_na_virada": true
  },
- "ultimo_lado": "venda",
- "acoes": []
+ "ultimo_lado": "compra",
+ "acoes": [
+  {
+   "tipo": "fechou",
+   "motivo": "stop",
+   "resultado_r": -1,
+   "resultado_usd": -2.57
+  },
+  {
+   "tipo": "abriu",
+   "lado": "venda",
+   "entrada": 65524.2,
+   "stop": 66552.37,
+   "alvo": 63467.86,
+   "tamanho": 0.0025
+  }
+ ]
 }
