@@ -15,14 +15,14 @@
   "hash": "87b0eca24debbc98e469836c64841a0154511b07cb74b83ae8a2e5aa4cbf792d",
   "payload_assinado": "{\"core\":\"trailing 1.0.0 + risco 1.0.0\",\"rules\":\"chandelier\",\"params\":{\"atr\":14,\"mult\":2.5,\"janela\":22,\"alvo_r\":2,\"dist_min_pct\":1},\"ativo\":\"BTC-USDT\",\"t\":1794726900,\"lado\":\"venda\",\"entrada\":64279.9,\"stop\":65710.92,\"alvo\":61417.86}",
   "estado": "aberta",
-  "preco_mercado": 64279.9,
+  "preco_mercado": 64930.1,
   "aberta_em": "2026-11-15T07:34:09.192Z",
   "modo": "papel"
  },
- "atualizado_em": "2026-11-15T07:34:09.192Z",
+ "atualizado_em": "2026-11-15T14:58:46.479Z",
  "versao": 2,
  "ultimo_lado": null,
- "preco": 64279.9,
+ "preco": 64930.1,
  "timeframe": "15M",
  "filtros": {
   "alvo_r": 2,
@@ -32,10 +32,10 @@
  },
  "estrutura": {
   "lado": "baixa",
-  "stop": 65710.92,
-  "viradas": 23,
-  "distancia": 1355.72,
-  "folga_pct": 2.11
+  "stop": 64940.42,
+  "viradas": 20,
+  "distancia": 299.72,
+  "folga_pct": 0.46
  },
  "confluencia": {
   "forca": 2,
@@ -45,14 +45,5 @@
   ],
   "contra": []
  },
- "acoes": [
-  {
-   "tipo": "abriu",
-   "lado": "venda",
-   "entrada": 64279.9,
-   "stop": 65710.92,
-   "alvo": 61417.86,
-   "tamanho": 0.0018
-  }
- ]
+ "acoes": []
 }
