@@ -21983,6 +21983,13 @@ async function vxRodarCiclo(){
   if(info) info.textContent = 'uma mensagem por ciclo';
   try{
     await vxConselhoCarregar();
+    // o ciclo le o ativo escolhido: troca o grafico e espera os dados chegarem
+    const alvo = (document.getElementById('vx-ciclo-ativo') || {}).value;
+    if(alvo && typeof currentSym !== 'undefined' && alvo !== currentSym){
+      if(est) est.textContent = 'carregando ' + alvo.replace('USDT','');
+      if(typeof changeSym === 'function') changeSym(alvo);
+      await new Promise(r => setTimeout(r, 3500));
+    }
     vxVereditos = {};
     const resposta = await vxFalar(vxPromptCiclo());
     const ok = vxAplicarLeitura(resposta);

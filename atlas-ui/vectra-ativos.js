@@ -75,7 +75,16 @@
       } else {
         nivelHtml = '<span class="vx-a-vazio">definir nível</span>';
       }
-      return '<article class="vx-a-card" data-sym="' + a.sym + '" data-curto="' + a.curto + '">' +
+      var estadoNivel = '';
+      if (a.gatilho && preco != null) {
+        if (preco >= a.gatilho) estadoNivel = ' rompido';
+        else if ((a.gatilho - preco) / preco <= 0.01) estadoNivel = ' perto';
+      }
+      var leitura = (a.rsi == null ? '' :
+        '<div class="vx-a-leitura"><span>RSI 15m <b>' + a.rsi.toFixed(0) + '</b></span>' +
+        '<span>na faixa <b>' + (a.pos == null ? '--' : a.pos + '%') + '</b></span>' +
+        (a.faixa ? '<span>' + fmtCurto(a.faixa[0]) + '–' + fmtCurto(a.faixa[1]) + '</span>' : '') + '</div>');
+      return '<article class="vx-a-card' + estadoNivel + '" data-sym="' + a.sym + '" data-curto="' + a.curto + '">' +
         '<header><b>' + a.curto + '</b><small>' + a.nome + '</small>' +
         '<i class="vx-a-vies ' + classeVies + '">' + vies + '</i></header>' +
         '<div class="vx-a-preco">' + (preco == null ? '--' : fmt(preco)) +
@@ -83,6 +92,7 @@
         (var24 == null ? '--' : (var24 >= 0 ? '+' : '') + var24.toFixed(2) + '%') + '</span></div>' +
         '<div class="vx-a-nivel" data-nivel="' + a.curto + '" title="Clique para definir o gatilho">' +
         '<u>gatilho</u>' + nivelHtml + '</div>' +
+        leitura +
         '</article>';
     }).join('');
 
@@ -153,10 +163,27 @@
           var velas = j.slice().reverse().map(function (c) { return parseFloat(c[4]); });
           var e8 = media(velas.slice(-8)), e16 = media(velas.slice(-16));
           a.vies = e8 > e16 ? 'compra' : (e8 < e16 ? 'venda' : 'neutro');
+          a.rsi = rsi14(velas);
+          var jan = velas.slice(-20);
+          var hi = Math.max.apply(null, jan), lo = Math.min.apply(null, jan);
+          a.pos = hi > lo ? Math.round(100 * (velas[velas.length - 1] - lo) / (hi - lo)) : 50;
+          a.faixa = [lo, hi];
           pintar();
         })
         .catch(function () {});
     });
+  }
+
+  function rsi14(v) {
+    if (!v || v.length < 16) return null;
+    var g = 0, p = 0;
+    for (var i = v.length - 14; i < v.length; i++) {
+      var d = v[i] - v[i - 1];
+      if (d > 0) g += d; else p -= d;
+    }
+    g /= 14; p /= 14;
+    if (p === 0) return 100;
+    return 100 - 100 / (1 + g / p);
   }
 
   function media(v) {

@@ -789,3 +789,17 @@ body.vx-denso [id$="-wrap-el"]{ display:none !important }
   #vx-head .vx-price b{ font-size:15px }
   #vx-kpis{ grid-template-columns:repeat(2,minmax(0,1fr)) }
 }
+
+/* leitura curta dentro do cartão do ativo */
+.vx-a-leitura{
+  display:flex; gap:12px; flex-wrap:wrap; align-items:baseline;
+  margin-top:7px; font-size:11px; color:var(--t3,#8a8f98); letter-spacing:.02em;
+}
+.vx-a-leitura b{ color:#d9d3c4; font-weight:600 }
+.vx-a-card.perto{ border-color:rgba(201,168,96,.45) }
+.vx-a-card.perto::after{
+  content:'perto do gatilho'; position:absolute; top:10px; right:12px;
+  font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:#d8c48f;
+}
+.vx-a-card.rompido{ border-color:rgba(95,214,164,.55); background:linear-gradient(180deg,rgba(95,214,164,.10),rgba(255,255,255,.012)) }
+.vx-a-card.rompido .vx-a-dist{ color:#5fd6a4 }
