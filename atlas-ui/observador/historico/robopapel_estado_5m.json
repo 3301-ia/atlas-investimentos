@@ -1,9 +1,9 @@
 {
  "aberta": null,
- "atualizado_em": "2026-11-15T20:17:40.907Z",
+ "atualizado_em": "2026-11-16T00:10:28.615Z",
  "versao": 2,
  "ultimo_lado": null,
- "preco": 64733.8,
+ "preco": 65197.3,
  "timeframe": "5M",
  "filtros": {
   "alvo_r": 2,
@@ -12,25 +12,24 @@
   "so_na_virada": true
  },
  "estrutura": {
-  "lado": "baixa",
-  "stop": 64819.9,
-  "viradas": 18,
-  "distancia": 113.3,
-  "folga_pct": 0.18
+  "lado": "alta",
+  "stop": 65136.59,
+  "viradas": 23,
+  "distancia": 109.01,
+  "folga_pct": 0.17
  },
  "confluencia": {
-  "forca": 1,
+  "forca": 2,
   "votos": [
+   "EMA 15m",
    "EMA 1H"
   ],
-  "contra": [
-   "EMA 15m"
-  ]
+  "contra": []
  },
  "acoes": [
   {
    "tipo": "aguardando",
-   "motivo": "stop apertado: 0.13% < 1%"
+   "motivo": "stop apertado: 0.09% < 1%"
   }
  ]
 }
