@@ -345,6 +345,38 @@
     }
     var qtd = lerSinais().length;
     k('sinais', String(qtd), qtd ? 'viradas registradas' : 'aguardando virada', '');
+
+    /* HUD */
+    var hp = document.getElementById('hud-preco');
+    if (hp) {
+      hp.textContent = preco ? n(preco, 2) : '--';
+      var hv = document.getElementById('hud-var');
+      hv.textContent = estado.var24 == null ? '--' : (estado.var24 >= 0 ? '+' : '') + num(estado.var24) + '%';
+      hv.style.color = estado.var24 == null ? 'var(--vx-dim)' : (estado.var24 >= 0 ? 'var(--vx-up)' : 'var(--vx-dn)');
+      var hd = document.getElementById('hud-dom');
+      hd.textContent = (g >= 0 ? '+' : '') + Math.round(g);
+      hd.style.color = g >= 18 ? 'var(--vx-up)' : (g <= -18 ? 'var(--vx-dn)' : 'var(--vx-dim)');
+      var hpos = document.getElementById('hud-pos');
+      if (estado.pos) {
+        var risco = estado.pos.media - estado.pos.stop;
+        var rr = risco > 0 ? (preco - estado.pos.media) / risco : 0;
+        hpos.textContent = (estado.pos.lado === 'compra' ? 'COMPRA ' : 'VENDA ') + (rr >= 0 ? '+' : '') + num(rr) + 'R';
+        hpos.style.color = rr >= 0 ? 'var(--vx-up)' : 'var(--vx-dn)';
+      } else { hpos.textContent = 'fora'; hpos.style.color = 'var(--vx-dim)'; }
+    }
+  }
+
+  /* HUD do modo imersivo: só o essencial, flutuando sobre o gráfico */
+  function montarHud() {
+    if (document.getElementById('vx-hud')) return;
+    var h = el('div', '');
+    h.id = 'vx-hud';
+    h.innerHTML =
+      '<div class="hud-i"><u>Preço</u><b id="hud-preco">--</b></div>' +
+      '<div class="hud-i"><u>24h</u><b id="hud-var">--</b></div>' +
+      '<div class="hud-i"><u>Dominância</u><b id="hud-dom">--</b></div>' +
+      '<div class="hud-i"><u>Posição</u><b id="hud-pos">--</b></div>';
+    document.body.appendChild(h);
   }
 
   /* ─────────── montagem da casa ─────────── */
@@ -358,6 +390,7 @@
         '<div class="vx-inst" id="vx-inst"></div>' +
         '<div class="vx-price"><b id="vx-preco">--</b><span id="vx-var">--</span></div>' +
         '<div class="vx-live"><i></i><span id="vx-live-txt">ao vivo</span></div>' +
+        '<button type="button" class="vx-toolbtn" id="vx-imersao-btn">Imersão (F)</button>' +
         '<button type="button" class="vx-toolbtn" id="vx-tools-btn" aria-expanded="false">Ferramentas <span style="opacity:.6">▾</span></button>' +
       '</div>' +
       '<div id="vx-kpis">' +
@@ -393,6 +426,27 @@
       t.classList.toggle('on', on);
       this.setAttribute('aria-expanded', on ? 'true' : 'false');
     });
+
+    head.querySelector('#vx-imersao-btn').addEventListener('click', function () { alternarImersao(); });
+    document.addEventListener('keydown', function (ev) {
+      if (ev.key === 'f' || ev.key === 'F') {
+        var tag = (ev.target && ev.target.tagName || '').toLowerCase();
+        if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
+        ev.preventDefault(); alternarImersao();
+      }
+      if (ev.key === 'Escape' && imersivo) alternarImersao(false);
+    });
+
+    var chip = document.getElementById('ts-chip');
+    if (chip) {
+      chip.style.position = 'static';
+      chip.style.left = chip.style.top = chip.style.right = chip.style.bottom = 'auto';
+      chip.style.transform = 'none';
+      chip.style.margin = '0';
+      chip.classList.add('vx-tspill');
+      var priceBox = head.querySelector('.vx-price');
+      if (priceBox) priceBox.parentElement.insertBefore(chip, head.querySelector('#vx-imersao-btn'));
+    }
 
     absorverTopbar(head);
     organizarFerramentas();
@@ -526,6 +580,125 @@
     });
   }
 
+  /* ─────────── navegação: ícones de linha, sem emoji ─────────── */
+  var ICONES = {
+    'inicio':   'M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z',
+    'btn-robo': 'M9 3h6M12 3v3M6 8h12a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1zM9.5 12.5h.01M14.5 12.5h.01M9 16h6',
+    'nav-nucleo': 'M12 3 3 7.5 12 12l9-4.5L12 3zM3 12.5 12 17l9-4.5M3 17 12 21.5 21 17',
+    'nav-vigia': 'M12 3 5 6v5.5c0 4.2 2.9 7.7 7 9.5 4.1-1.8 7-5.3 7-9.5V6l-7-3z',
+    'nav-estudos': 'M4 20 20 4M14 4h6v6M4 14v6h6',
+    'nav-imperial': 'M13 2 4 14h6l-1 8 9-12h-6l1-8z',
+    'nav-deriv': 'M12 3l9 9-9 9-9-9 9-9z',
+    'nav-consenso': 'M5 6h14M5 12h14M5 18h14M9 4v4M15 10v4M11 16v4',
+    'nav-analise': 'M4 20V10M10 20V4M16 20v-7M22 20H2',
+    'nav-alerts': 'M12 3a5 5 0 0 0-5 5v4l-2 4h14l-2-4V8a5 5 0 0 0-5-5zM10 19a2 2 0 0 0 4 0',
+    'nav-rsi-matrix': 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z',
+    'nav-mais': 'M6 12h.01M12 12h.01M18 12h.01'
+  };
+  var ROTULOS = {
+    'inicio': 'Início', 'btn-robo': 'Robô', 'nav-nucleo': 'Código', 'nav-vigia': 'Vigia',
+    'nav-estudos': 'Estudos', 'nav-imperial': 'Imperial', 'nav-deriv': 'Deriv',
+    'nav-consenso': 'Consenso', 'nav-analise': 'Análise', 'nav-alerts': 'Alertas',
+    'nav-rsi-matrix': 'RSI Matrix', 'nav-mais': 'Mais'
+  };
+
+  function svgIcone(chave) {
+    var d = ICONES[chave];
+    if (!d) return '';
+    return '<svg class="vx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="' + d + '"/></svg>';
+  }
+
+  function arrumarNavegacao() {
+    var alvos = [
+      { sel: '.side-nav-top .nav-item', chave: function (e, i) { return e.id || (i === 0 ? 'inicio' : null); } },
+      { sel: '#btn-robo', chave: function () { return 'btn-robo'; } },
+      { sel: '#nav-mais', chave: function () { return 'nav-mais'; } }
+    ];
+    var itens = [].slice.call(document.querySelectorAll('.side-nav-top .nav-item'));
+    var robo = document.getElementById('btn-robo');
+    if (robo && itens.indexOf(robo) < 0) itens.push(robo);
+    var mais = document.getElementById('nav-mais');
+    if (mais) itens.push(mais);
+
+    itens.forEach(function (e) {
+      var chave = e.id || (e.classList.contains('active') && !e.id ? 'inicio' : '');
+      if (!chave) {
+        var t = (e.textContent || '').trim();
+        if (/Inicio|Início/i.test(t)) chave = 'inicio';
+      }
+      if (!chave || !ICONES[chave]) return;
+      if (e.querySelector('.vx-ico')) {
+        /* o módulo do robô reescreve o conteúdo dele com preço: limpa de novo */
+        if (chave === 'btn-robo') {
+          var num = e.querySelector('.vx-robo-num');
+          if (!num) {
+            var velho = (e.textContent || '').replace(/\s+/g, ' ').trim();
+            var m = velho.match(/[\d.]+,\d+|\$[\d.,]+/);
+            e.innerHTML = svgIcone(chave) + '<span class="vx-nav-lbl">' + ROTULOS[chave] + '</span>' +
+              (m ? '<span class="vx-robo-num">' + m[0] + '</span>' : '');
+          }
+        }
+        return;
+      }
+      /* primeiro desenho do item */
+      var rotulo = ROTULOS[chave] || chave;
+      if (chave === 'btn-robo') {
+        var txt = (e.textContent || '').replace(/\s+/g, ' ').trim();
+        var mm = txt.match(/[\d.]+,\d+|\$[\d.,]+/);
+        e.innerHTML = svgIcone(chave) + '<span class="vx-nav-lbl">' + rotulo + '</span>' +
+          (mm ? '<span class="vx-robo-num">' + mm[0] + '</span>' : '');
+      } else {
+        e.innerHTML = svgIcone(chave) + '<span class="vx-nav-lbl">' + rotulo + '</span>';
+      }
+      e.setAttribute('title', rotulo);
+    });
+  }
+
+  /* ─────────── modo imersivo ─────────── */
+  var imersivo = false;
+  function alternarImersao(forcar) {
+    imersivo = (forcar == null) ? !imersivo : !!forcar;
+    document.body.classList.toggle('vx-imersivo', imersivo);
+    var b = document.getElementById('vx-imersao-btn');
+    if (b) b.textContent = imersivo ? 'Sair da imersão (F)' : 'Imersão (F)';
+    setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 300);
+  }
+
+  /* ─────────── cartões soltos viram pilha na coluna ─────────── */
+  function adotarFlutuantes() {
+    var col = document.getElementById('vx-work');
+    if (!col) return;
+    window.__vxAdotar = adotarFlutuantes;
+    var pilha = document.getElementById('vx-pilha');
+    if (!pilha) {
+      pilha = el('section', 'vx-card', '<div class="vx-card-h"><h3>Painéis</h3><span>abertos</span></div>');
+      pilha.id = 'vx-pilha';
+      var corpo = el('div', 'vx-card-b', '');
+      corpo.id = 'vx-pilha-corpo';
+      pilha.appendChild(corpo);
+      pilha.style.display = 'none';
+      col.appendChild(pilha);
+    }
+    var corpo = document.getElementById('vx-pilha-corpo');
+    [].slice.call(document.body.children).forEach(function (e) {
+      if (!e.id || e === col || e.closest('#vx-work')) return;
+      if (/modal|overlay|toast|app-shell|vx-avisos|vx-sinais|vx-dock/.test(e.id + ' ' + e.className)) return;
+      var cs = getComputedStyle(e);
+      if (cs.position !== 'fixed' && cs.position !== 'absolute') return;
+      var r = e.getBoundingClientRect();
+      if (r.width < 120 || r.width > 480 || r.height < 24) return;
+      corpo.appendChild(e);
+      e.style.position = 'static';
+      e.style.width = '100%';
+      e.style.maxWidth = 'none';
+      e.style.margin = '0 0 8px';
+      e.style.transform = 'none';
+      e.style.left = e.style.top = e.style.right = e.style.bottom = 'auto';
+      pilha.style.display = '';
+    });
+    if (!corpo.children.length) pilha.style.display = 'none';
+  }
+
   /* ─────────── leitura de preço e posição ─────────── */
   function lerPreco() {
     try {
@@ -588,6 +761,14 @@
   function iniciar() {
     montarCabecalho();
     montarColuna();
+    arrumarNavegacao();
+    montarHud();
+    adotarFlutuantes();
+    /* em tela estreita a coluna nasce recolhida e o gráfico ganha a área */
+    if (window.innerWidth < 1280) {
+      var w = document.getElementById('vx-work'), f = document.getElementById('vx-work-fold');
+      if (w) { w.classList.add('vx-fechada'); if (f) f.textContent = '⟨'; }
+    }
     lerPreco(); pintarKpis(); relogio();
     var24(instrumento());
     lerPosicao();
@@ -595,7 +776,7 @@
     renderLeituras();
 
     setInterval(function () { lerPreco(); pintarKpis(); relogio(); }, 1000);
-    setInterval(function () { adotarCartoes(); }, 4000);
+    setInterval(function () { adotarCartoes(); adotarFlutuantes(); arrumarNavegacao(); }, 4000);
     setInterval(cicloDominancia, 60000);
     setInterval(function () { var24(instrumento()); }, 120000);
     setInterval(lerPosicao, 120000);

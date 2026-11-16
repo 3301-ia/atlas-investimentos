@@ -291,3 +291,88 @@
 #vx-work.vx-fechada > *:not(#vx-work-top){display:none !important}
 #vx-work.vx-fechada #vx-work-top span{display:none}
 #vx-dom .vx-dom-tab tr:hover td.tf{color:var(--vx-gold)}
+
+/* ══════════ navegação: ícones de linha ══════════ */
+.side-nav{width:64px; background:linear-gradient(180deg,#0a1120,#070b12); border-right:1px solid var(--vx-line)}
+.side-nav-top{gap:6px !important; padding-top:10px}
+.side-nav .nav-item, .side-nav #btn-robo, .side-nav #nav-mais{
+  position:relative; width:46px; height:46px; border-radius:12px;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+  color:var(--vx-dim); cursor:pointer; transition:background .16s ease, color .16s ease;
+  border:1px solid transparent;
+}
+.side-nav .nav-item:hover, .side-nav #btn-robo:hover, .side-nav #nav-mais:hover{
+  background:#121d31; color:var(--vx-txt); border-color:var(--vx-line2);
+}
+.side-nav .nav-item.active{ background:#16233a; color:var(--vx-gold); border-color:rgba(217,180,91,.45) }
+.side-nav .vx-ico{ width:19px; height:19px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round }
+.side-nav .vx-nav-lbl{
+  font:600 7.4px/1 'Inter',sans-serif; letter-spacing:.06em; text-transform:uppercase;
+  max-width:44px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.side-nav .vx-robo-num{
+  position:absolute; top:-2px; right:-4px; display:none;
+}
+.side-nav #nav-mais .vx-nav-lbl{display:none}
+
+/* rótulo completo ao passar o mouse */
+.side-nav .nav-item::after, .side-nav #btn-robo::after{
+  content:attr(title); position:absolute; left:56px; top:50%; transform:translateY(-50%) scale(.96);
+  background:#16233a; color:var(--vx-txt); border:1px solid var(--vx-line2);
+  font:600 10px/1 'Inter',sans-serif; letter-spacing:.06em; text-transform:uppercase;
+  padding:6px 9px; border-radius:7px; white-space:nowrap; opacity:0; pointer-events:none;
+  transition:opacity .14s ease, transform .14s ease; z-index:60;
+}
+.side-nav .nav-item:hover::after, .side-nav #btn-robo:hover::after{
+  opacity:1; transform:translateY(-50%) scale(1);
+}
+
+/* ══════════ imersão ══════════ */
+body.vx-imersivo .side-nav,
+body.vx-imersivo #vx-head .vx-hline,
+body.vx-imersivo #vx-kpis,
+body.vx-imersivo #vx-work,
+body.vx-imersivo #vx-dock{ display:none !important }
+
+body.vx-imersivo #vx-hud{
+  display:flex; position:fixed; left:18px; bottom:18px; z-index:70;
+  gap:18px; align-items:flex-end; padding:12px 16px;
+  background:rgba(10,17,30,.82); border:1px solid var(--vx-line2); border-radius:12px;
+  backdrop-filter:blur(6px); animation:vxFade .5s ease both;
+}
+body.vx-imersivo #vx-head{ position:fixed; top:12px; right:16px; left:auto; background:none; border:0; z-index:70 }
+body.vx-imersivo #vx-head > *:not(.vx-hline){display:none}
+body.vx-imersivo #vx-head .vx-hline{display:flex; padding:0; min-height:0}
+body.vx-imersivo #vx-head .vx-brand,
+body.vx-imersivo #vx-head .vx-inst,
+body.vx-imersivo #vx-head .vx-live,
+body.vx-imersivo #vx-head #vx-tools-btn{display:none !important}
+body.vx-imersivo #vx-head .vx-price{ margin:0; padding:8px 14px; background:rgba(10,17,30,.82);
+  border:1px solid var(--vx-line2); border-radius:11px }
+#vx-hud{display:none}
+#vx-hud .hud-i{display:flex; flex-direction:column; gap:3px}
+#vx-hud .hud-i u{text-decoration:none; font:600 7.6px/1 'Inter',sans-serif; letter-spacing:.2em;
+  text-transform:uppercase; color:var(--vx-dim)}
+#vx-hud .hud-i b{font:600 14px/1 'JetBrains Mono',monospace; color:var(--vx-txt)}
+@keyframes vxFade{from{opacity:0; transform:translateY(6px) scale(.98)} to{opacity:1; transform:none}}
+
+/* ══════════ atmosfera do gráfico ══════════ */
+.layout > div:first-child{
+  position:relative;
+  background:radial-gradient(120% 90% at 50% 0%, #0d1728 0%, #070b12 62%, #05080e 100%);
+}
+.layout > div:first-child::after{
+  content:''; position:absolute; inset:0; pointer-events:none;
+  background:radial-gradient(100% 70% at 50% 40%, transparent 55%, rgba(0,0,0,.35) 100%);
+}
+
+/* pilha de painéis */
+#vx-pilha .vx-card-b{max-height:none}
+
+/* o passador do TS vira pílula do cabeçalho */
+#vx-head #ts-chip{
+  display:flex; align-items:center; gap:8px; padding:0 6px 0 12px;
+  background:var(--vx-bg3); border:1px solid var(--vx-line2); border-radius:10px; height:38px;
+}
+#vx-head #ts-chip button{ width:30px; height:26px; border-radius:6px }
+#vx-head #ts-chip *{ font-size:10px !important }
