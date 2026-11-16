@@ -520,3 +520,11 @@ body.vx-denso [id$="-wrap-el"]{ display:none !important }
 }
 .layout .rpanel{ border-radius:10px }
 #vx-work{ border-radius:12px }
+
+/* ══════════ o totem: a logo em disco, nítida ══════════ */
+#vx-head .vx-mark{
+  width:38px; height:38px; border:0; background:none;
+  box-shadow:0 0 0 1px rgba(217,180,91,.14), 0 0 16px rgba(217,180,91,.10);
+}
+#vx-head .vx-logo{ width:38px; height:38px; border-radius:50%; display:block;
+  image-rendering:auto; filter:saturate(1.06) contrast(1.03) }

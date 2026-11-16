@@ -382,15 +382,19 @@
   /* ─────────── montagem da casa ─────────── */
   /* a marca do app volta para o cabeçalho, no tamanho de um selo */
   function logoMarca() {
+    var totem = document.createElement('img');
+    totem.src = './vectra-totem.png';
+    totem.alt = 'Vectra';
+    totem.className = 'vx-logo';
+    totem.onerror = function () { this.remove(); };
     var orig = document.querySelector('img.logo-icon, .logo img, img[src*="vectra-icon"]');
     if (orig) {
       var img = document.createElement('img');
       img.src = orig.getAttribute('src');
       img.alt = 'Vectra';
-      img.className = 'vx-logo';
-      return img;
+      img.className = 'vx-logo vx-logo-fallback';
     }
-    return null;
+    return totem;
   }
 
   /* o app reescreve o título em cada leitura; um interceptador mantém o nome */
