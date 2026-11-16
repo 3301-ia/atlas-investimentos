@@ -511,3 +511,12 @@ body.vx-denso [id$="-wrap-el"]{ display:none !important }
 
 /* coluna da mesa encolhida: só a alça, com respiro */
 #vx-work.vx-fechada{ padding:0; width:34px; background:#080d16 }
+
+/* ══════════ o gráfico não encosta na borda da tela ══════════ */
+.layout{ padding:10px; gap:10px; background:#05080e }
+.layout .main-area .chart-wrap{
+  border:1px solid var(--vx-line); border-radius:12px; overflow:hidden;
+  background:#070c15;
+}
+.layout .rpanel{ border-radius:10px }
+#vx-work{ border-radius:12px }
