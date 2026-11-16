@@ -393,16 +393,44 @@
     return null;
   }
 
+  /* o app reescreve o título em cada leitura; um interceptador mantém o nome */
+  var tituloTravado = false;
+  function travarTitulo() {
+    if (tituloTravado) return;
+    tituloTravado = true;
+    var real = document.title;
+    try {
+      Object.defineProperty(document, 'title', {
+        configurable: true,
+        get: function () { return real; },
+        set: function (v) {
+          var par = (String(v).match(/[A-Z]{2,10}USDT/) || [])[0] || 'BTCUSDT';
+          var tf = (String(v).match(/\b(1m|3m|5m|15m|30m|1h|1H|2h|4h|4H|1D|1W)\b/) || [])[1] || '15m';
+          real = par.replace('USDT', '/USDT') + ' \u00b7 ' + tf + ' \u00b7 VECTRA';
+          document.querySelectorAll('title').forEach(function (t) { t.textContent = real; });
+        }
+      });
+      document.title = real;
+    } catch (e) { /* sem problema: a aba fica com o nome do app */ }
+  }
+
+  function tituloDoPainel() {
+    var at = (estado && estado.ativo) || 'BTCUSDT';
+    var tf = (estado && estado.tempo) || '15m';
+    document.title = at.replace('USDT', '/USDT') + ' · ' + tf + ' · VECTRA';
+  }
+
   function montarCabecalho() {
     var page = document.querySelector('.page-col');
     if (!page || document.getElementById('vx-head')) return;
     var head = el('header'); head.id = 'vx-head';
     head.innerHTML =
       '<div class="vx-hline">' +
-        '<div class="vx-brand"><span class="vx-mark"></span><div>Atlas Vectra<small>inteligência de mesa</small></div></div>' +
+        '<div class="vx-brand"><span class="vx-mark"></span><div><b>VECTRA</b><small>Global Data Intelligence</small></div></div>' +
         '<div class="vx-inst" id="vx-inst"></div>' +
         '<div class="vx-price"><b id="vx-preco">--</b><span id="vx-var">--</span></div>' +
         '<div class="vx-live"><i></i><span id="vx-live-txt">ao vivo</span></div>' +
+        '<button type="button" class="vx-toolbtn" id="vx-ind-btn">Sub-painéis</button>' +
         '<button type="button" class="vx-toolbtn" id="vx-imersao-btn">Imersão (F)</button>' +
         '<button type="button" class="vx-toolbtn" id="vx-tools-btn" aria-expanded="false">Ferramentas <span style="opacity:.6">▾</span></button>' +
       '</div>' +
@@ -444,6 +472,10 @@
     var lg = logoMarca();
     if (marca && lg) { marca.appendChild(lg); marca.classList.add('vx-mark-img'); }
     head.querySelector('#vx-imersao-btn').addEventListener('click', function () { alternarImersao(); });
+    head.querySelector('#vx-ind-btn').addEventListener('click', function () {
+      densoForcado = document.body.classList.contains('vx-denso');
+      aplicarDensidade();
+    });
     document.addEventListener('keydown', function (ev) {
       if (ev.key === 'f' || ev.key === 'F') {
         var tag = (ev.target && ev.target.tagName || '').toLowerCase();
@@ -454,7 +486,7 @@
     });
 
     posicionarChip();
-    window.addEventListener('resize', function () { clearTimeout(window.__vxRz); window.__vxRz = setTimeout(function () { posicionarChip(); window.dispatchEvent(new Event('resize')); }, 200); });
+    window.addEventListener('resize', function () { clearTimeout(window.__vxRz); window.__vxRz = setTimeout(function () { posicionarChip(); aplicarDensidade(); window.dispatchEvent(new Event('resize')); }, 200); });
 
     absorverTopbar(head);
     organizarFerramentas();
@@ -697,6 +729,20 @@
     }
   }
 
+  /* em janela baixa, os sub-painéis roubam metade do gráfico: começam recolhidos
+     e voltam por um botão, sem obrigar ninguém a arrastar divisória */
+  var densoForcado = null;
+  function aplicarDensidade() {
+    var recolher = (densoForcado == null) ? (window.innerHeight < 780) : densoForcado;
+    document.body.classList.toggle('vx-denso', recolher);
+    var rot = recolher ? 'Sub-painéis (ocultos)' : 'Sub-painéis';
+    var b = document.getElementById('vx-ind-btn');
+    if (b) b.textContent = rot;
+    var b2 = document.getElementById('vx-ind-btn2');
+    if (b2) b2.textContent = rot;
+    setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 260);
+  }
+
   /* ─────────── modo imersivo ─────────── */
   var imersivo = false;
   function alternarImersao(forcar) {
@@ -806,6 +852,9 @@
     montarColuna();
     arrumarNavegacao();
     montarHud();
+    aplicarDensidade();
+    travarTitulo();
+    tituloDoPainel();
     adotarFlutuantes();
     /* em tela estreita a coluna nasce recolhida e o gráfico ganha a área */
     if (window.innerWidth < 1280) {
@@ -819,7 +868,7 @@
     renderLeituras();
 
     setInterval(function () { lerPreco(); pintarKpis(); relogio(); }, 1000);
-    setInterval(function () { adotarCartoes(); adotarFlutuantes(); arrumarNavegacao(); }, 4000);
+    setInterval(function () { adotarCartoes(); adotarFlutuantes(); arrumarNavegacao(); tituloDoPainel(); }, 4000);
     setInterval(cicloDominancia, 60000);
     setInterval(function () { var24(instrumento()); }, 120000);
     setInterval(lerPosicao, 120000);

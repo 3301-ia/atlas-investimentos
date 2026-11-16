@@ -393,7 +393,8 @@ body.vx-imersivo #vx-head .vx-price{ margin:0; padding:8px 14px; background:rgba
   #vx-head .vx-hline{gap:8px; padding:7px 10px 5px}
   #vx-head .cat-bar{display:none}
   #vx-head .vx-brand{font-size:11px; letter-spacing:.12em}
-  #vx-head .vx-brand small{display:none}
+  #vx-head .vx-brand small{display:block; font-size:6.6px; letter-spacing:.16em}
+  #vx-head .vx-brand b{font-size:13px; letter-spacing:.16em}
   #vx-head .vx-brand i{width:22px; height:22px; font-size:11px}
   #vx-head .vx-price b{font-size:19px}
   #vx-head .vx-toolbtn{padding:7px 9px; font-size:10.5px}
@@ -453,3 +454,35 @@ body.vx-imersivo #vx-head .vx-price{ margin:0; padding:8px 14px; background:rgba
 /* navegação: um pouco mais de ar e alinhamento */
 .side-nav{ width:62px }
 .side-nav-top{ gap:4px !important }
+
+/* ══════════ marca: VECTRA / GLOBAL DATA INTELLIGENCE ══════════ */
+#vx-head .vx-brand{ gap:11px }
+#vx-head .vx-brand div{ display:flex; flex-direction:column; gap:1px; line-height:1 }
+#vx-head .vx-brand b{
+  font:700 15px/1 'Inter',sans-serif; letter-spacing:.20em; color:var(--vx-txt);
+}
+#vx-head .vx-brand small{
+  font:600 7.2px/1 'Inter',sans-serif; letter-spacing:.19em; text-transform:uppercase;
+  color:var(--vx-gold); opacity:.9;
+}
+
+/* o totem: logo em disco com anel */
+#vx-head .vx-mark{
+  width:36px; height:36px; border-radius:50%; display:grid; place-items:center;
+  background:radial-gradient(circle at 50% 35%, #16233a 0%, #0a1120 70%);
+  border:1px solid rgba(217,180,91,.42);
+  box-shadow:0 0 0 3px rgba(217,180,91,.06), inset 0 0 12px rgba(217,180,91,.10);
+}
+#vx-head .vx-logo{ width:26px; height:26px }
+
+/* ══════════ densidade: janela baixa não espreme o gráfico ══════════ */
+body.vx-denso #stoch-wrap-el, body.vx-denso .stoch-wrap-el,
+body.vx-denso #phi-wrap-el, body.vx-denso .phi-wrap-el,
+body.vx-denso #resize-chart-stoch, body.vx-denso #resize-stoch-phi,
+body.vx-denso [id$="-wrap-el"]{ display:none !important }
+.layout .main-area .chart-wrap{ min-height:0 }
+
+/* texto longo da trilha não é cortado no meio: encolhe com reticências */
+#vx-kpis .kpi b, #vx-kpis .kpi small{
+  display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%;
+}
