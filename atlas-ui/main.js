@@ -21817,6 +21817,189 @@ window.analyzeGlobalMarket=analyzeGlobalMarket;
 window.analyzeCurrentAssetAI=analyzeCurrentAssetAI;
 window.sendIAChat=sendIAChat;
 
+// ══════════════════════════════════════════════════════
+// CONSELHO VECTRA — agentes por tempo de leitura.
+// Cada agente le o snapshot real do painel (medias, RSI, faixa)
+// e devolve um veredito; o coordenador cruza os seis em SINAL MULTI.
+// A definicao dos agentes vive em agents.json, no repositorio.
+// ══════════════════════════════════════════════════════
+let vxConselho = null, vxLoopTimer = null, vxVereditos = {};
+
+async function vxConselhoCarregar(){
+  if(vxConselho) return vxConselho;
+  const r = await fetch('agents.json', { cache: 'no-store' });
+  if(!r.ok) throw new Error('agents.json ' + r.status);
+  vxConselho = await r.json();
+  vxPintarAgentes();
+  return vxConselho;
+}
+
+function vxPintarAgentes(){
+  const box = document.getElementById('vx-agentes');
+  if(!box || !vxConselho) return;
+  box.innerHTML = vxConselho.agentes.map(a => `
+    <div id="vx-ag-${a.id}" style="border:1px solid var(--bd2);border-radius:7px;padding:7px 8px;background:var(--bg4);">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;">
+        <span style="font-size:9.5px;letter-spacing:.06em;color:var(--t2);">${a.rotulo}</span>
+        <span id="vx-vd-${a.id}" style="font-size:8.5px;font-weight:700;color:var(--t3);">—</span>
+      </div>
+      <div style="font-size:9px;color:var(--t3);margin-top:2px;">${a.nome}</div>
+    </div>`).join('');
+}
+
+function vxSerie(a){
+  const tf = a.tf;
+  if(typeof mtfData !== 'undefined' && mtfData && mtfData[tf] && mtfData[tf].length > 25) return mtfData[tf];
+  if(typeof microData !== 'undefined' && microData && microData[tf] && microData[tf].length > 25) return microData[tf];
+  // o tempo aberto no grafico nao vive em mtfData/microData: usa as velas carregadas
+  const mapa = { '1':'1m','5':'5m','15':'15m','60':'1h','240':'4h','D':'1d' };
+  if(mapa[tf] === currentTF && typeof candles !== 'undefined' && candles && candles.length > 25){
+    return candles.map(c => c.close);
+  }
+  return null;
+}
+
+function vxEma(v, n){ const a = 2/(n+1); let e = v[0]; for(let i=1;i<v.length;i++) e = v[i]*a + e*(1-a); return e; }
+
+function vxSnapshot(a){
+  const v = vxSerie(a);
+  if(!v) return null;
+  const n = v.length, preco = v[n-1];
+  let ganho = 0, perda = 0;
+  for(let i = n-14; i < n; i++){ const d = v[i]-v[i-1]; if(d>0) ganho += d; else perda -= d; }
+  ganho /= 14; perda /= 14;
+  const rsi = perda === 0 ? 100 : 100 - 100/(1 + ganho/perda);
+  const jan = v.slice(-20), hi = Math.max(...jan), lo = Math.min(...jan);
+  let dom = 'flat';
+  try{
+    if(['1','5','15'].includes(a.tf) && typeof calcMicro === 'function'){
+      const mi = calcMicro(); dom = (mi.dirs && mi.dirs[a.tf]) || 'flat';
+    }
+    if(dom === 'flat'){
+      const m = calcMTF(); dom = (m.dirs && m.dirs[a.tf]) || 'flat';
+    }
+  }catch(e){}
+  return {
+    preco, e8: vxEma(v,8), e16: vxEma(v,16), e50: vxEma(v,50), rsi,
+    hi, lo, pos: hi > lo ? Math.round(100*(preco-lo)/(hi-lo)) : 50, dom,
+    texto: `ATIVO ${currentSym.replace('USDT','')} tempo ${a.tf}\n` +
+      `preco ${preco.toFixed(2)}\n` +
+      `EMA8 ${vxEma(v,8).toFixed(2)} | EMA16 ${vxEma(v,16).toFixed(2)} | EMA50 ${vxEma(v,50).toFixed(2)}\n` +
+      `RSI14 ${rsi.toFixed(1)}\n` +
+      `faixa das ultimas 20 velas ${lo.toFixed(2)} a ${hi.toFixed(2)} (preco a ${Math.round(hi>lo?100*(preco-lo)/(hi-lo):50)}% da faixa)\n` +
+      `dominancia do painel nesse tempo: ${dom}`
+  };
+}
+
+function vxPintarVeredito(id, v){
+  const el = document.getElementById('vx-vd-'+id);
+  if(!el) return;
+  const cor = v === 'COMPRA' ? 'var(--green)' : v === 'VENDA' ? 'var(--red)' : 'var(--t3)';
+  el.textContent = v || '—';
+  el.style.color = cor;
+  const card = document.getElementById('vx-ag-'+id);
+  if(card) card.style.borderColor = v === 'COMPRA' ? 'rgba(38,166,154,.45)' : v === 'VENDA' ? 'rgba(239,83,80,.45)' : 'var(--bd2)';
+}
+
+async function vxFalar(txt){
+  const id = await vxAgentConversa();
+  const r = await fetch(VX_AGENT_API + '/conversations/' + id + '/messages', {
+    method:'POST',
+    headers:{ 'content-type':'application/json', Authorization: 'Bearer ' + vxAgentKey() },
+    body: JSON.stringify({ content: txt })
+  });
+  const bruto = await r.text();
+  if(!r.ok) throw new Error(r.status + ' ' + bruto.slice(0, 140));
+  let j = {}; try{ j = JSON.parse(bruto); }catch(e){ j = { content: bruto }; }
+  return vxAgentTexto(j) || '';
+}
+
+function vxBlocoDados(){
+  return vxConselho.agentes.map(a=>{
+    const s = vxSnapshot(a);
+    if(!s) return `${a.tf.toUpperCase()}: sem dados suficientes no painel`;
+    return `${a.rotulo} (${a.nome})\n` +
+      `preco ${s.preco.toFixed(2)} | EMA8 ${s.e8.toFixed(2)} | EMA16 ${s.e16.toFixed(2)} | EMA50 ${s.e50.toFixed(2)} | RSI14 ${s.rsi.toFixed(1)} | ` +
+      `faixa 20v ${s.lo.toFixed(2)}-${s.hi.toFixed(2)} (${s.pos}%) | dominancia ${s.dom}`;
+  }).join('\n\n');
+}
+
+function vxPromptCiclo(){
+  const papeis = vxConselho.agentes.map(a=>`${a.rotulo}: ${a.prompt}`).join('\n');
+  return `CONSELHO VECTRA — leitura multi-tempo do ${currentSym.replace('USDT','')}.\n\n` +
+`PAPEIS DOS AGENTES\n${papeis}\n\n` +
+`DADOS REAIS DO PAINEL AGORA\n${vxBlocoDados()}\n\n` +
+`Responda SOMENTE neste formato, uma linha por tempo, sem cabecalho e sem preambulo:\n` +
+`1M=COMPRA|VENDA|NEUTRO; frase de no maximo 12 palavras com o nivel que confirma\n` +
+`5M=...\n15M=...\n1H=...\n4H=...\n1D=...\n` +
+`SINAL MULTI=ALINHADO COMPRA|ALINHADO VENDA|CONFLITO|NEUTRO; quantos tempos concordam, o nivel que confirma e o nivel que cancela`;
+}
+
+function vxAplicarLeitura(texto){
+  const achados = {};
+  const re = /(1M|5M|15M|1H|4H|1D)\s*[=:]\s*(COMPRA|VENDA|NEUTRO)/gi;
+  let m;
+  while((m = re.exec(texto))){
+    const tf = m[1].toLowerCase();
+    achados[tf] = m[2].toUpperCase();
+  }
+  if(vxConselho) vxConselho.agentes.forEach(a=>{
+    const v = achados[a.rotulo.toLowerCase()];
+    if(v){ vxVereditos[a.id] = v; vxPintarVeredito(a.id, v); }
+  });
+  const multi = texto.match(/SINAL MULTI\s*[=:]\s*([^\n;]+)/i);
+  const c = vxContagem();
+  const est = document.getElementById('vx-ciclo-estado');
+  if(est){
+    est.textContent = multi ? multi[1].trim().toUpperCase().slice(0,22) : `${c.compra}C/${c.venda}V/${c.neutro}N`;
+    est.style.color = (c.compra > c.venda) ? 'var(--green)' : (c.venda > c.compra) ? 'var(--red)' : 'var(--t3)';
+  }
+  return !!multi;
+}
+
+async function vxRodarCiclo(){
+  if(!vxAgentKey()){ showInfoToast('Agentes','Conecte a chave do agente primeiro.'); return; }
+  if(vxRodando){ showInfoToast('Agentes','Ciclo em andamento.'); return; }
+  vxRodando = true;
+  const est = document.getElementById('vx-ciclo-estado');
+  if(est){ est.textContent = 'rodando'; est.style.color = 'var(--gold)'; }
+  const info = document.getElementById('vx-ciclo-info');
+  if(info) info.textContent = 'uma mensagem por ciclo';
+  try{
+    await vxConselhoCarregar();
+    vxVereditos = {};
+    const resposta = await vxFalar(vxPromptCiclo());
+    const ok = vxAplicarLeitura(resposta);
+    vxAgentPintar('agente', (ok ? 'SINAIS MULTI · ' : 'LEITURA · ') + resposta.replace(/\n{2,}/g,'\n').slice(0, 900));
+  }catch(e){
+    vxAgentPintar('agente', 'Ciclo falhou: ' + String(e.message||e).slice(0,160));
+    if(est){ est.textContent = 'erro'; est.style.color = 'var(--red)'; }
+  }finally{ vxRodando = false; }
+}
+let vxRodando = false;
+
+function vxAlternarLoop(){
+  const btn = document.getElementById('vx-loop-btn');
+  const min = parseInt((document.getElementById('vx-loop-min')||{}).value || '15', 10);
+  if(vxLoopTimer){
+    clearInterval(vxLoopTimer); vxLoopTimer = null;
+    if(btn){ btn.textContent = 'Ciclo infinito'; btn.style.borderColor = ''; }
+    const est = document.getElementById('vx-ciclo-estado'); if(est){ est.textContent = 'parado'; est.style.color = 'var(--t3)'; }
+    showInfoToast('Agentes','Ciclo infinito parado.');
+    return;
+  }
+  if(!vxAgentKey()){ showInfoToast('Agentes','Conecte a chave do agente primeiro.'); return; }
+  vxRodarCiclo();
+  vxLoopTimer = setInterval(vxRodarCiclo, min*60000);
+  if(btn){ btn.textContent = 'Parar ciclo'; btn.style.borderColor = 'var(--gold)'; }
+  showInfoToast('Agentes', `Ciclo infinito a cada ${min} min.`);
+}
+
+window.vxDiag = { carregar: vxConselhoCarregar, montar: vxSnapshot, prompt: vxPromptCiclo, falar: vxFalar, aplicar: vxAplicarLeitura, dados: vxBlocoDados };
+window.vxRodarCiclo = vxRodarCiclo;
+window.vxAlternarLoop = vxAlternarLoop;
+
+
 
 
 function togglePotential() {

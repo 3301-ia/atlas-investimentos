@@ -1671,6 +1671,22 @@
               <div id="ai-asset-result" style="margin-top:10px;display:none;"></div>
             </div>
 
+            <div class="sp-sec"><span>AGENTES · SINAIS MULTI</span><span class="sp-sec-val" id="vx-ciclo-estado" style="color:var(--t3);">parado</span></div>
+            <div style="padding:12px 14px;display:flex;flex-direction:column;gap:8px;">
+              <div id="vx-agentes" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;"></div>
+              <div style="display:flex;gap:6px;">
+                <button class="modal-connect-btn" onclick="vxRodarCiclo()" style="flex:1;margin:0;">Rodar ciclo</button>
+                <button class="modal-connect-btn" id="vx-loop-btn" onclick="vxAlternarLoop()" style="flex:1;margin:0;">Ciclo infinito</button>
+              </div>
+              <div style="display:flex;gap:6px;align-items:center;font-size:10px;color:var(--t2);">
+                <span>a cada</span>
+                <select id="vx-loop-min" class="modal-input" style="padding:3px 6px;height:auto;width:auto;">
+                  <option value="5">5 min</option><option value="15" selected>15 min</option><option value="30">30 min</option><option value="60">60 min</option>
+                </select>
+                <span id="vx-ciclo-info">6 agentes + coordenador</span>
+              </div>
+            </div>
+
             <div class="sp-sec"><span>ASSISTENTE VECTRA</span></div>
             <div style="display:flex;flex-direction:column;flex:1;min-height:200px;padding:14px;gap:8px;">
               <div id="ia-chat-history" style="flex:1;overflow-y:auto;border:1px solid var(--bd2);border-radius:6px;
@@ -1869,7 +1885,7 @@
      o que o main.js espera pra iniciar, e os onclick do HTML so disparam no
      clique, bem depois. -->
 <script defer src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
-<script defer src="./main.js?v=15_amostrador_on"></script>
+<script defer src="./main.js?v=16_amostrador_on"></script>
 <script defer src="./ponte_antigravity.js?v=101_crisp_filtered_entries"></script>
 <script defer src="./trailing-atlas.js?v=2"></script>
 <script defer src="./nucleo-ui.js?v=1"></script>
