@@ -1642,21 +1642,21 @@
             <div style="padding:14px;">
               <div class="modal-status-row">
                 <span class="dot off" id="ia-key-dot"></span>
-                <span id="ia-key-status">IA desativada</span>
+                <span id="ia-key-status">Agente desconectado</span>
               </div>
-              <label class="modal-lbl">Chave de API Gemini</label>
+              <label class="modal-lbl">Chave da API do agente VECTRA</label>
               <div style="position:relative;">
-                <input type="password" id="ia-api-key" class="modal-input" placeholder="AIzaSy..." autocomplete="off" style="padding-right:36px;"
+                <input type="password" id="ia-api-key" class="modal-input" placeholder="cole aqui a chave do agente" autocomplete="off" style="padding-right:36px;"
                   onkeydown="if(event.key==='Enter')onIAKeyConnectClick();">
                 <button type="button" onclick="toggleIAKeyVisibility()" id="ia-key-eye"
                   style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;
                   cursor:pointer;font-size:14px;color:var(--t2);padding:4px;">👁</button>
               </div>
               <div class="modal-hint">
-                Gere gratis em <b>aistudio.google.com/apikey</b> (Google AI Studio). Fica salva localmente no seu navegador para manter as conversas.
-                <b>Nunca compartilhe essa chave no chat</b> — cole-a apenas aqui.
+                A chave sai do editor do agente, em <b>API / Docs</b> (Base44). Ela fica salva só neste navegador e é a mesma que
+                autoriza o painel a conversar com o agente. <b>Numa maquina de outra pessoa, não cole a chave.</b>
               </div>
-              <button class="modal-connect-btn" id="ia-key-connect-btn" onclick="onIAKeyConnectClick()" style="margin-top:10px;">Ativar IA</button>
+              <button class="modal-connect-btn" id="ia-key-connect-btn" onclick="onIAKeyConnectClick()" style="margin-top:10px;">Conectar agente</button>
             </div>
 
             <div class="sp-sec"><span>VISAO GERAL (IA)</span></div>
@@ -1671,15 +1671,15 @@
               <div id="ai-asset-result" style="margin-top:10px;display:none;"></div>
             </div>
 
-            <div class="sp-sec"><span>ASSISTENTE ATLAS</span></div>
+            <div class="sp-sec"><span>ASSISTENTE VECTRA</span></div>
             <div style="display:flex;flex-direction:column;flex:1;min-height:200px;padding:14px;gap:8px;">
               <div id="ia-chat-history" style="flex:1;overflow-y:auto;border:1px solid var(--bd2);border-radius:6px;
                 padding:8px;background:var(--bg4);font-size:11px;color:var(--text);">
-                <div style="color:var(--t3);">Ola! Sou o Assistente ATLAS. Pergunte sobre o mercado ou o ativo em analise.</div>
+                <div style="color:var(--t3);">Conecte a chave e fale com o agente VECTRA: mercado, risco, leitura do gráfico, o que você quiser.</div>
               </div>
               <div style="display:flex;gap:6px;">
                 <input type="text" id="ia-chat-input" class="rsit-search" style="flex:1;width:auto;"
-                  placeholder="Pergunte algo ao ATLAS..." onkeydown="if(event.key==='Enter')sendIAChat();">
+                  placeholder="Fale com o agente VECTRA..." onkeydown="if(event.key==='Enter')sendIAChat();">
                 <button class="ia-send-btn" id="ia-send-btn" onclick="sendIAChat()">Enviar</button>
               </div>
             </div>
@@ -1869,7 +1869,7 @@
      o que o main.js espera pra iniciar, e os onclick do HTML so disparam no
      clique, bem depois. -->
 <script defer src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
-<script defer src="./main.js?v=108_amostrador_on"></script>
+<script defer src="./main.js?v=13_amostrador_on"></script>
 <script defer src="./ponte_antigravity.js?v=101_crisp_filtered_entries"></script>
 <script defer src="./trailing-atlas.js?v=2"></script>
 <script defer src="./nucleo-ui.js?v=1"></script>
@@ -1899,9 +1899,9 @@
   #tf-select, #sym-select { min-height: 40px; }
 }
 </style>
-  <link rel="stylesheet" href="./atlas-cockpit.css?v=11">
+  <link rel="stylesheet" href="./atlas-cockpit.css?v=12">
   <script src="./layout-vectra.js?v=11" defer></script>
-  <script src="./atlas-cockpit.js?v=11" defer></script>
+  <script src="./atlas-cockpit.js?v=12" defer></script>
 </body>
 
 </html>

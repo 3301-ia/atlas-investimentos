@@ -21682,9 +21682,51 @@ window.toggleConfluatorGoldModal=toggleConfluatorGoldModal;
 // o recurso for definido de verdade (provedor de IA, chave, etc.),
 // substitua o corpo delas pela integracao real.
 // ══════════════════════════════════════════════════════
-function onIAKeyConnectClick(){
-  showInfoToast('IA','Recurso de IA ainda em construcao.');
+
+// ══════════════════════════════════════════════════════
+// PAINEL DE IA — ponte direta com o agente VECTRA (Base44)
+// A chave fica no aparelho do dono (localStorage) e a API do agente
+// aceita chamada do navegador (CORS liberado).
+// ══════════════════════════════════════════════════════
+const VX_AGENT_ID = '6a02bf87bbdfc0e29f88b64a';
+const VX_AGENT_API = 'https://app.base44.com/api/agents/' + VX_AGENT_ID;
+const vxAgentKey  = () => (localStorage.getItem('vx_agent_key') || '').trim();
+const vxAgentConv = () => (localStorage.getItem('vx_agent_conv') || '').trim();
+
+function vxAgentPintar(quem, texto){
+  const h = document.getElementById('ia-chat-history');
+  if(!h) return null;
+  const d = document.createElement('div');
+  d.style.cssText = 'margin:6px 0;padding:7px 9px;border-radius:7px;line-height:1.45;white-space:pre-wrap;' +
+    (quem === 'eu'
+      ? 'background:rgba(55,124,252,.10);border:1px solid rgba(55,124,252,.25);'
+      : 'background:rgba(245,166,35,.07);border:1px solid rgba(245,166,35,.28);color:var(--text);');
+  d.innerHTML = '<div style="font-size:9px;letter-spacing:.08em;color:' + (quem === 'eu' ? 'var(--accent)' : 'var(--gold)') +
+    ';margin-bottom:3px;">' + (quem === 'eu' ? 'VOCÊ' : 'VECTRA') + '</div>' + texto.replace(/</g,'&lt;');
+  h.appendChild(d);
+  h.scrollTop = h.scrollHeight;
+  return d;
 }
+
+function vxAgentStatus(txt, cor){
+  const el = document.getElementById('ia-key-status');
+  if(el){ el.textContent = txt; el.style.color = cor || 'var(--t2)'; }
+  const dot = document.getElementById('ia-key-dot');
+  if(dot) dot.className = 'dot ' + (cor === 'var(--green)' ? '' : 'off');
+}
+
+function onIAKeyConnectClick(){
+  const inp = document.getElementById('ia-api-key');
+  const k = inp ? inp.value.trim() : '';
+  if(!k){ showInfoToast('IA','Cole a chave do agente VECTRA.'); return; }
+  localStorage.setItem('vx_agent_key', k);
+  localStorage.removeItem('vx_agent_conv');
+  vxAgentStatus('Agente conectado', 'var(--green)');
+  showInfoToast('IA','Agente VECTRA conectado.');
+  const m = document.getElementById('ia-key-modal');
+  if(m) m.style.display = 'none';
+}
+
 function toggleIAKeyVisibility(){
   const inp=document.getElementById('ia-api-key');
   const eye=document.getElementById('ia-key-eye');
@@ -21693,24 +21735,88 @@ function toggleIAKeyVisibility(){
   inp.type=show?'text':'password';
   if(eye)eye.textContent=show?'🙈':'👁';
 }
-function analyzeGlobalMarket(){
-  showInfoToast('IA','Analise de mercado ainda em construcao.');
+
+async function vxAgentConversa(){
+  let id = vxAgentConv();
+  if(id) return id;
+  const r = await fetch(VX_AGENT_API + '/conversations', { headers: { api_key: vxAgentKey() } });
+  if(!r.ok) throw new Error('conversas ' + r.status);
+  const j = await r.json();
+  const lista = Array.isArray(j) ? j : (j.data || j.conversations || []);
+  const primeira = lista[0];
+  if(primeira && (primeira.id || primeira.conversation_id)){
+    id = primeira.id || primeira.conversation_id;
+    localStorage.setItem('vx_agent_conv', id);
+    return id;
+  }
+  const c = await fetch(VX_AGENT_API + '/conversations', {
+    method:'POST', headers:{ 'content-type':'application/json', api_key: vxAgentKey() }, body: '{}'
+  });
+  const cj = await c.json();
+  id = (cj.id || (cj.data && cj.data.id) || cj.conversation_id || '');
+  if(!id) throw new Error('sem conversa');
+  localStorage.setItem('vx_agent_conv', id);
+  return id;
 }
-function analyzeCurrentAssetAI(){
-  showInfoToast('IA',`Analise de ${currentSym.replace('USDT','')} ainda em construcao.`);
+
+function vxAgentTexto(j){
+  if(!j) return '';
+  const cands = [
+    j.message && j.message.content, j.message && j.message.text, j.content, j.text, j.reply,
+    j.answer, j.response, j.data && j.data.message && j.data.message.content,
+    j.data && j.data.content, j.data && j.data.text, j.data && j.data.reply
+  ];
+  for(const c of cands){ if(typeof c === 'string' && c.trim()) return c.trim(); }
+  if(Array.isArray(j.messages) && j.messages.length){
+    const ult = j.messages[j.messages.length - 1];
+    if(ult && typeof ult.content === 'string') return ult.content.trim();
+  }
+  return '';
 }
-function sendIAChat(){
-  const inp=document.getElementById('ia-chat-input');
-  if(!inp)return;
-  if(!inp.value.trim())return;
-  showInfoToast('IA','Chat ainda em construcao — sua mensagem nao foi enviada.');
-  inp.value='';
+
+async function sendIAChat(){
+  const inp = document.getElementById('ia-chat-input');
+  if(!inp) return;
+  const txt = inp.value.trim();
+  if(!txt) return;
+  if(!vxAgentKey()){ showInfoToast('IA','Conecte a chave do agente VECTRA primeiro.'); return; }
+  inp.value = '';
+  vxAgentPintar('eu', txt);
+  const pend = vxAgentPintar('agente', 'analisando…');
+  try{
+    const id = await vxAgentConversa();
+    const r = await fetch(VX_AGENT_API + '/conversations/' + id + '/messages', {
+      method:'POST',
+      headers:{ 'content-type':'application/json', api_key: vxAgentKey() },
+      body: JSON.stringify({ message: txt })
+    });
+    const bruto = await r.text();
+    if(!r.ok) throw new Error(r.status + ' ' + bruto.slice(0, 140));
+    let j = {}; try{ j = JSON.parse(bruto); }catch(e){ j = { text: bruto }; }
+    const resposta = vxAgentTexto(j) || 'Recebi, mas não veio texto na resposta.';
+    if(pend) pend.remove();
+    vxAgentPintar('agente', resposta);
+  }catch(e){
+    if(pend) pend.remove();
+    vxAgentPintar('agente', 'Falha ao falar com o agente: ' + String(e.message || e).slice(0,160));
+  }
 }
+
+const analyzeGlobalMarket = () => sendIAChatCom('Faça a visão geral do mercado agora, com os dados que você tiver.');
+const analyzeCurrentAssetAI = () => sendIAChatCom('Analise o ativo atual ' + (typeof currentSym !== 'undefined' ? currentSym : 'BTCUSDT') + '.');
+function sendIAChatCom(txt){
+  const inp = document.getElementById('ia-chat-input');
+  if(!inp) return;
+  inp.value = txt;
+  sendIAChat();
+}
+
 window.onIAKeyConnectClick=onIAKeyConnectClick;
 window.toggleIAKeyVisibility=toggleIAKeyVisibility;
 window.analyzeGlobalMarket=analyzeGlobalMarket;
 window.analyzeCurrentAssetAI=analyzeCurrentAssetAI;
 window.sendIAChat=sendIAChat;
+
 
 
 function togglePotential() {
