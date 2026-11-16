@@ -1,10 +1,36 @@
 {
- "fechadas": [],
+ "fechadas": [
+  {
+   "ativo": "BTC-USDT",
+   "timeframe": "15M",
+   "lado": "venda",
+   "entrada": 64279.9,
+   "stop": 65710.92,
+   "alvo": 61417.86,
+   "tamanho": 0.0018,
+   "risco_usd": 2.6,
+   "risco_pct": 2,
+   "equity": 130,
+   "motivo": "abertura na virada: lado baixa, stop com 2.23% de folga",
+   "nucleo_versao": "trailing 1.0.0 + risco 1.0.0",
+   "hash": "87b0eca24debbc98e469836c64841a0154511b07cb74b83ae8a2e5aa4cbf792d",
+   "payload_assinado": "{\"core\":\"trailing 1.0.0 + risco 1.0.0\",\"rules\":\"chandelier\",\"params\":{\"atr\":14,\"mult\":2.5,\"janela\":22,\"alvo_r\":2,\"dist_min_pct\":1},\"ativo\":\"BTC-USDT\",\"t\":1794726900,\"lado\":\"venda\",\"entrada\":64279.9,\"stop\":65710.92,\"alvo\":61417.86}",
+   "estado": "fechada",
+   "preco_mercado": 65197.3,
+   "aberta_em": "2026-11-15T07:34:09.192Z",
+   "modo": "papel",
+   "preco_saida": 64488.3,
+   "motivo_fechamento": "virada de lado",
+   "resultado_r": -0.146,
+   "resultado_usd": -0.38,
+   "fechada_em": "2026-11-16T06:29:04.102Z"
+  }
+ ],
  "resumo": {
-  "fechadas": 0,
-  "acerto_pct": null,
-  "resultado_r": 0,
-  "resultado_usd": 0,
-  "atualizado_em": "2026-11-16T00:10:28.454Z"
+  "fechadas": 1,
+  "acerto_pct": 0,
+  "resultado_r": -0.15,
+  "resultado_usd": -0.38,
+  "atualizado_em": "2026-11-16T06:29:04.102Z"
  }
 }
