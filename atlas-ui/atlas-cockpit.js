@@ -337,7 +337,7 @@
         R = risco > 0 ? (preco - pos.media) / risco : 0;
       }
       k('posicao', pos.lado === 'compra' ? 'COMPRA' + (pos.lotes ? ' ' + pos.lotes + 'x' : '') : String(pos.lado || '--').toUpperCase(),
-        'média ' + n(pos.media, 0) + ' · ' + (R >= 0 ? '+' : '') + num(R) + 'R', R >= 0 ? 'up' : 'dn');
+        n(pos.media, 0) + ' · ' + (R >= 0 ? '+' : '') + num(R) + 'R', R >= 0 ? 'up' : 'dn');
       k('risco', pos.stop ? n(Math.abs(preco - pos.stop), 0) + ' pts' : '--', pos.stop ? 'stop ' + n(pos.stop, 0) : 'sem stop', '');
     } else {
       k('posicao', 'FORA', 'sem posição aberta', '');
@@ -430,9 +430,9 @@
         '<div class="vx-inst" id="vx-inst"></div>' +
         '<div class="vx-price"><b id="vx-preco">--</b><span id="vx-var">--</span></div>' +
         '<div class="vx-live"><i></i><span id="vx-live-txt">ao vivo</span></div>' +
-        '<button type="button" class="vx-toolbtn" id="vx-ind-btn">Sub-painéis</button>' +
-        '<button type="button" class="vx-toolbtn" id="vx-imersao-btn">Imersão (F)</button>' +
-        '<button type="button" class="vx-toolbtn" id="vx-tools-btn" aria-expanded="false">Ferramentas <span style="opacity:.6">▾</span></button>' +
+        '<button type="button" class="vx-toolbtn" id="vx-ind-btn" title="Sub-painéis"><svg class="vx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span>Sub-painéis</span></button>' +
+        '<button type="button" class="vx-toolbtn" id="vx-imersao-btn" title="Imersão (F)"><svg class="vx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 15v5h-5M15 4h5v5M9 20H4v-5"/></svg><span>Imersão</span></button>' +
+        '<button type="button" class="vx-toolbtn" id="vx-tools-btn" aria-expanded="false" title="Ferramentas"><svg class="vx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h10M4 17h6M18 12v8M14 5v6"/></svg><span>Ferramentas</span></button>' +
       '</div>' +
       '<div id="vx-kpis">' +
         '<div class="kpi" id="kpi-preco"><u>Preço</u><b>--</b><small>&nbsp;</small></div>' +
@@ -737,7 +737,8 @@
     document.body.classList.toggle('vx-denso', recolher);
     var rot = recolher ? 'Sub-painéis (ocultos)' : 'Sub-painéis';
     var b = document.getElementById('vx-ind-btn');
-    if (b) b.textContent = rot;
+    if (b) { var bs = b.querySelector('span'); if (bs) bs.textContent = rot; else b.textContent = rot; b.title = rot;
+             b.classList.toggle('vx-on', !recolher); }
     var b2 = document.getElementById('vx-ind-btn2');
     if (b2) b2.textContent = rot;
     setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 260);
@@ -749,7 +750,8 @@
     imersivo = (forcar == null) ? !imersivo : !!forcar;
     document.body.classList.toggle('vx-imersivo', imersivo);
     var b = document.getElementById('vx-imersao-btn');
-    if (b) b.textContent = imersivo ? 'Sair da imersão (F)' : 'Imersão (F)';
+    if (b) { var bs = b.querySelector('span'); if (bs) bs.textContent = imersivo ? 'Sair' : 'Imersão';
+             else b.textContent = imersivo ? 'Sair da imersão (F)' : 'Imersão (F)'; b.title = imersivo ? 'Sair da imersão (F)' : 'Imersão (F)'; }
     setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 300);
   }
 
@@ -856,11 +858,20 @@
     travarTitulo();
     tituloDoPainel();
     adotarFlutuantes();
-    /* em tela estreita a coluna nasce recolhida e o gráfico ganha a área */
-    if (window.innerWidth < 1280) {
+    /* a coluna da mesa nasce encolhida; quem abrir fica aberto na próxima visita */
+    (function () {
       var w = document.getElementById('vx-work'), f = document.getElementById('vx-work-fold');
-      if (w) { w.classList.add('vx-fechada'); if (f) f.textContent = '⟨'; }
-    }
+      var guardado = null;
+      try { guardado = localStorage.getItem('vx_mesa_aberta'); } catch (e) {}
+      var abrir = guardado === '1';
+      if (w) { w.classList.toggle('vx-fechada', !abrir); }
+      if (f) f.textContent = abrir ? '⟩' : '⟨';
+      var btn = document.getElementById('vx-work-fold');
+      if (btn) btn.addEventListener('click', function () {
+        var aberta = !w.classList.contains('vx-fechada');
+        try { localStorage.setItem('vx_mesa_aberta', aberta ? '0' : '1'); } catch (e) {}
+      });
+    })();
     lerPreco(); pintarKpis(); relogio();
     var24(instrumento());
     lerPosicao();

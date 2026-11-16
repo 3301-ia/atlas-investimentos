@@ -486,3 +486,28 @@ body.vx-denso [id$="-wrap-el"]{ display:none !important }
 #vx-kpis .kpi b, #vx-kpis .kpi small{
   display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%;
 }
+
+/* ══════════ respiro: nada de borda colada ══════════ */
+#vx-head .vx-hline{ padding:9px 16px; gap:12px }
+#vx-head .vx-toolbtn{
+  display:inline-flex; align-items:center; gap:7px; height:36px; padding:0 12px;
+  border-radius:9px; white-space:nowrap;
+}
+#vx-head .vx-toolbtn .vx-ico{ width:15px; height:15px; stroke-width:1.6; opacity:.9 }
+#vx-head .vx-toolbtn span{ font:600 10.5px/1 'Inter',sans-serif; letter-spacing:.04em }
+#vx-head .vx-toolbtn.vx-on{ color:var(--vx-gold); border-color:rgba(217,180,91,.45) }
+
+@media (max-width: 1200px){
+  #vx-head .vx-hline{ padding:9px 12px; gap:9px }
+  #vx-head .vx-toolbtn{ width:36px; padding:0; justify-content:center }
+  #vx-head .vx-toolbtn span{ display:none }
+  #vx-head .vx-brand{ gap:9px }
+  #vx-head .vx-price{ gap:7px }
+}
+
+/* trilha: um pouco mais de folga interna e sem corte */
+#vx-kpis .kpi{ padding:11px 16px }
+#vx-kpis .kpi small{ font-size:8.6px; opacity:.7 }
+
+/* coluna da mesa encolhida: só a alça, com respiro */
+#vx-work.vx-fechada{ padding:0; width:34px; background:#080d16 }
