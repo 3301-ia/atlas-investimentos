@@ -380,13 +380,26 @@
   }
 
   /* ─────────── montagem da casa ─────────── */
+  /* a marca do app volta para o cabeçalho, no tamanho de um selo */
+  function logoMarca() {
+    var orig = document.querySelector('img.logo-icon, .logo img, img[src*="vectra-icon"]');
+    if (orig) {
+      var img = document.createElement('img');
+      img.src = orig.getAttribute('src');
+      img.alt = 'Vectra';
+      img.className = 'vx-logo';
+      return img;
+    }
+    return null;
+  }
+
   function montarCabecalho() {
     var page = document.querySelector('.page-col');
     if (!page || document.getElementById('vx-head')) return;
     var head = el('header'); head.id = 'vx-head';
     head.innerHTML =
       '<div class="vx-hline">' +
-        '<div class="vx-brand"><i>△</i><div>Atlas Vectra<small>inteligência de mesa</small></div></div>' +
+        '<div class="vx-brand"><span class="vx-mark"></span><div>Atlas Vectra<small>inteligência de mesa</small></div></div>' +
         '<div class="vx-inst" id="vx-inst"></div>' +
         '<div class="vx-price"><b id="vx-preco">--</b><span id="vx-var">--</span></div>' +
         '<div class="vx-live"><i></i><span id="vx-live-txt">ao vivo</span></div>' +
@@ -427,6 +440,9 @@
       this.setAttribute('aria-expanded', on ? 'true' : 'false');
     });
 
+    var marca = head.querySelector('.vx-mark');
+    var lg = logoMarca();
+    if (marca && lg) { marca.appendChild(lg); marca.classList.add('vx-mark-img'); }
     head.querySelector('#vx-imersao-btn').addEventListener('click', function () { alternarImersao(); });
     document.addEventListener('keydown', function (ev) {
       if (ev.key === 'f' || ev.key === 'F') {

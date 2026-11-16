@@ -407,3 +407,49 @@ body.vx-imersivo #vx-head .vx-price{ margin:0; padding:8px 14px; background:rgba
   #vx-head .vx-extra{display:none}
   #vx-head .vx-live span{display:none}
 }
+
+/* ══════════ requinte: medida, ordem e silêncio visual ══════════ */
+:root{ --vx-pad:12px; --vx-r:10px }
+
+/* marca com a logo original */
+#vx-head .vx-brand{display:flex; align-items:center; gap:10px}
+#vx-head .vx-mark{display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto}
+#vx-head .vx-logo{ width:30px; height:30px; display:block; object-fit:contain;
+  filter:drop-shadow(0 0 10px rgba(217,180,91,.18)) }
+#vx-head .vx-brand small{margin-left:2px}
+
+/* cabeçalho: ritmo único */
+#vx-head .vx-hline{ align-items:center; gap:10px; padding:8px 12px }
+#vx-head .vx-price{ display:flex; align-items:baseline; gap:9px; margin-left:auto }
+#vx-head .vx-price b{ letter-spacing:-.01em }
+#vx-head .cat-bar{ gap:2px }
+#vx-head .cat-bar button{ border-radius:7px; padding:5px 8px }
+
+/* trilha de números: mesma largura, divisor fino, sem moldura dupla */
+#vx-kpis{ gap:0 !important; padding:0 !important; border-top:1px solid var(--vx-line); border-bottom:1px solid var(--vx-line); background:#080d16 }
+#vx-kpis .kpi{ flex:1 1 0; min-width:0; padding:10px 14px; border:0; border-radius:0; background:none;
+  border-left:1px solid var(--vx-line); display:flex; flex-direction:column; gap:4px }
+#vx-kpis .kpi:first-child{ border-left:0 }
+#vx-kpis .kpi u{ font-size:7.6px; letter-spacing:.22em; opacity:.75 }
+#vx-kpis .kpi b{ font-size:15px; line-height:1.1 }
+#vx-kpis .kpi small{ font-size:9px; opacity:.72 }
+
+/* coluna da mesa: cartões iguais, títulos alinhados, números em coluna */
+#vx-work{ padding:10px; gap:10px; background:#080d16 }
+#vx-work .vx-card{ border-radius:var(--vx-r); background:#0b1220; border:1px solid var(--vx-line) }
+#vx-work .vx-card-h{ height:30px; padding:0 12px; display:flex; align-items:center; justify-content:space-between;
+  border-bottom:1px solid var(--vx-line); background:none }
+#vx-work .vx-card-h h3{ font-size:8.4px; letter-spacing:.22em; margin:0 }
+#vx-work .vx-card-h span{ font-size:8px; letter-spacing:.14em; color:var(--vx-dim) }
+#vx-work .vx-card-b{ padding:10px 12px }
+#vx-work .vx-dom-tab{ width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums }
+#vx-work .vx-dom-tab td{ padding:4px 0; border-bottom:1px solid rgba(255,255,255,.045); font-size:10px }
+#vx-work .vx-dom-tab tr:last-child td{ border-bottom:0 }
+#vx-work .vx-dom-tab td.tf{ width:38px; color:var(--vx-dim); letter-spacing:.08em; font-weight:600 }
+#vx-work .vx-dom-tab td.num{ text-align:right; font-family:'JetBrains Mono',monospace; font-size:9.6px }
+#vx-work .vx-dock{ gap:4px }
+#vx-work .vx-dock button{ border-radius:7px }
+
+/* navegação: um pouco mais de ar e alinhamento */
+.side-nav{ width:62px }
+.side-nav-top{ gap:4px !important }
