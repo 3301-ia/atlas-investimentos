@@ -626,17 +626,17 @@
 
   /* ─────────── navegação: ícones de linha, sem emoji ─────────── */
   var ICONES = {
-    'inicio':   'M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z',
-    'btn-robo': 'M9 3h6M12 3v3M6 8h12a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1zM9.5 12.5h.01M14.5 12.5h.01M9 16h6',
-    'nav-nucleo': 'M12 3 3 7.5 12 12l9-4.5L12 3zM3 12.5 12 17l9-4.5M3 17 12 21.5 21 17',
-    'nav-vigia': 'M12 3 5 6v5.5c0 4.2 2.9 7.7 7 9.5 4.1-1.8 7-5.3 7-9.5V6l-7-3z',
-    'nav-estudos': 'M4 20 20 4M14 4h6v6M4 14v6h6',
-    'nav-imperial': 'M13 2 4 14h6l-1 8 9-12h-6l1-8z',
-    'nav-deriv': 'M12 3l9 9-9 9-9-9 9-9z',
-    'nav-consenso': 'M5 6h14M5 12h14M5 18h14M9 4v4M15 10v4M11 16v4',
-    'nav-analise': 'M4 20V10M10 20V4M16 20v-7M22 20H2',
-    'nav-alerts': 'M12 3a5 5 0 0 0-5 5v4l-2 4h14l-2-4V8a5 5 0 0 0-5-5zM10 19a2 2 0 0 0 4 0',
-    'nav-rsi-matrix': 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z',
+    'inicio':   'M4 4h6v7H4zM14 4h6v4h-6zM14 12h6v8h-6zM4 15h6v5H4z',
+    'btn-robo': 'M12 3v3M8 9h8a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2zM9.6 13.4h.01M14.4 13.4h.01M2 12.5v3M22 12.5v3',
+    'nav-nucleo': 'M9.5 6.5 4.5 12l5 5.5M14.5 6.5l5 5.5-5 5.5',
+    'nav-vigia': 'M12 3l7 3v5.5c0 4.1-2.9 7.4-7 9.5-4.1-2.1-7-5.4-7-9.5V6zM12 10.6a1.9 1.9 0 1 0 0 3.8 1.9 1.9 0 0 0 0-3.8z',
+    'nav-estudos': 'M4 19.5V4.5M4 19.5h16M7.5 15.5l4-4.5 3 2.8 4.5-6',
+    'nav-imperial': 'M4 8.5l3.6 2.6L12 5.4l4.4 5.7L20 8.5l-1.8 9.6H5.8zM7 21h10',
+    'nav-deriv': 'M4 8.5h12.5M13 5l3.5 3.5L13 12M20 15.5H7.5M11 12l-3.5 3.5L11 19',
+    'nav-consenso': 'M12 4.5v15M6.5 8h11M6.5 8L4 14h5zM17.5 8L15 14h5zM8.5 19.5h7',
+    'nav-analise': 'M10.8 4.2a6.6 6.6 0 1 0 0 13.2 6.6 6.6 0 0 0 0-13.2zM20 20l-4.6-4.6M8.4 11.9l1.9-1.9 1.6 1.6 2.4-3',
+    'nav-alerts': 'M18 16.5V11a6 6 0 1 0-12 0v5.5L4 19.5h16zM9.8 21.8h4.4',
+    'nav-rsi-matrix': 'M6 6h.01M12 6h.01M18 6h.01M6 12h.01M12 12h.01M18 12h.01M6 18h.01M12 18h.01M18 18h.01',
     'nav-mais': 'M6 12h.01M12 12h.01M18 12h.01'
   };
   var ROTULOS = {
