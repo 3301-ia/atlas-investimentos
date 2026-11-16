@@ -437,16 +437,8 @@
       if (ev.key === 'Escape' && imersivo) alternarImersao(false);
     });
 
-    var chip = document.getElementById('ts-chip');
-    if (chip) {
-      chip.style.position = 'static';
-      chip.style.left = chip.style.top = chip.style.right = chip.style.bottom = 'auto';
-      chip.style.transform = 'none';
-      chip.style.margin = '0';
-      chip.classList.add('vx-tspill');
-      var priceBox = head.querySelector('.vx-price');
-      if (priceBox) priceBox.parentElement.insertBefore(chip, head.querySelector('#vx-imersao-btn'));
-    }
+    posicionarChip();
+    window.addEventListener('resize', function () { clearTimeout(window.__vxRz); window.__vxRz = setTimeout(function () { posicionarChip(); window.dispatchEvent(new Event('resize')); }, 200); });
 
     absorverTopbar(head);
     organizarFerramentas();
@@ -652,6 +644,41 @@
       }
       e.setAttribute('title', rotulo);
     });
+  }
+
+  /* o passador do TS cabe no cabeçalho em tela larga; em tela estreita desce
+     para a gaveta, para não empurrar o preço para fora da tela */
+  function posicionarChip() {
+    var chip = document.getElementById('ts-chip');
+    var head = document.getElementById('vx-head');
+    var tools = document.getElementById('vx-tools');
+    if (!chip || !head) return;
+    chip.style.position = 'static';
+    chip.style.left = chip.style.top = chip.style.right = chip.style.bottom = 'auto';
+    chip.style.transform = 'none';
+    chip.style.margin = '0';
+    chip.classList.add('vx-tspill');
+    if (window.innerWidth >= 1600) {
+      var priceBox = head.querySelector('.vx-price');
+      if (priceBox && chip.parentElement !== priceBox.parentElement) {
+        priceBox.parentElement.insertBefore(chip, head.querySelector('#vx-imersao-btn'));
+      }
+    } else if (tools) {
+      var g = document.getElementById('vx-tools-passador');
+      if (!g) {
+        g = el('div', 'vx-grp');
+        g.id = 'vx-tools-passador';
+        g.innerHTML = '<h4>Passador e tema</h4>';
+        var row = el('div', 'vx-row');
+        row.id = 'vx-tools-passador-row';
+        g.appendChild(row);
+        tools.insertBefore(g, tools.firstChild);
+      }
+      var row2 = document.getElementById('vx-tools-passador-row');
+      if (row2 && chip.parentElement !== row2) row2.appendChild(chip);
+      var extra = document.querySelector('.vx-extra');
+      if (extra && row2 && extra.parentElement !== row2) row2.appendChild(extra);
+    }
   }
 
   /* ─────────── modo imersivo ─────────── */

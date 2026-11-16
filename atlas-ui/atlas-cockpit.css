@@ -376,3 +376,34 @@ body.vx-imersivo #vx-head .vx-price{ margin:0; padding:8px 14px; background:rgba
 }
 #vx-head #ts-chip button{ width:30px; height:26px; border-radius:6px }
 #vx-head #ts-chip *{ font-size:10px !important }
+
+/* ══════════ o gráfico ocupa a área toda que sobra ══════════ */
+.layout .main-area{
+  flex:1 1 auto !important; width:auto !important; max-width:none !important; min-width:0 !important;
+  /* o app reservava 300px à direita para o dock flutuante; ele agora mora na
+     coluna da mesa, então essa faixa vira gráfico */
+  margin-right:0 !important;
+}
+.layout .main-area .chart-wrap,
+.layout .main-area #chart-wrap{width:100% !important; max-width:none !important}
+.layout .rpanel{flex:0 0 auto !important}
+
+/* ══════════ cabeçalho que cabe na tela ══════════ */
+@media (max-width: 1320px){
+  #vx-head .vx-hline{gap:8px; padding:7px 10px 5px}
+  #vx-head .cat-bar{display:none}
+  #vx-head .vx-brand{font-size:11px; letter-spacing:.12em}
+  #vx-head .vx-brand small{display:none}
+  #vx-head .vx-brand i{width:22px; height:22px; font-size:11px}
+  #vx-head .vx-price b{font-size:19px}
+  #vx-head .vx-toolbtn{padding:7px 9px; font-size:10.5px}
+  #vx-head .vx-live{font-size:8.5px}
+  #vx-head .vx-inst select{font-size:11px; padding:6px 7px}
+}
+@media (max-width: 1080px){
+  #vx-head .vx-hline{flex-wrap:nowrap}
+  #vx-head .vx-inst{gap:4px}
+  #vx-head .vx-price{margin-left:auto}
+  #vx-head .vx-extra{display:none}
+  #vx-head .vx-live span{display:none}
+}
