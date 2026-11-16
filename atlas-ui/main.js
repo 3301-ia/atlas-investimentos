@@ -21739,7 +21739,7 @@ function toggleIAKeyVisibility(){
 async function vxAgentConversa(){
   let id = vxAgentConv();
   if(id) return id;
-  const r = await fetch(VX_AGENT_API + '/conversations', { headers: { api_key: vxAgentKey() } });
+  const r = await fetch(VX_AGENT_API + '/conversations', { headers: { Authorization: 'Bearer ' + vxAgentKey() } });
   if(!r.ok) throw new Error('conversas ' + r.status);
   const j = await r.json();
   const lista = Array.isArray(j) ? j : (j.data || j.conversations || []);
@@ -21750,7 +21750,7 @@ async function vxAgentConversa(){
     return id;
   }
   const c = await fetch(VX_AGENT_API + '/conversations', {
-    method:'POST', headers:{ 'content-type':'application/json', api_key: vxAgentKey() }, body: '{}'
+    method:'POST', headers:{ 'content-type':'application/json', Authorization: 'Bearer ' + vxAgentKey() }, body: '{}'
   });
   const cj = await c.json();
   id = (cj.id || (cj.data && cj.data.id) || cj.conversation_id || '');
@@ -21787,8 +21787,8 @@ async function sendIAChat(){
     const id = await vxAgentConversa();
     const r = await fetch(VX_AGENT_API + '/conversations/' + id + '/messages', {
       method:'POST',
-      headers:{ 'content-type':'application/json', api_key: vxAgentKey() },
-      body: JSON.stringify({ message: txt })
+      headers:{ 'content-type':'application/json', Authorization: 'Bearer ' + vxAgentKey() },
+      body: JSON.stringify({ content: txt })
     });
     const bruto = await r.text();
     if(!r.ok) throw new Error(r.status + ' ' + bruto.slice(0, 140));
