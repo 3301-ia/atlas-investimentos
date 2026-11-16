@@ -20102,11 +20102,17 @@ function openMultiWS(){
 // PAINEL DIREITO: abas OPERAR / ANALISE
 // ══════════════════════════════════════════════════════
 function switchRTab(tab){
-  document.getElementById('tab-operar').classList.toggle('active',tab==='operar');
-  document.getElementById('tab-analise').classList.toggle('active',tab==='analise');
-  document.getElementById('body-operar').classList.toggle('active',tab==='operar');
-  document.getElementById('body-analise').classList.toggle('active',tab==='analise');
-  document.getElementById('nav-analise').classList.toggle('active',tab==='analise');
+  ['operar','analise','ia'].forEach(t=>{
+    const tEl=document.getElementById('tab-'+t);
+    const bEl=document.getElementById('body-'+t);
+    if(tEl) tEl.classList.toggle('active',tab===t);
+    if(bEl) bEl.classList.toggle('active',tab===t);
+  });
+  const nav=document.getElementById('nav-analise');
+  if(nav) nav.classList.toggle('active',tab==='analise');
+  // a aba IA abria no vazio porque o switch antigo so conhecia OPERAR e ANALISE
+  const rp=document.querySelector('.rpanel');
+  if(rp && rp.classList.contains('collapsed')) toggleRPanelCollapse();
 }
 
 // ══════════════════════════════════════════════════════

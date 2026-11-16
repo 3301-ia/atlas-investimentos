@@ -654,3 +654,138 @@ body.vx-denso [id$="-wrap-el"]{ display:none !important }
     width:98px !important; min-width:98px !important; max-width:98px !important; flex-basis:98px !important;
   }
 }
+
+/* ═══════════════════════════════════════════════════════
+   MESA DE ATIVOS · Bitcoin, Ethereum, Zcash
+   ═══════════════════════════════════════════════════════ */
+#vx-assets{
+  margin:10px 0 12px;
+  padding:12px 14px 14px;
+  border:1px solid rgba(201,168,96,.20);
+  border-radius:14px;
+  background:
+    radial-gradient(120% 160% at 0% 0%, rgba(201,168,96,.07), transparent 55%),
+    linear-gradient(180deg, rgba(255,255,255,.028), rgba(255,255,255,.008));
+}
+.vx-assets-top{
+  display:flex; align-items:baseline; justify-content:space-between; gap:14px;
+  margin-bottom:11px; flex-wrap:wrap;
+}
+.vx-assets-titulo{
+  font-size:10.5px; letter-spacing:.22em; text-transform:uppercase;
+  color:#d8c48f; font-weight:700;
+}
+.vx-assets-nota{
+  font-size:11px; color:var(--t3,#8a8f98); letter-spacing:.02em;
+}
+.vx-assets-linha{
+  display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:12px;
+}
+.vx-a-card{
+  position:relative; cursor:pointer;
+  padding:13px 15px 12px;
+  border:1px solid rgba(255,255,255,.075);
+  border-radius:12px;
+  background:linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.012));
+  transition:border-color .18s ease, transform .18s ease, background .18s ease;
+}
+.vx-a-card:hover{
+  border-color:rgba(201,168,96,.45);
+  transform:translateY(-1px);
+  background:linear-gradient(180deg, rgba(201,168,96,.075), rgba(255,255,255,.012));
+}
+.vx-a-card header{
+  display:flex; align-items:center; gap:8px; margin-bottom:6px;
+}
+.vx-a-card header b{
+  font-size:12px; letter-spacing:.14em; color:#f0e4c4; font-weight:800;
+}
+.vx-a-card header small{
+  font-size:11px; color:var(--t3,#8a8f98); letter-spacing:.04em;
+}
+.vx-a-vies{
+  margin-left:auto; font-style:normal;
+  font-size:9.5px; letter-spacing:.12em; text-transform:uppercase; font-weight:700;
+  padding:2px 7px; border-radius:20px;
+  border:1px solid rgba(255,255,255,.14); color:var(--t3,#8a8f98);
+}
+.vx-a-vies.alta{ color:#5fd6a4; border-color:rgba(95,214,164,.38); background:rgba(95,214,164,.09); }
+.vx-a-vies.baixa{ color:#f08a8a; border-color:rgba(240,138,138,.38); background:rgba(240,138,138,.09); }
+.vx-a-preco{
+  font-family:"SF Mono",ui-monospace,Menlo,monospace;
+  font-size:24px; line-height:1.1; font-weight:600;
+  color:#f6f2e6; letter-spacing:-.01em;
+  display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;
+}
+.vx-a-var{ font-size:12px; font-weight:600; letter-spacing:.01em; color:var(--t3,#8a8f98); }
+.vx-a-var.alta{ color:#5fd6a4; } .vx-a-var.baixa{ color:#f08a8a; }
+.vx-a-nivel{
+  margin-top:10px; padding-top:9px;
+  border-top:1px solid rgba(255,255,255,.07);
+  display:flex; align-items:baseline; gap:9px; flex-wrap:wrap;
+}
+.vx-a-nivel u{
+  text-decoration:none; font-size:9.5px; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--t3,#8a8f98);
+}
+.vx-a-num{
+  font-family:"SF Mono",ui-monospace,Menlo,monospace;
+  font-size:13.5px; color:#e9d9a8; font-weight:600;
+}
+.vx-a-dist{ font-size:11.5px; color:var(--t3,#8a8f98); }
+.vx-a-dist.passou{ color:#f0b46b; }
+.vx-a-vazio{
+  font-size:11.5px; color:#8a8f98; border-bottom:1px dashed rgba(255,255,255,.2);
+}
+@media (max-width:1080px){
+  .vx-assets-linha{ grid-template-columns:1fr; gap:9px; }
+  .vx-a-preco{ font-size:21px; }
+  .vx-assets-nota{ display:none; }
+}
+
+/* ═══════════════════════════════════════════════════════
+   LEITURA · números maiores, rótulos legíveis, mais respiro
+   ═══════════════════════════════════════════════════════ */
+#vx-kpis .kpi{ padding:14px 16px 13px; gap:6px }
+#vx-kpis .kpi u{ font-size:9.5px; letter-spacing:.18em; opacity:.8 }
+#vx-kpis .kpi b{ font-size:20px; line-height:1.12; font-weight:600 }
+#vx-kpis .kpi small{ font-size:11px; opacity:.75; letter-spacing:.01em }
+
+#vx-work .vx-card-h{ height:34px; padding:0 14px }
+#vx-work .vx-card-h h3{ font-size:9.6px; letter-spacing:.2em }
+#vx-work .vx-card-h span{ font-size:9px }
+#vx-work .vx-card-b{ padding:13px 14px }
+#vx-work .vx-dom-tab td{ padding:6px 0; font-size:11.5px }
+#vx-work .vx-dom-tab td.tf{ width:46px; font-size:10.5px }
+#vx-work .vx-dom-tab td.num{ font-size:11px }
+#vx-work .vx-dom-tab tr{ line-height:1.5 }
+
+@media (max-width:1080px){
+  #vx-kpis .kpi{ padding:11px 12px }
+  #vx-kpis .kpi b{ font-size:17px }
+  #vx-kpis .kpi u{ font-size:8.6px }
+}
+
+/* ═══ cortes: marca inteira, botões sem texto espremido, cabeçalho que quebra ═══ */
+#vx-head .vx-mark{ width:64px !important; min-width:64px !important; height:64px !important; overflow:visible !important }
+#vx-head .vx-mark img, #vx-head .vx-mark svg{ width:100%; height:100%; object-fit:contain }
+#vx-head .vx-toolbtn{ padding:0 11px; gap:7px; white-space:nowrap }
+#vx-head .vx-toolbtn span{ white-space:nowrap }
+
+@media (max-width:1500px){
+  #vx-head .vx-toolbtn span{ display:none }
+  #vx-head .vx-toolbtn{ width:38px; padding:0; justify-content:center }
+}
+@media (max-width:1000px){
+  #vx-head .vx-hline{ flex-wrap:wrap; row-gap:8px; height:auto !important; padding:9px 12px; align-items:center }
+  #vx-head .vx-inst{ order:5; width:100%; display:flex; gap:8px }
+  #vx-head .vx-inst select{ flex:1 1 0; min-width:0 }
+  #vx-head .vx-price{ margin-left:auto }
+  #vx-head .vx-hline .vx-live{ order:6 }
+}
+@media (max-width:520px){
+  #vx-head .vx-brand small{ display:none }
+  #vx-head .vx-brand b{ font-size:14px }
+  #vx-head .vx-price b{ font-size:15px }
+  #vx-kpis{ grid-template-columns:repeat(2,minmax(0,1fr)) }
+}
