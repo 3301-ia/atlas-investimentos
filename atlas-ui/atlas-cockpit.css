@@ -528,3 +528,98 @@ body.vx-denso [id$="-wrap-el"]{ display:none !important }
 }
 #vx-head .vx-logo{ width:38px; height:38px; border-radius:50%; display:block;
   image-rendering:auto; filter:saturate(1.06) contrast(1.03) }
+
+/* ═══════════════════════════════════════════════════════════
+   identidade metálica: o padrão da marca, em movimento
+   ═══════════════════════════════════════════════════════════ */
+:root{
+  --mt-ouro:#F5A623; --mt-claro:#FFF3C4; --mt-fundo:#8A5E14; --mt-escuro:#D68C0F;
+}
+
+/* ── o totem circular, com anel metálico e brilho vivo ── */
+#vx-head .vx-mark{
+  width:42px; height:42px; border-radius:50%; padding:2px; position:relative; isolation:isolate;
+  background:radial-gradient(circle at 50% 30%, #101B2E 0%, #060A12 78%);
+  box-shadow:0 0 0 1px rgba(245,166,35,.30), 0 0 18px rgba(245,166,35,.32);
+}
+/* o anel metálico gira sozinho; a logo dentro fica parada */
+#vx-head .vx-mark::before{
+  content:''; position:absolute; inset:0; border-radius:50%; padding:2px; pointer-events:none;
+  background:conic-gradient(from 210deg, #6B4A12, #F5A623, #FFF6D8, #E9B24C, #8A5E14, #F5A623, #6B4A12);
+  -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor; mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite:exclude;
+  animation:totemGiro 14s linear infinite;
+}
+#vx-head .vx-mark::after{
+  content:''; position:absolute; inset:-7px; border-radius:50%; z-index:-1;
+  background:radial-gradient(circle, rgba(245,166,35,.30) 0%, rgba(245,166,35,0) 68%);
+  animation:totemPulso 4.5s ease-in-out infinite;
+}
+#vx-head .vx-logo{
+  width:100%; height:100%; border-radius:50%; display:block; object-fit:cover;
+  background:#070c15; box-shadow:inset 0 0 10px rgba(0,0,0,.9);
+  filter:saturate(1.15) contrast(1.06) brightness(1.04);
+  transition:transform .55s cubic-bezier(.175,.885,.32,1.275), filter .4s;
+}
+#vx-head .vx-mark:hover::before{ animation-play-state:paused }
+#vx-head .vx-mark:hover .vx-logo{ transform:rotate(360deg) scale(1.06); filter:saturate(1.3) brightness(1.15) }
+
+/* ── VECTRA em metal, com brilho correndo na palavra ── */
+#vx-head .vx-brand b{
+  font:800 17px/1 'Inter',sans-serif; letter-spacing:.22em;
+  background:linear-gradient(100deg,var(--mt-fundo) 0%,var(--mt-ouro) 22%,var(--mt-claro) 38%,#FFFDF4 48%,var(--mt-claro) 58%,var(--mt-ouro) 74%,var(--mt-fundo) 100%);
+  background-size:260% 100%; background-position:0% 50%;
+  -webkit-background-clip:text; background-clip:text; color:transparent; -webkit-text-fill-color:transparent;
+  filter:drop-shadow(0 0 10px rgba(245,166,35,.38)) drop-shadow(0 1px 0 rgba(0,0,0,.55));
+  animation:metalCorre 7s ease-in-out infinite;
+}
+#vx-head .vx-brand small{
+  font:700 7.4px/1 'Inter',sans-serif; letter-spacing:.26em; text-transform:uppercase;
+  background:linear-gradient(90deg,#B98B3C,#F3DFA6,#C79A46);
+  -webkit-background-clip:text; background-clip:text; color:transparent; -webkit-text-fill-color:transparent;
+  filter:drop-shadow(0 0 6px rgba(245,166,35,.25));
+}
+#vx-head .vx-brand small::before{ content:none }
+
+/* ── cabeçalho com profundidade de metal, não de app ── */
+#vx-head{ position:relative; background:linear-gradient(180deg,#0E1626 0%,#0A111D 62%,#070C15 100%) }
+#vx-head::after{
+  content:''; position:absolute; left:0; right:0; bottom:0; height:1px; pointer-events:none;
+  background:linear-gradient(90deg,rgba(245,166,35,0) 0%,rgba(245,166,35,.75) 18%,rgba(255,243,196,.95) 50%,rgba(245,166,35,.75) 82%,rgba(245,166,35,0) 100%);
+  opacity:.85;
+}
+
+/* ── navegação: ícone ativo em ouro, com halo ── */
+.side-nav button.ativo, .side-nav .ativo{ color:var(--mt-ouro) !important; }
+.side-nav button.ativo svg, .side-nav .ativo svg{ filter:drop-shadow(0 0 8px rgba(245,166,35,.85)) }
+
+/* ── títulos de cartão e números: metal discreto, sem perder leitura ── */
+#vx-work .vx-card-h h3{
+  background:linear-gradient(90deg,#C89B4B,#F6E3B2 55%,#C89B4B);
+  -webkit-background-clip:text; background-clip:text; color:transparent; -webkit-text-fill-color:transparent;
+}
+#vx-kpis .kpi b{ filter:drop-shadow(0 0 9px rgba(245,166,35,.16)) }
+#vx-kpis .kpi:first-child b{
+  background:linear-gradient(100deg,#E7C879,#FFF8E2 45%,#C89B4B);
+  -webkit-background-clip:text; background-clip:text; color:transparent; -webkit-text-fill-color:transparent;
+  filter:drop-shadow(0 0 12px rgba(245,166,35,.35));
+}
+
+@keyframes metalCorre{ 0%,100%{background-position:0% 50%} 50%{background-position:100% 50%} }
+@keyframes totemGiro{ to{ transform:rotate(360deg) } }
+@keyframes totemPulso{ 0%,100%{opacity:.45; transform:scale(.96)} 50%{opacity:.9; transform:scale(1.04)} }
+@media (prefers-reduced-motion: reduce){
+  #vx-head .vx-mark::before, #vx-head .vx-mark::after, #vx-head .vx-brand b{ animation:none !important }
+}
+
+/* profundidade nos blocos: metal escovado, não cartão chapado */
+#vx-kpis{ background:linear-gradient(180deg,#0B1424 0%,#080D16 100%) }
+#vx-kpis .kpi{ position:relative }
+#vx-kpis .kpi:first-child::before{
+  content:''; position:absolute; left:0; top:8px; bottom:8px; width:2px; border-radius:2px;
+  background:linear-gradient(180deg,rgba(245,166,35,.05),var(--mt-ouro),rgba(245,166,35,.05));
+  box-shadow:0 0 10px rgba(245,166,35,.5);
+}
+#vx-work .vx-card{ box-shadow:inset 0 1px 0 rgba(255,255,255,.035), 0 10px 26px rgba(0,0,0,.35) }
+#vx-work .vx-card-h{ background:linear-gradient(180deg,rgba(255,255,255,.028),rgba(255,255,255,0)) }
