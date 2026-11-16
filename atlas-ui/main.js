@@ -21996,6 +21996,10 @@ function vxAlternarLoop(){
 }
 
 window.vxDiag = { carregar: vxConselhoCarregar, montar: vxSnapshot, prompt: vxPromptCiclo, falar: vxFalar, aplicar: vxAplicarLeitura, dados: vxBlocoDados };
+
+// pinta os cartoes dos agentes assim que o painel abre
+setTimeout(()=>{ vxConselhoCarregar().catch(()=>{}); }, 1800);
+window.vxConselho = vxConselho;
 window.vxRodarCiclo = vxRodarCiclo;
 window.vxAlternarLoop = vxAlternarLoop;
 
