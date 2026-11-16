@@ -21935,6 +21935,16 @@ function vxPromptCiclo(){
 `SINAL MULTI=ALINHADO COMPRA|ALINHADO VENDA|CONFLITO|NEUTRO; quantos tempos concordam, o nivel que confirma e o nivel que cancela`;
 }
 
+function vxContagem(){
+  const vals = Object.values(vxVereditos);
+  return {
+    compra: vals.filter(v => v === 'COMPRA').length,
+    venda: vals.filter(v => v === 'VENDA').length,
+    neutro: vals.filter(v => v === 'NEUTRO').length,
+    total: vals.length
+  };
+}
+
 function vxAplicarLeitura(texto){
   const achados = {};
   const re = /(1M|5M|15M|1H|4H|1D)\s*[=:]\s*(COMPRA|VENDA|NEUTRO)/gi;
