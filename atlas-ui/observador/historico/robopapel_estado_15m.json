@@ -1,9 +1,9 @@
 {
  "aberta": null,
- "atualizado_em": "2026-11-16T06:29:04.102Z",
+ "atualizado_em": "2026-11-16T16:19:41.753Z",
  "versao": 2,
  "ultimo_lado": "venda",
- "preco": 64488.3,
+ "preco": 64527.9,
  "timeframe": "15M",
  "filtros": {
   "alvo_r": 2,
@@ -12,34 +12,25 @@
   "so_na_virada": true
  },
  "estrutura": {
-  "lado": "alta",
-  "stop": 64218.75,
-  "viradas": 20,
-  "distancia": 100.35,
-  "folga_pct": 0.16
+  "lado": "baixa",
+  "stop": 64474.18,
+  "viradas": 23,
+  "distancia": 114.58,
+  "folga_pct": 0.18
  },
  "confluencia": {
-  "forca": 0,
-  "votos": [],
-  "contra": [
-   "EMA 15m",
+  "forca": 1,
+  "votos": [
    "EMA 1H"
+  ],
+  "contra": [
+   "EMA 15m"
   ]
  },
  "acoes": [
   {
-   "tipo": "fechou",
-   "motivo": "virada de lado",
-   "resultado_r": -0.146,
-   "resultado_usd": -0.38
-  },
-  {
    "tipo": "aguardando",
-   "motivo": "sem confluencia da camada de cima: compra isolado"
-  },
-  {
-   "tipo": "aguardando",
-   "motivo": "confluencia insuficiente: espera a camada de cima concordar"
+   "motivo": "mesmo lado da última saída (venda); só reabre na virada"
   }
  ]
 }
