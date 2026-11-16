@@ -1,0 +1,293 @@
+/* ══════════════════════════════════════════════════════════════════════
+   ATLAS VECTRA · COCKPIT
+   Camada de apresentação. Não recalcula indicador nenhum: organiza o que
+   já existe (gráfico, cartões, dock) num ambiente único e acrescenta a
+   leitura de dominância multi-tempo.
+   ══════════════════════════════════════════════════════════════════════ */
+
+:root{
+  --vx-bg0:#070b12;
+  --vx-bg1:#0b1220;
+  --vx-bg2:#101a2c;
+  --vx-bg3:#152238;
+  --vx-line:#1f2f47;
+  --vx-line2:#2b3f5c;
+  --vx-txt:#e8eef7;
+  --vx-dim:#8ea3bd;
+  --vx-gold:#d9b45b;
+  --vx-up:#2ecc8f;
+  --vx-dn:#ef5b6b;
+  --vx-warn:#e8b93f;
+}
+
+/* ---------- faixa de indicadores do topo ---------- */
+#vx-head{
+  --h:96px;
+  display:flex; flex-direction:column;
+  background:linear-gradient(180deg,var(--vx-bg1),var(--vx-bg0));
+  border-bottom:1px solid var(--vx-line);
+  flex:0 0 auto;
+}
+#vx-head .vx-hline{
+  display:flex; align-items:center; gap:14px;
+  padding:8px 16px 6px; min-height:46px;
+}
+#vx-head .vx-brand{
+  display:flex; align-items:center; gap:9px;
+  font:700 13px/1 'Inter',system-ui,sans-serif;
+  letter-spacing:.16em; text-transform:uppercase; color:var(--vx-txt);
+  white-space:nowrap;
+}
+#vx-head .vx-brand i{
+  width:26px; height:26px; border-radius:7px;
+  border:1px solid var(--vx-gold);
+  background:radial-gradient(circle at 30% 25%,#28364d,#0d1626);
+  display:inline-flex; align-items:center; justify-content:center;
+  font-style:normal; font-size:13px; color:var(--vx-gold);
+}
+#vx-head .vx-brand small{
+  display:block; font:500 8.5px/1.5 'Inter',sans-serif; letter-spacing:.28em;
+  color:var(--vx-dim); margin-top:2px;
+}
+#vx-head .vx-inst{
+  display:flex; align-items:center; gap:8px;
+  padding-left:14px; border-left:1px solid var(--vx-line);
+}
+#vx-head .vx-inst select{
+  background:var(--vx-bg3); color:var(--vx-txt);
+  border:1px solid var(--vx-line2); border-radius:8px;
+  font:600 12px/1 'Inter',sans-serif; padding:7px 9px; outline:none;
+}
+#vx-head .vx-price{
+  display:flex; align-items:baseline; gap:10px;
+  margin-left:auto; font-family:'JetBrains Mono',ui-monospace,monospace;
+}
+#vx-head .vx-price b{font-size:23px; font-weight:600; color:var(--vx-txt); letter-spacing:-.5px}
+#vx-head .vx-price span{font-size:11.5px; color:var(--vx-dim)}
+#vx-head .vx-price .up{color:var(--vx-up)} #vx-head .vx-price .dn{color:var(--vx-dn)}
+#vx-head .vx-live{
+  display:flex; align-items:center; gap:6px;
+  font:600 9.5px/1 'Inter',sans-serif; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--vx-dim);
+}
+#vx-head .vx-live i{
+  width:6px; height:6px; border-radius:50%; background:var(--vx-up);
+  box-shadow:0 0 8px var(--vx-up); display:inline-block;
+}
+#vx-head .vx-toolbtn{
+  display:inline-flex; align-items:center; gap:7px;
+  background:var(--vx-bg3); color:var(--vx-txt);
+  border:1px solid var(--vx-line2); border-radius:9px;
+  font:600 11.5px/1 'Inter',sans-serif; padding:8px 12px; cursor:pointer;
+}
+#vx-head .vx-toolbtn:hover{border-color:var(--vx-gold); color:#fff}
+#vx-head .vx-toolbtn[aria-expanded="true"]{border-color:var(--vx-gold); background:#1b2942}
+
+/* ---------- trilha de números ---------- */
+#vx-kpis{
+  display:grid; grid-template-columns:repeat(6,minmax(0,1fr));
+  gap:1px; background:var(--vx-line);
+  border-top:1px solid var(--vx-line);
+}
+#vx-kpis .kpi{
+  background:var(--vx-bg1); padding:8px 13px 9px;
+  display:flex; flex-direction:column; gap:4px; min-width:0;
+}
+#vx-kpis .kpi u{
+  text-decoration:none; font:600 8.5px/1 'Inter',sans-serif;
+  letter-spacing:.18em; text-transform:uppercase; color:var(--vx-dim);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+#vx-kpis .kpi b{
+  font:600 15px/1.15 'JetBrains Mono',ui-monospace,monospace;
+  color:var(--vx-txt); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+#vx-kpis .kpi small{
+  font:500 9.5px/1.2 'Inter',sans-serif; color:var(--vx-dim);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+#vx-kpis .kpi.up b{color:var(--vx-up)} #vx-kpis .kpi.dn b{color:var(--vx-dn)}
+
+/* ---------- gaveta de ferramentas ---------- */
+#vx-tools{
+  display:none; border-top:1px solid var(--vx-line);
+  background:var(--vx-bg1); padding:10px 16px 12px;
+  max-height:38vh; overflow:auto;
+}
+#vx-tools.on{display:block}
+#vx-tools .vx-grp{margin-bottom:9px}
+#vx-tools .vx-grp:last-child{margin-bottom:0}
+#vx-tools .vx-grp > h4{
+  margin:0 0 6px; font:600 8.6px/1 'Inter',sans-serif;
+  letter-spacing:.2em; text-transform:uppercase; color:var(--vx-dim);
+}
+#vx-tools .vx-row{display:flex; flex-wrap:wrap; gap:6px}
+#vx-tools button{
+  background:var(--vx-bg3); color:var(--vx-txt);
+  border:1px solid var(--vx-line2); border-radius:8px;
+  font:500 11px/1 'Inter',sans-serif; padding:7px 10px; cursor:pointer;
+  white-space:nowrap;
+}
+#vx-tools button:hover{border-color:var(--vx-gold)}
+#vx-tools button.on{border-color:var(--vx-gold); color:var(--vx-gold)}
+
+/* ---------- coluna de trabalho ---------- */
+#vx-work{
+  flex:0 0 352px; width:352px; display:flex; flex-direction:column;
+  gap:10px; padding:10px; overflow-y:auto; overflow-x:hidden;
+  background:var(--vx-bg0); border-left:1px solid var(--vx-line);
+}
+#vx-work::-webkit-scrollbar{width:6px}
+#vx-work::-webkit-scrollbar-thumb{background:var(--vx-line2); border-radius:6px}
+
+#vx-work .vx-card{
+  background:var(--vx-bg1); border:1px solid var(--vx-line);
+  border-radius:12px; overflow:hidden;
+}
+#vx-work .vx-card-h{
+  display:flex; align-items:center; justify-content:space-between;
+  gap:8px; padding:9px 12px; border-bottom:1px solid var(--vx-line);
+  background:linear-gradient(180deg,#12203a,#0e1828);
+}
+#vx-work .vx-card-h h3{
+  margin:0; font:600 10px/1 'Inter',sans-serif;
+  letter-spacing:.2em; text-transform:uppercase; color:var(--vx-txt);
+}
+#vx-work .vx-card-h span{
+  font:500 9px/1 'Inter',sans-serif; color:var(--vx-dim);
+  letter-spacing:.08em;
+}
+#vx-work .vx-card-b{padding:10px 12px}
+
+/* ---------- dominância ---------- */
+#vx-dom .vx-dom-top{
+  display:flex; align-items:center; gap:10px; padding-bottom:9px;
+  margin-bottom:9px; border-bottom:1px solid var(--vx-line);
+}
+#vx-dom .vx-dom-verdict{
+  font:700 12.5px/1.2 'Inter',sans-serif; letter-spacing:.04em;
+  text-transform:uppercase;
+}
+#vx-dom .vx-dom-score{
+  margin-left:auto; font:600 19px/1 'JetBrains Mono',monospace;
+}
+#vx-dom .vx-dom-sub{
+  font:500 9.5px/1.3 'Inter',sans-serif; color:var(--vx-dim);
+}
+#vx-dom table{width:100%; border-collapse:collapse}
+#vx-dom tr{border-bottom:1px solid rgba(31,47,71,.55)}
+#vx-dom tr:last-child{border-bottom:0}
+#vx-dom td{padding:4px 0; vertical-align:middle; font:500 10.5px/1.2 'Inter',sans-serif}
+#vx-dom td.tf{width:34px; color:var(--vx-txt); font-weight:600; font-size:10px; letter-spacing:.04em}
+#vx-dom td.bar{width:auto; padding:4px 8px}
+#vx-dom td.num{width:44px; text-align:right; font-family:'JetBrains Mono',monospace; font-size:10.5px}
+#vx-dom .track{
+  position:relative; height:7px; border-radius:4px;
+  background:#1b2740; overflow:hidden;
+}
+#vx-dom .fill{position:absolute; top:0; bottom:0; border-radius:4px}
+#vx-dom .fill.up{left:50%; background:linear-gradient(90deg,#1e8f66,var(--vx-up))}
+#vx-dom .fill.dn{right:50%; background:linear-gradient(270deg,#a83a48,var(--vx-dn))}
+#vx-dom .mid{position:absolute; left:50%; top:-2px; bottom:-2px; width:1px; background:#3b5273}
+
+/* ---------- sinais de leitura ---------- */
+#vx-leituras .vx-leitura{
+  display:flex; align-items:center; gap:8px; padding:6px 0;
+  border-bottom:1px solid rgba(31,47,71,.5); font:500 10.5px/1.25 'Inter',sans-serif;
+}
+#vx-leituras .vx-leitura:last-child{border-bottom:0}
+#vx-leituras .vx-tag{
+  flex:0 0 auto; font:700 8.6px/1 'Inter',sans-serif; letter-spacing:.1em;
+  text-transform:uppercase; padding:3px 6px; border-radius:5px;
+}
+#vx-leituras .vx-tag.up{background:rgba(46,204,143,.14); color:var(--vx-up); border:1px solid rgba(46,204,143,.35)}
+#vx-leituras .vx-tag.dn{background:rgba(239,91,107,.14); color:var(--vx-dn); border:1px solid rgba(239,91,107,.35)}
+#vx-leituras .vx-when{margin-left:auto; color:var(--vx-dim); font-size:9.5px; white-space:nowrap}
+#vx-leituras .vx-empty{color:var(--vx-dim); font:500 10.5px/1.4 'Inter',sans-serif; padding:4px 0}
+
+/* ---------- cartões adotados (sinais, avisos, dock) ---------- */
+#vx-work #vx-sinais,
+#vx-work #vx-avisos,
+#vx-work #vx-dock{
+  position:static !important; inset:auto !important;
+  left:auto !important; top:auto !important; right:auto !important; bottom:auto !important;
+  width:100% !important; max-width:none !important; min-width:0 !important;
+  height:auto !important; max-height:none !important; min-height:0 !important;
+  margin:0 !important; transform:none !important; z-index:auto !important;
+  box-shadow:none !important; resize:none !important;
+  background:var(--vx-bg1) !important; border:1px solid var(--vx-line) !important;
+  border-radius:12px !important; overflow:hidden !important;
+}
+#vx-work #vx-dock .vx-dock-corpo{max-height:none !important; overflow:visible !important}
+#vx-work #vx-dock .vx-dock-abas{overflow-x:auto}
+#vx-work #vx-avisos{max-height:230px; overflow:auto}
+#vx-work #vx-sinais.recolhido{max-height:44px}
+
+/* barras de rolagem discretas dentro da coluna */
+#vx-work *::-webkit-scrollbar{width:6px; height:6px}
+#vx-work *::-webkit-scrollbar-thumb{background:var(--vx-line2); border-radius:6px}
+
+/* ---------- gráfico ocupa o resto ---------- */
+.layout{background:var(--vx-bg0)}
+.layout > div:first-child{flex:1 1 auto; min-width:0}
+
+/* ---------- celular: uma coluna, sem aperto ---------- */
+@media (max-width: 980px){
+  #vx-head .vx-hline{flex-wrap:wrap; gap:10px; padding:8px 10px}
+  #vx-head .vx-price{margin-left:0; order:3; width:100%}
+  #vx-head .vx-inst{border-left:0; padding-left:0}
+  #vx-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  #vx-work{flex:0 0 auto; width:100%; border-left:0; border-top:1px solid var(--vx-line);
+           max-height:none; padding:8px}
+  .layout{flex-direction:column; overflow-y:auto}
+  .layout > div:first-child{flex:0 0 62vh; min-height:52vh}
+  #vx-tools{max-height:none}
+}
+
+/* botão pequeno dentro do cabeçalho do cartão */
+#vx-work .vx-card-h .vx-mini{
+  background:transparent; color:var(--vx-dim);
+  border:1px solid var(--vx-line2); border-radius:6px;
+  font:600 8.6px/1 'Inter',sans-serif; letter-spacing:.14em; text-transform:uppercase;
+  padding:4px 7px; cursor:pointer;
+}
+#vx-work .vx-card-h .vx-mini:hover{border-color:var(--vx-gold); color:var(--vx-gold)}
+#vx-dom .vx-dims td{padding:2.5px 0; font-size:9.5px}
+#vx-dom .vx-dims tr{border-bottom:1px dashed rgba(31,47,71,.5)}
+
+/* a barra antiga some: o que prestava dela passou para o cabeçalho */
+.topbar.vx-aposentada{display:none !important}
+
+/* nada de filho encolhido dentro do cabeçalho */
+#vx-head{align-items:stretch}
+#vx-head > *{width:100% !important; max-width:none !important; margin:0 !important}
+#vx-head .vx-hline{gap:12px}
+#vx-head #vx-inst{gap:6px !important}
+#vx-head .cat-bar{
+  display:flex; gap:4px; align-items:center;
+  padding-left:12px; border-left:1px solid var(--vx-line);
+}
+#vx-head .cat-bar > *{font-size:9px !important}
+#vx-head .vx-extra{display:flex; align-items:center; gap:6px; margin-left:6px}
+
+/* cabeçalho da coluna e recolher */
+#vx-work-top{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:0 4px 0 6px; flex:0 0 auto;
+}
+#vx-work-top span{
+  font:600 8.6px/1 'Inter',sans-serif; letter-spacing:.24em;
+  text-transform:uppercase; color:var(--vx-dim);
+}
+#vx-work-top button{
+  background:transparent; border:1px solid var(--vx-line2); color:var(--vx-dim);
+  border-radius:6px; width:24px; height:22px; cursor:pointer; font-size:11px; line-height:1;
+}
+#vx-work-top button:hover{border-color:var(--vx-gold); color:var(--vx-gold)}
+#vx-work{transition:flex-basis .22s ease, width .22s ease, padding .22s ease}
+#vx-work.vx-fechada{
+  flex-basis:34px; width:34px; padding:8px 4px; overflow:hidden;
+}
+#vx-work.vx-fechada > *:not(#vx-work-top){display:none !important}
+#vx-work.vx-fechada #vx-work-top span{display:none}
+#vx-dom .vx-dom-tab tr:hover td.tf{color:var(--vx-gold)}
