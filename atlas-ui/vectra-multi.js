@@ -81,17 +81,46 @@
     return 100 - 100 / (1 + g / p);
   }
 
+  /* O voto de cada tempo soma cinco leituras do próprio código:
+     cascata de EMAs (peso 2), RSI 14 (1), estrutura de rompimento (1)
+     e momento EMA12-EMA26 contra o sinal (1). Nada de opinião externa. */
   function votarTempo(fechas) {
     var e8 = ema(fechas, 8), e16 = ema(fechas, 16), e50 = ema(fechas, 50);
     if (e8 == null || e16 == null || e50 == null) return null;
-    var p = 0;
-    if (e8 > e16 && e16 > e50) p = 2;
-    else if (e8 > e16) p = 1;
-    else if (e8 < e16 && e16 < e50) p = -2;
-    else if (e8 < e16) p = -1;
+    var p = 0, partes = { ema: 0, rsi: 0, est: 0, macd: 0 };
+
+    if (e8 > e16 && e16 > e50) partes.ema = 2;
+    else if (e8 > e16) partes.ema = 1;
+    else if (e8 < e16 && e16 < e50) partes.ema = -2;
+    else if (e8 < e16) partes.ema = -1;
+
     var r = rsi(fechas, 14);
-    if (r != null) { if (r > 55) p += 1; else if (r < 45) p -= 1; }
-    return { voto: p >= 2 ? 'COMPRA' : (p <= -2 ? 'VENDA' : 'NEUTRO'), soma: p, rsi: r };
+    if (r != null) { if (r > 55) partes.rsi = 1; else if (r < 45) partes.rsi = -1; }
+
+    // estrutura: fechou acima da máxima das 20 velas anteriores sai compra,
+    // perdeu a mínima das 20 sai venda
+    if (fechas.length > 24) {
+      var ultimo = fechas[fechas.length - 1];
+      var cauda = fechas.slice(-21, -1);
+      var topo = Math.max.apply(null, cauda), fundo = Math.min.apply(null, cauda);
+      if (ultimo > topo) partes.est = 1;
+      else if (ultimo < fundo) partes.est = -1;
+      else {
+        var meio = (topo + fundo) / 2;
+        partes.est = ultimo > meio ? 0.5 : -0.5;   // lado da faixa, meio voto
+      }
+    }
+
+    // momento: EMA 12 contra EMA 26 e contra o próprio sinal
+    var e12 = ema(fechas, 12), e26 = ema(fechas, 26);
+    if (e12 != null && e26 != null) {
+      var m = e12 - e26;
+      partes.macd = m > 0 ? 2 : -2;   // acima de zero compra, abaixo vende
+    }
+
+    p = partes.ema + partes.rsi + partes.est + partes.macd;
+    var lado = p >= 2 ? 'COMPRA' : (p <= -2 ? 'VENDA' : 'NEUTRO');
+    return { voto: lado, soma: p, rsi: r, partes: partes };
   }
 
   function carregar(ativo) {
@@ -125,7 +154,7 @@
     if (c.COMPRA >= 4 && c.COMPRA > c.VENDA) { lado = 'COMPRA'; n = c.COMPRA; }
     else if (c.VENDA >= 4 && c.VENDA > c.COMPRA) { lado = 'VENDA'; n = c.VENDA; }
     return { contagem: c, lado: lado, n: n, total: votos.length,
-             texto: lado ? ('ALINHADO ' + lado) : (votos.length ? 'CONFLITO' : '--') };
+             texto: lado ? ('ALINHADO ' + lado) : (votos.length ? 'SEM CONSENSO' : '--') };
   }
 
   function trocado(el, chave, valor) {

@@ -68,8 +68,14 @@
     try { r = window.vxMotor ? window.vxMotor.ler() : null; } catch (e) {}
 
     /* frase de contexto: estado + o que confirma + o que cancela */
-    var txt = '<b>' + (r ? r.multi : 'LEITURA') + '</b>';
-    if (r && r.n) txt += ' <span class="vx-ctx-n">' + r.n + ' de ' + r.votos.length + ' tempos no mesmo lado</span>';
+    var rot = r ? r.multi : 'LEITURA';
+    if (rot === 'CONFLITO') rot = 'SEM CONSENSO';
+    var txt = '<b>' + rot + '</b>';
+    if (r && r.n) {
+      var total = r.votos.length;
+      txt += ' <span class="vx-ctx-n">' + r.n + ' de ' + total + ' tempos concordam' +
+        (r.lado ? '' : ' — o sinal só fecha com ' + Math.ceil(total * 0.84) + ' de ' + total) + '</span>';
+    }
     var vies = s.e8 > s.e16 ? 'acima da EMA 16' : 'abaixo da EMA 16';
     txt += ' <span class="vx-ctx-sep">·</span> no ' + tfNome() + ' o preço está ' + vies;
     if (r && r.lado === 'VENDA') {

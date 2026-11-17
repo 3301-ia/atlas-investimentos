@@ -289,3 +289,101 @@ body.vx-sem-sinal #vx-contexto{ display:none !important }
 #vx-assets.mini .vx-a-nivel, #vx-assets.mini .vx-a-leitura{ display:none !important }
 #vx-assets.mini .vx-a-var{ font-size:10px !important }
 #vx-assets.mini .vx-a-vies{ font-size:8px !important; padding:1px 5px !important }
+
+/* ══════════ a tela para de dançar: medidas fixas nos controles ══════════ */
+#cat-bar{ min-width:124px !important; justify-content:flex-end !important }
+#cat-bar .cp, #cat-bar .cp.active{ font-weight:700 !important; letter-spacing:normal !important }
+#cat-bar .cp.active{ color:var(--vx-gold) !important; border-color:rgba(217,180,91,.5) !important }
+#vx-head .vx-live, #vx-head .vx-price{ font-variant-numeric:tabular-nums }
+
+/* ══════════ cabeçalho com respiro de verdade ══════════ */
+@media (min-width:1201px){
+  #vx-head .vx-hline{ gap:16px; padding:10px 18px }
+  #vx-head .vx-toolbtn{ padding:0 15px; height:38px }
+  #vx-head .vx-toggle-btn{ min-width:38px; height:38px }
+}
+
+/* ══════════ etiqueta MTF: sem borrão preto em cima do nome ══════════ */
+#mtf-bias-hud{
+  top:auto !important; bottom:12px !important; left:12px !important;
+  background:#0a1018 !important; backdrop-filter:none !important; -webkit-backdrop-filter:none !important;
+  border:1px solid rgba(217,180,91,.22) !important; border-radius:9px !important;
+  box-shadow:0 6px 18px rgba(0,0,0,.45) !important; z-index:5 !important;
+  font-size:9.5px !important; padding:5px 10px !important;
+}
+
+/* ══════════ alça da mesa: trilho próprio, fora dos números ══════════ */
+#vx-work{ position:relative; z-index:4 }
+#vx-work.vx-fechada{ flex-basis:38px !important; width:38px !important; padding:8px 5px !important }
+#vx-work.vx-fechada #vx-work-top{
+  flex-direction:column; align-items:center; gap:8px; padding:0;
+}
+#vx-work.vx-fechada #vx-work-top button{ width:28px; height:28px; font-size:12px }
+#vx-work-top{ padding:0 8px 0 10px !important }
+
+/* ══════════ análise: leitura didática, sem letra brilhando ══════════ */
+#body-analise *{ animation:none !important; text-shadow:none !important }
+#body-analise .dot{ box-shadow:none !important }
+#body-analise .rsi-heat-scatter{ height:330px !important; overflow:hidden }
+#body-analise .rsi-bubble{ font-size:8px !important; padding:1px 3px !important; border-radius:5px !important }
+#body-analise .sp-sec > span{ color:#aab4c2 !important; letter-spacing:.14em !important }
+
+/* ══════════ alarmes: metal galvanizado, com corpo e personalidade ══════════ */
+#vx-avisos, #gold-alert-log, #body-alerts{
+  background:
+    repeating-linear-gradient(100deg, rgba(255,255,255,.022) 0 1px, transparent 1px 3px),
+    linear-gradient(168deg,#101823 0%,#0b111a 52%,#0d141d 100%) !important;
+  border:1px solid #223047 !important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06), inset 0 -1px 0 rgba(0,0,0,.55) !important;
+  border-radius:11px !important;
+}
+#vx-avisos .vx-card-h, #body-alerts .sp-sec{
+  background:linear-gradient(180deg,#1a2433,#121a26) !important;
+  border-bottom:1px solid #1f2b3d !important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07);
+}
+#vx-avisos .vx-card-h h3, #body-alerts .sp-sec > span:first-child{
+  color:#c4cddb !important; letter-spacing:.2em !important; text-shadow:0 1px 0 rgba(0,0,0,.6) !important;
+}
+#vx-avisos .vx-aviso, #body-alerts .alert-row{
+  background:linear-gradient(180deg,#131c28,#0f1621) !important;
+  border:1px solid #202c3f !important; border-left:2px solid rgba(217,180,91,.5) !important;
+  border-radius:8px !important; box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+}
+#vx-avisos .vx-aviso:hover, #body-alerts .alert-row:hover{ border-color:#2b3a52 !important; background:linear-gradient(180deg,#16202e,#111925) !important }
+#btn-alerts, #gold-btn-alerts{
+  background:linear-gradient(180deg,#1b2533,#121a25) !important;
+  border:1px solid #27344a !important; color:#c9d2e0 !important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07), 0 2px 6px rgba(0,0,0,.45) !important;
+  border-radius:8px !important;
+}
+#btn-alerts:hover, #gold-btn-alerts:hover{ border-color:rgba(217,180,91,.55) !important; color:#f0e2be !important }
+
+/* análise: os pontos viram fichas legíveis, nada empilhado */
+#body-analise .rsi-heat-scatter{
+  display:flex !important; flex-wrap:wrap; align-content:flex-start; gap:5px !important;
+  height:auto !important; min-height:0 !important; padding:8px 6px !important;
+}
+#body-analise .rsi-heat-scatter .rsi-bubble{
+  position:static !important; left:auto !important; top:auto !important; right:auto !important; bottom:auto !important;
+  transform:none !important; width:auto !important; height:auto !important;
+  font-size:9px !important; padding:2px 6px !important; border-radius:6px !important;
+}
+#body-analise .rsi-heat-axis-note{ margin-top:4px !important }
+
+/* barra lateral: cada item com ar, nada colado */
+.side-nav{ width:70px !important }
+.side-nav .nav-item, .side-nav #btn-robo, .side-nav #nav-mais{
+  height:56px !important; gap:5px !important; padding:7px 2px !important; border-radius:10px !important;
+  margin:2px 4px !important;
+}
+.side-nav .nav-item .vx-nav-lbl, .side-nav #btn-robo .vx-nav-lbl{ font-size:8px !important; letter-spacing:.06em !important; line-height:1.1 !important; text-align:center }
+
+/* barra lateral: rótulo em duas linhas, nunca cortado */
+.side-nav .nav-item, .side-nav #btn-robo, .side-nav #nav-mais{
+  flex-direction:column !important; align-items:center !important; justify-content:center !important; overflow:hidden !important;
+}
+.side-nav .vx-nav-lbl, .side-nav .nav-item span{
+  white-space:normal !important; word-break:break-word !important; max-width:100% !important;
+  display:block !important; line-height:1.05 !important; overflow:hidden !important;
+}

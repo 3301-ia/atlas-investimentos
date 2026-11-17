@@ -8,7 +8,7 @@
      RSI   >55 = +1          <45 = -1      entre = 0
      DOM   buy = +1          sell = -1     flat = 0
      soma >= +2 -> COMPRA | soma <= -2 -> VENDA | resto -> NEUTRO
-   SINAL MULTI: 5 ou 6 tempos no mesmo lado = ALINHADO; 4 ou menos = CONFLITO. */
+   SINAL MULTI: 5 ou 6 tempos no mesmo lado = ALINHADO; 4 ou menos = SEM CONSENSO. */
 
 (function () {
   'use strict';
@@ -58,7 +58,7 @@
     var multi = 'NEUTRO', lado = null, n = 0;
     if (c.COMPRA >= 5) { multi = 'ALINHADO COMPRA'; lado = 'COMPRA'; n = c.COMPRA; }
     else if (c.VENDA >= 5) { multi = 'ALINHADO VENDA'; lado = 'VENDA'; n = c.VENDA; }
-    else if (c.COMPRA + c.VENDA > 0) { multi = 'CONFLITO'; n = Math.max(c.COMPRA, c.VENDA); }
+    else if (c.COMPRA + c.VENDA > 0) { multi = 'SEM CONSENSO'; n = Math.max(c.COMPRA, c.VENDA); }
     return { votos: votos, contagem: c, multi: multi, lado: lado, n: n };
   }
 

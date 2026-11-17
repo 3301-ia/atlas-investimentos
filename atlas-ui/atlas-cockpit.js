@@ -449,7 +449,7 @@
         '<button type="button" class="vx-toolbtn vx-gg" id="vx-toggle-ativos" aria-pressed="true" title="Faixa de ativos"><svg class="vx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h18M3 12h18M3 17h18"/></svg></button>' +
         '<button type="button" class="vx-toolbtn vx-gg" id="vx-toggle-sinal" aria-pressed="true" title="Faixa de leitura"><svg class="vx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v3M12 18v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M3 12h3M18 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/></svg></button>' +
         '<button type="button" class="vx-toolbtn" id="vx-ind-btn" title="Sub-painéis"><svg class="vx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span>Sub-painéis</span></button>' +
-        '<button type="button" class="vx-toolbtn" id="vx-imersao-btn" title="Imersão (F)"><svg class="vx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 15v5h-5M15 4h5v5M9 20H4v-5"/></svg><span>Imersão</span></button>' +
+        '<button type="button" class="vx-toolbtn" id="vx-imersao-btn" title="Tela cheia (F)"><svg class="vx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 15v5h-5M15 4h5v5M9 20H4v-5"/></svg><span>Tela cheia</span></button>' +
         '<button type="button" class="vx-toolbtn" id="vx-tools-btn" aria-expanded="false" title="Ferramentas"><svg class="vx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h10M4 17h6M18 12v8M14 5v6"/></svg><span>Ferramentas</span></button>' +
       '</div>' +
       '<div id="vx-kpis">' +
@@ -619,6 +619,38 @@
     }
     adotarCartoes();
   }
+
+  /* qualquer clique na navegação abre a coluna da mesa: cartão com largura zero
+     é o que fazia a análise e o imperial parecerem quebrados */
+  function abrirMesa() {
+    var w = document.getElementById('vx-work');
+    if (w && w.classList.contains('vx-fechada')) {
+      w.classList.remove('vx-fechada');
+      var f = document.getElementById('vx-work-fold');
+      if (f) f.textContent = '›';
+      try { localStorage.setItem('vx_mesa_aberta', '1'); } catch (e) {}
+    }
+    var d = document.getElementById('vx-dock');
+    if (d && d.classList.contains('recolhido')) {
+      d.classList.remove('recolhido');
+      var t = d.querySelector('#vx-dock-toggle');
+      if (t) { t.textContent = '›'; t.title = 'recolher o painel'; }
+      try { localStorage.setItem('vxDockRecolhido', '0'); } catch (e) {}
+    }
+    setTimeout(function () {
+      var alvo = document.getElementById('imperial-card');
+      if (alvo && alvo.offsetHeight > 0) {
+        try { alvo.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {}
+      }
+      window.dispatchEvent(new Event('resize'));
+    }, 320);
+  }
+  window.vxAbrirMesa = abrirMesa;
+
+  document.addEventListener('click', function (ev) {
+    var item = ev.target.closest && ev.target.closest('.side-nav .nav-item, .side-nav #btn-robo, .side-nav #nav-mais');
+    if (item) abrirMesa();
+  }, true);
 
   /* adota os cartões flutuantes, preservando o DOM e os eventos deles */
   function adotarCartoes() {
