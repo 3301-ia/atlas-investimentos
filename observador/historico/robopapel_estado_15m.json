@@ -1,9 +1,9 @@
 {
  "aberta": null,
- "atualizado_em": "2026-11-16T16:19:41.753Z",
+ "atualizado_em": "2026-11-17T00:22:32.668Z",
  "versao": 2,
  "ultimo_lado": "venda",
- "preco": 64527.9,
+ "preco": 64500,
  "timeframe": "15M",
  "filtros": {
   "alvo_r": 2,
@@ -13,18 +13,18 @@
  },
  "estrutura": {
   "lado": "baixa",
-  "stop": 64474.18,
-  "viradas": 23,
-  "distancia": 114.58,
-  "folga_pct": 0.18
+  "stop": 65042.56,
+  "viradas": 22,
+  "distancia": 367.56,
+  "folga_pct": 0.57
  },
  "confluencia": {
   "forca": 1,
   "votos": [
-   "EMA 1H"
+   "EMA 15m"
   ],
   "contra": [
-   "EMA 15m"
+   "EMA 1H"
   ]
  },
  "acoes": [

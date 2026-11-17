@@ -1,33 +1,14 @@
 {
- "aberta": {
-  "ativo": "BTC-USDT",
-  "timeframe": "1H",
-  "lado": "venda",
-  "entrada": 64733.8,
-  "stop": 66485.71,
-  "alvo": 61229.98,
-  "tamanho": 0.0015,
-  "risco_usd": 2.6,
-  "risco_pct": 2,
-  "equity": 130,
-  "motivo": "abertura na virada: lado baixa, stop com 2.71% de folga",
-  "nucleo_versao": "trailing 1.0.0 + risco 1.0.0",
-  "hash": "069f4f6722cb9fcdc1dbcbac8443cb2d5e93e8ae2a27b9719ecc046e2eab18fa",
-  "payload_assinado": "{\"core\":\"trailing 1.0.0 + risco 1.0.0\",\"rules\":\"chandelier\",\"params\":{\"atr\":14,\"mult\":2.5,\"janela\":22,\"alvo_r\":2,\"dist_min_pct\":1},\"ativo\":\"BTC-USDT\",\"t\":1794769200,\"lado\":\"venda\",\"entrada\":64733.8,\"stop\":66485.71,\"alvo\":61229.98}",
-  "estado": "aberta",
-  "preco_mercado": 64500.1,
-  "aberta_em": "2026-11-15T20:17:40.518Z",
-  "modo": "papel"
- },
- "atualizado_em": "2026-11-16T16:19:41.555Z",
+ "aberta": null,
+ "atualizado_em": "2026-11-17T00:22:32.480Z",
  "versao": 1,
- "preco": 64500.1,
+ "preco": 64500,
  "estrutura": {
-  "lado": "baixa",
-  "stop": 65276.59,
-  "viradas": 19,
-  "distancia": 810.39,
-  "folga_pct": 1.26
+  "lado": "alta",
+  "stop": 64295.78,
+  "viradas": 20,
+  "distancia": 583.62,
+  "folga_pct": 0.9
  },
  "timeframe": "1H",
  "filtros": {
@@ -36,6 +17,17 @@
   "mult": 2.5,
   "so_na_virada": true
  },
- "ultimo_lado": "compra",
- "acoes": []
+ "ultimo_lado": "venda",
+ "acoes": [
+  {
+   "tipo": "fechou",
+   "motivo": "virada de lado",
+   "resultado_r": 0.133,
+   "resultado_usd": 0.35
+  },
+  {
+   "tipo": "aguardando",
+   "motivo": "stop apertado: 0.32% < 1%"
+  }
+ ]
 }
