@@ -84,7 +84,7 @@
   /* O voto de cada tempo soma cinco leituras do próprio código:
      cascata de EMAs (peso 2), RSI 14 (1), estrutura de rompimento (1)
      e momento EMA12-EMA26 contra o sinal (1). Nada de opinião externa. */
-  function votarTempo(fechas) {
+  function votarTempo(fechas, velas) {
     var e8 = ema(fechas, 8), e16 = ema(fechas, 16), e50 = ema(fechas, 50);
     if (e8 == null || e16 == null || e50 == null) return null;
     var p = 0, partes = { ema: 0, rsi: 0, est: 0, macd: 0 };
@@ -118,9 +118,58 @@
       partes.macd = m > 0 ? 2 : -2;   // acima de zero compra, abaixo vende
     }
 
-    p = partes.ema + partes.rsi + partes.est + partes.macd;
+    // fibo do cruzamento: a perna vale a direção do cruzamento enquanto o
+    // preço estiver na metade final dela (0,5 a 1) ou na progressão acima de 1
+    partes.fib = 0;
+    if (velas && velas.length > 40) {
+      var perna = pernaDoCruzamento(velas);
+      if (perna) {
+        var pos = (fechas[fechas.length - 1] - perna.p0) / (perna.p1 - perna.p0);
+        if (pos >= 0.5 && pos <= 1.6) partes.fib = perna.dir === 'alta' ? 1 : -1;
+        else if (pos < 0.382) partes.fib = perna.dir === 'alta' ? -1 : 1;   // devolveu a perna
+      }
+    }
+
+    p = partes.ema + partes.rsi + partes.est + partes.macd + partes.fib;
     var lado = p >= 2 ? 'COMPRA' : (p <= -2 ? 'VENDA' : 'NEUTRO');
     return { voto: lado, soma: p, rsi: r, partes: partes };
+  }
+
+  /* perna da fibo do cruzamento 8/16: 0 no extremo antes do cruzamento,
+     1 no extremo deixado depois dele */
+  function pernaDoCruzamento(velas) {
+    var c = velas.map(function (v) { return v.close; });
+    var i;
+    function serie(n) {
+      var out = new Array(c.length).fill(null), k = 2 / (n + 1), e = null, j;
+      for (j = 0; j < c.length; j++) {
+        if (j < n - 1) continue;
+        if (e === null) { var t = 0; for (var q = j - n + 1; q <= j; q++) t += c[q]; e = t / n; }
+        else e = c[j] * k + e * (1 - k);
+        out[j] = e;
+      }
+      return out;
+    }
+    var m8 = serie(8), m16 = serie(16);
+    var cruzes = [];
+    for (i = 1; i < c.length; i++) {
+      if (m8[i] == null || m16[i] == null || m8[i - 1] == null || m16[i - 1] == null) continue;
+      if (m8[i - 1] <= m16[i - 1] && m8[i] > m16[i]) cruzes.push({ i: i, dir: 'alta' });
+      else if (m8[i - 1] >= m16[i - 1] && m8[i] < m16[i]) cruzes.push({ i: i, dir: 'baixa' });
+    }
+    if (!cruzes.length) return null;
+    var cr = cruzes[cruzes.length - 1];
+    var inicio = cruzes.length > 1 ? cruzes[cruzes.length - 2].i : Math.max(0, cr.i - 96);
+    var p0, p1, j2;
+    if (cr.dir === 'baixa') {
+      p0 = -Infinity; for (j2 = inicio; j2 <= cr.i; j2++) p0 = Math.max(p0, velas[j2].high);
+      p1 = Infinity; for (j2 = cr.i; j2 < velas.length; j2++) p1 = Math.min(p1, velas[j2].low);
+    } else {
+      p0 = Infinity; for (j2 = inicio; j2 <= cr.i; j2++) p0 = Math.min(p0, velas[j2].low);
+      p1 = -Infinity; for (j2 = cr.i; j2 < velas.length; j2++) p1 = Math.max(p1, velas[j2].high);
+    }
+    if (!isFinite(p0) || !isFinite(p1) || p0 === p1) return null;
+    return { dir: cr.dir, p0: p0, p1: p1 };
   }
 
   function carregar(ativo) {
@@ -133,8 +182,10 @@
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (j) {
           if (!Array.isArray(j) || j.length < 60) return null;
-          var v = j.slice().reverse().map(function (c) { return parseFloat(c[4]); });
-          var x = votarTempo(v);
+          var ord = j.slice().reverse();
+          var v = ord.map(function (c) { return parseFloat(c[4]); });
+          var velas = ord.map(function (c) { return { time: c[0], low: parseFloat(c[1]), high: parseFloat(c[2]), close: parseFloat(c[4]) }; });
+          var x = votarTempo(v, velas);
           if (!x) return null;
           x.rot = tf.rot;
           return x;

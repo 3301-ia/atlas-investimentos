@@ -387,3 +387,25 @@ body.vx-sem-sinal #vx-contexto{ display:none !important }
   white-space:normal !important; word-break:break-word !important; max-width:100% !important;
   display:block !important; line-height:1.05 !important; overflow:hidden !important;
 }
+
+/* ══════════ fibo do cruzamento: linhas e leitura ══════════ */
+.vx-fibo{ margin:6px 10px 8px; border-radius:11px; background:linear-gradient(168deg,#101823,#0b111a);
+  border:1px solid #223047; box-shadow:inset 0 1px 0 rgba(255,255,255,.05) }
+.vx-fibo-h{ display:flex; align-items:center; justify-content:space-between; gap:8px;
+  padding:7px 10px; border-bottom:1px solid #1d2838; background:linear-gradient(180deg,#16202e,#111a25) }
+.vx-fibo-h h3{ margin:0; font:800 8.6px/1 'Inter',sans-serif; letter-spacing:.22em; text-transform:uppercase; color:#b9c3d2 }
+.vx-fibo-h button{ background:#0d151f; border:1px solid #27344a; color:#8e9aac; border-radius:6px;
+  font:700 8px/1 'Inter',sans-serif; letter-spacing:.1em; padding:4px 6px; cursor:pointer }
+.vx-fibo-h button:hover{ border-color:rgba(217,180,91,.5); color:#e8d9b0 }
+.vx-fibo-corpo{ padding:8px 10px 10px; display:flex; flex-direction:column; gap:7px }
+.vx-fibo-perna{ display:flex; flex-direction:column; gap:3px; padding-left:8px;
+  font:600 9.5px/1.35 'Inter',sans-serif; color:#a9b4c4 }
+.vx-fibo-perna b{ color:#e6ecf5; font-variant-numeric:tabular-nums }
+.vx-fibo-pos{ font:600 9.5px/1.4 'Inter',sans-serif; color:#cfd7e3 }
+.vx-fibo-niveis{ display:flex; flex-wrap:wrap; gap:4px }
+.vx-fibo-niv{ font:600 8.6px/1 'Inter',sans-serif; color:#7f8b9c; background:#0c1420;
+  border:1px solid #1d2838; border-radius:6px; padding:4px 6px; font-variant-numeric:tabular-nums }
+.vx-fibo-niv b{ color:#c6d0dd; font-weight:800 }
+.vx-fibo-niv.perto{ border-color:rgba(217,180,91,.55); color:#d9b45b }
+.vx-fibo-niv.perto b{ color:#f0e2be }
+@media (max-width:860px){ .vx-fibo{ margin:6px 8px } }
