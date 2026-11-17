@@ -58,45 +58,34 @@
     setInterval(buscar, 25000);
   }
 
-  function pintar() {
-    var linha = document.getElementById('vx-assets-linha');
-    if (!linha) return;
-    linha.innerHTML = ATIVOS.map(function (a) {
-      var preco = a.preco;
-      var var24 = a.var24;
-      var vies = a.vies || '—';
-      var classeVies = vies === 'compra' ? 'alta' : (vies === 'venda' ? 'baixa' : 'neutro');
-      var dist = (preco != null && a.gatilho) ? (a.gatilho - preco) : null;
-      var nivelHtml;
-      if (a.gatilho) {
-        nivelHtml = '<span class="vx-a-num">' + fmtCurto(a.gatilho) + '</span>' +
-          '<span class="vx-a-dist ' + (dist != null && dist <= 0 ? 'passou' : '') + '">' +
-          (dist == null ? '--' : (dist > 0 ? fmtCurto(dist) + ' abaixo' : fmtCurto(Math.abs(dist)) + ' acima')) + '</span>';
-      } else {
-        nivelHtml = '<span class="vx-a-vazio">definir nível</span>';
-      }
-      var estadoNivel = '';
-      if (a.gatilho && preco != null) {
-        if (preco >= a.gatilho) estadoNivel = ' rompido';
-        else if ((a.gatilho - preco) / preco <= 0.01) estadoNivel = ' perto';
-      }
-      var leitura = (a.rsi == null ? '' :
-        '<div class="vx-a-leitura"><span>RSI 15m <b>' + a.rsi.toFixed(0) + '</b></span>' +
-        '<span>na faixa <b>' + (a.pos == null ? '--' : a.pos + '%') + '</b></span>' +
-        (a.faixa ? '<span>' + fmtCurto(a.faixa[0]) + '–' + fmtCurto(a.faixa[1]) + '</span>' : '') + '</div>');
-      return '<article class="vx-a-card' + estadoNivel + '" data-sym="' + a.sym + '" data-curto="' + a.curto + '">' +
-        '<header><b>' + a.curto + '</b><small>' + a.nome + '</small>' +
-        '<i class="vx-a-vies ' + classeVies + '">' + vies + '</i></header>' +
-        '<div class="vx-a-preco">' + (preco == null ? '--' : fmt(preco)) +
-        '<span class="vx-a-var ' + (var24 == null ? '' : (var24 >= 0 ? 'alta' : 'baixa')) + '">' +
-        (var24 == null ? '--' : (var24 >= 0 ? '+' : '') + var24.toFixed(2) + '%') + '</span></div>' +
-        '<div class="vx-a-nivel" data-nivel="' + a.curto + '" title="Clique para definir o gatilho">' +
-        '<u>gatilho</u>' + nivelHtml + '</div>' +
-        leitura +
-        '</article>';
-    }).join('');
+  var cartoes = {};
 
+  /* desenha a fita uma única vez: daqui para frente só o texto muda,
+     então nada pisca e nada empurra o layout */
+  function desenhar() {
+    var linha = document.getElementById('vx-assets-linha');
+    if (!linha || linha.dataset.pronta === '1') return;
+    linha.innerHTML = ATIVOS.map(function (a) {
+      return '<article class="vx-a-card" data-sym="' + a.sym + '" data-curto="' + a.curto + '">' +
+        '<header><b>' + a.curto + '</b><small>' + a.nome + '</small>' +
+        '<i class="vx-a-vies neutro">--</i></header>' +
+        '<div class="vx-a-preco"><span class="vx-a-num-preco">--</span>' +
+        '<span class="vx-a-var">--</span></div>' +
+        '<div class="vx-a-nivel" data-nivel="' + a.curto + '" title="Clique para definir o gatilho">' +
+        '<u>gatilho</u><span class="vx-a-nivel-caixa"></span></div>' +
+        '<div class="vx-a-leitura"></div></article>';
+    }).join('');
+    linha.dataset.pronta = '1';
     Array.prototype.forEach.call(linha.querySelectorAll('.vx-a-card'), function (card) {
+      cartoes[card.getAttribute('data-curto')] = {
+        card: card,
+        selo: card.querySelector('.vx-a-vies'),
+        preco: card.querySelector('.vx-a-num-preco'),
+        variacao: card.querySelector('.vx-a-var'),
+        nivel: card.querySelector('.vx-a-nivel-caixa'),
+        leitura: card.querySelector('.vx-a-leitura'),
+        ultimo: {}
+      };
       card.addEventListener('click', function (ev) {
         if (ev.target.closest('[data-nivel]')) return;
         if (typeof window.changeSym === 'function') window.changeSym(card.getAttribute('data-sym'));
@@ -112,8 +101,61 @@
         if (resp === null) return;
         ativo.gatilho = resp.trim() === '' ? null : Number(String(resp).replace(/[^\d.]/g, ''));
         salvarNiveis();
-        pintar();
+        pintar(true);
       });
+    });
+  }
+
+  // só escreve no DOM o que realmente mudou
+  function trocar(ref, campo, valor) {
+    if (!ref || ref[campo + '_v'] === valor) return;
+    ref[campo + '_v'] = valor;
+    return true;
+  }
+
+  function pintar(forcar) {
+    desenhar();
+    ATIVOS.forEach(function (a) {
+      var r = cartoes[a.curto];
+      if (!r) return;
+      var preco = a.preco;
+      var var24 = a.var24;
+      var vies = a.vies || '—';
+      var classeVies = vies === 'compra' ? 'alta' : (vies === 'venda' ? 'baixa' : 'neutro');
+      var dist = (preco != null && a.gatilho) ? (a.gatilho - preco) : null;
+
+
+      var textoPreco = preco == null ? '--' : fmt(preco);
+      if (trocar(r, 'preco', textoPreco)) r.preco.textContent = textoPreco;
+
+      var textoVar = var24 == null ? '--' : (var24 >= 0 ? '+' : '') + var24.toFixed(2) + '%';
+      if (trocar(r, 'variacao', textoVar + (var24 == null ? '' : (var24 >= 0 ? '|a' : '|b')))) {
+        r.variacao.textContent = textoVar;
+        r.variacao.className = 'vx-a-var ' + (var24 == null ? '' : (var24 >= 0 ? 'alta' : 'baixa'));
+      }
+
+      var estadoNivel = '';
+      if (a.gatilho && preco != null) {
+        if (preco >= a.gatilho) estadoNivel = ' rompido';
+        else if ((a.gatilho - preco) / preco <= 0.01) estadoNivel = ' perto';
+      }
+      var chaveNivel = a.gatilho ? a.gatilho + '|' + (dist == null ? 'x' : Math.round(dist)) + '|' + estadoNivel : 'sem';
+      if (trocar(r, 'nivel', chaveNivel)) {
+        r.nivel.innerHTML = a.gatilho
+          ? '<span class="vx-a-num">' + fmtCurto(a.gatilho) + '</span>' +
+            '<span class="vx-a-dist ' + (dist != null && dist <= 0 ? 'passou' : '') + '">' +
+            (dist == null ? '--' : (dist > 0 ? fmtCurto(dist) + ' abaixo' : fmtCurto(Math.abs(dist)) + ' acima')) + '</span>'
+          : '<span class="vx-a-vazio">definir nível</span>';
+        r.card.className = 'vx-a-card' + estadoNivel;
+      }
+
+      var chaveLeitura = [a.rsi == null ? '' : a.rsi.toFixed(0), a.pos, a.faixa ? Math.round(a.faixa[0]) + '-' + Math.round(a.faixa[1]) : ''].join('|');
+      if (trocar(r, 'leitura', chaveLeitura)) {
+        r.leitura.innerHTML = (a.rsi == null ? '' :
+          '<span>RSI 15m <b>' + a.rsi.toFixed(0) + '</b></span>' +
+          '<span>na faixa <b>' + (a.pos == null ? '--' : a.pos + '%') + '</b></span>' +
+          (a.faixa ? '<span>' + fmtCurto(a.faixa[0]) + '–' + fmtCurto(a.faixa[1]) + '</span>' : ''));
+      }
     });
   }
 

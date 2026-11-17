@@ -27,6 +27,41 @@
   var ultimo = null;   // resumo dos tres ativos
   var VAL_MS = 60000;
 
+  /* memória do lado confirmado: exige duas leituras seguidas no lado novo e
+     pelo menos 3 minutos desde a última troca, para o selo não ficar piscando */
+  var memoria = {};
+  var TROCAS = 2, ESPERA_MS = 3 * 60 * 1000, JANELA_MS = 2 * 60 * 1000;
+  try { memoria = JSON.parse(localStorage.getItem('vx_multi_memoria') || '{}') || {}; } catch (e) { memoria = {}; }
+  Object.keys(memoria).forEach(function (k) { if (['BTC', 'ETH', 'ZEC'].indexOf(k) < 0) delete memoria[k]; });
+  function guardar() { try { localStorage.setItem('vx_multi_memoria', JSON.stringify(memoria)); } catch (e) {} }
+
+  function firmar(chave, ladoLido, quando, forca) {
+    var m = memoria[chave] || { lado: null, desde: 0, pendente: null, n: 0, pendenteDesde: 0 };
+    if (!ladoLido) { m.pendente = null; m.n = 0; m.pendenteDesde = 0; memoria[chave] = m; return m; }
+    if (m.lado === ladoLido) { m.pendente = null; m.n = 0; m.pendenteDesde = 0; memoria[chave] = m; return m; }
+    // leitura forte (5 ou 6 de 6) entra de primeira: o selo já nasce com o lado
+    if (!m.lado && (forca || 0) >= 5) {
+      m.lado = ladoLido; m.desde = quando; m.pendente = null; m.n = 0; m.pendenteDesde = 0;
+      memoria[chave] = m; guardar(); return m;
+    }
+    if (m.pendente === ladoLido) {
+      // conta uma confirmação por leitura de dados, não por repintura da tela
+      if ((quando - (m.ultima || 0)) >= 45000) { m.n = Math.min((m.n || 0) + 1, 9); m.ultima = quando; }
+    } else {
+      m.pendente = ladoLido; m.n = 1; m.pendenteDesde = quando; m.ultima = quando;
+    }
+    // troca só com duas leituras no lado novo, separadas por 2 minutos,
+    // e no mínimo 3 minutos desde a última troca
+    var espalhou = (quando - (m.pendenteDesde || 0)) >= JANELA_MS;
+    var liberou = (quando - (m.desde || 0)) >= ESPERA_MS;
+    if (m.n >= TROCAS && espalhou && liberou) {
+      m.lado = ladoLido; m.desde = quando; m.pendente = null; m.n = 0; m.pendenteDesde = 0;
+    }
+    memoria[chave] = m;
+    guardar();
+    return m;
+  }
+
   function ema(v, n) {
     if (!v || v.length < n) return null;
     var a = 2 / (n + 1), e = v[v.length - n];
@@ -93,6 +128,13 @@
              texto: lado ? ('ALINHADO ' + lado) : (votos.length ? 'CONFLITO' : '--') };
   }
 
+  function trocado(el, chave, valor) {
+    el.dataset['vx' + chave] = el.dataset['vx' + chave] || '';
+    if (el.dataset['vx' + chave] === valor) return false;
+    el.dataset['vx' + chave] = valor;
+    return true;
+  }
+
   /* ---------- pintura: selo do cartão ---------- */
   function aplicar() {
     var cards = document.querySelectorAll('#vx-assets-linha .vx-a-card');
@@ -102,22 +144,36 @@
       return carregar(a).then(function (votos) { return { curto: a.curto, votos: votos, r: resumir(votos) }; })
         .catch(function () { return null; });
     })).then(function (lista) {
-      var resumo = {};
+      var resumo = {}, agora = Date.now();
       lista.forEach(function (item) {
         if (!item) return;
-        resumo[item.curto] = item.r;
+        var m = firmar(item.curto, item.r.lado, agora, item.r.lado === 'COMPRA' ? item.r.contagem.COMPRA : item.r.contagem.VENDA);
+        var firme = { lado: m.lado, n: m.lado === 'COMPRA' ? item.r.contagem.COMPRA : item.r.contagem.VENDA };
+        resumo[item.curto] = { lado: m.lado, n: firme.n, total: item.r.total,
+                               conflito: !m.lado, pendente: m.pendente, votos: item.r.contagem };
         var card = document.querySelector('#vx-assets-linha .vx-a-card[data-curto="' + item.curto + '"]');
         if (!card) return;
         var selo = card.querySelector('.vx-a-vies');
-        if (selo && item.r.lado) {
-          selo.textContent = item.r.lado + ' ' + item.r.n + '/' + item.r.total;
-          selo.className = 'vx-a-vies ' + (item.r.lado === 'COMPRA' ? 'alta' : 'baixa');
-        } else if (selo) {
-          selo.textContent = item.r.texto;
-          selo.className = 'vx-a-vies neutro';
+        if (selo) {
+          var texto, classe;
+          if (m.lado) {
+            texto = m.lado + ' ' + firme.n + '/' + item.r.total;
+            classe = m.lado === 'COMPRA' ? 'alta' : 'baixa';
+            if (m.pendente && m.pendente !== m.lado) texto += ' \u2192 ' + m.pendente.toLowerCase() + ' ' + Math.min(m.n, TROCAS) + '/' + TROCAS;
+          } else if (m.pendente) {
+            texto = 'abrindo ' + m.pendente.toLowerCase() + ' ' + Math.min(m.n, TROCAS) + '/' + TROCAS;
+            classe = 'neutro';
+          } else {
+            texto = 'sem lado';
+            classe = 'neutro';
+          }
+          if (trocado(card, 'selo', texto)) { selo.textContent = texto; selo.className = 'vx-a-vies ' + classe; }
         }
         var detalhe = item.votos.map(function (v) { return v.rot + ' ' + v.voto.toLowerCase(); }).join(' · ');
-        card.title = item.curto + ' no código: ' + detalhe;
+        var nota = (m.lado ? 'firme em ' + m.lado.toLowerCase() : 'sem lado firme') +
+          (m.pendente && m.pendente !== m.lado ? ' · virando para ' + m.pendente.toLowerCase() + ' (' + m.n + ' de ' + TROCAS + ')' : '');
+        var titulo = item.curto + ' · ' + nota + '\n' + detalhe;
+        if (card.title !== titulo) card.title = titulo;
       });
       ultimo = resumo;
       pintarLinha(resumo);
@@ -142,7 +198,7 @@
       else if (r.lado === 'VENDA') { venda++; comLado.push(k); }
       partes.push('<span class="vx-ma"><u>' + k + '</u>' +
         (r.lado ? '<b class="' + (r.lado === 'COMPRA' ? 'c' : 'v') + '">' + r.lado.toLowerCase() + ' ' + r.n + '/' + r.total + '</b>'
-                : '<b class="n">conflito</b>') + '</span>');
+                : '<b class="n">' + (r.pendente ? 'virando ' + r.pendente.toLowerCase() : 'sem lado') + '</b>') + '</span>');
     });
     var fecho;
     if (compra === 3) fecho = 'os três compram';
@@ -161,5 +217,5 @@
   // o cartão é redesenhado a cada preço novo: repinta o selo por cima (dados em cache)
   setInterval(ciclo, 1500);
 
-  window.vxMulti = { ler: function () { return ultimo; }, aplicar: aplicar };
+  window.vxMulti = { ler: function () { return ultimo; }, aplicar: aplicar, firmar: firmar, memoria: function () { return memoria; } };
 })();

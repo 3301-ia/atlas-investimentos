@@ -225,3 +225,28 @@
 /* sanfonas: some com a faixa inteira quando desligada */
 body.vx-sem-ativos #vx-assets{ display:none !important }
 body.vx-sem-sinal #vx-contexto{ display:none !important }
+
+/* ══════════ brilho mais calmo: nada de pulsar na cara ══════════ */
+@keyframes vxLuzCalma{ 0%,100%{ opacity:.94 } 50%{ opacity:1 } }
+@keyframes vxOuroCalmo{
+  0%,100%{ text-shadow:0 0 0 rgba(201,168,96,0) }
+  50%{ text-shadow:0 0 6px rgba(201,168,96,.2) }
+}
+@keyframes vxVarreduraCalma{
+  0%{ background-position:-60% 0 }
+  100%{ background-position:200% 0 }
+}
+#vx-kpis .kpi u{ animation:vxLuzCalma 11s ease-in-out infinite !important }
+.rpanel .sp-sec > span:first-child{ animation:vxOuroCalmo 14s ease-in-out infinite !important }
+#vx-head .vx-brand b{ animation:vxVarreduraCalma 16s linear infinite !important }
+#vx-head .vx-brand small{ animation:vxLuzCalma 14s ease-in-out infinite !important }
+#vx-head .vx-mark::before{ animation:totemGiro 40s linear infinite !important }
+#vx-head .vx-mark::after{ animation:none !important; opacity:.5 !important }
+.vx-a-card::before{ animation:vxVarreduraCalma 22s linear infinite !important; opacity:.5 !important }
+#vx-kpis .kpi b{ text-shadow:0 0 8px rgba(201,168,96,.1) !important }
+#vx-head .vx-price b, #vx-preco{ animation:none !important }
+/* números param de dançar: largura fixa por dígito */
+#vx-kpis .kpi b, #vx-assets .vx-a-preco, #vx-preco, #vx-assets .vx-a-var{ font-variant-numeric:tabular-nums; font-feature-settings:'tnum' 1 }
+/* alturas travadas na fita de ativos: nada de empurrar o gráfico */
+#vx-assets .vx-a-card{ min-height:76px !important }
+#vx-assets .vx-a-leitura{ min-height:14px !important }

@@ -314,18 +314,30 @@
   }
 
   /* ─────────── trilha de números ─────────── */
+  var ultimoPrecoPintado = null, pintouPrecoEm = 0;
+
   function pintarKpis() {
     var preco = estado.preco || 0;
     var g = estado.geral;
+    // escreve só quando o texto muda: sem piscar a cada leitura de preço
     var k = function (id, valorHtml, sub, classe) {
       var box = document.getElementById('kpi-' + id);
       if (!box) return;
-      box.className = 'kpi' + (classe ? ' ' + classe : '');
+      var alvoClasse = 'kpi' + (classe ? ' ' + classe : '');
+      if (box.className !== alvoClasse) box.className = alvoClasse;
       var b = box.querySelector('b'), s = box.querySelector('small');
-      if (b) b.innerHTML = valorHtml;
-      if (s) s.innerHTML = sub || '&nbsp;';
+      if (b && b.innerHTML !== valorHtml) b.innerHTML = valorHtml;
+      var subFinal = sub || '&nbsp;';
+      if (s && s.innerHTML !== subFinal) s.innerHTML = subFinal;
     };
-    k('preco', preco ? n(preco, 2) : '--', (document.getElementById('tf-select') ? document.getElementById('tf-select').value : '15m'), '');
+    // o preço do topo respira: no máximo a cada 2,5 s e só quando muda de verdade
+    var agoraMs = Date.now();
+    var mudouPreco = !ultimoPrecoPintado || !preco || Math.abs(preco - ultimoPrecoPintado) / preco > 0.0004;
+    if (mudouPreco && (agoraMs - (pintouPrecoEm || 0)) >= 2500) {
+      pintouPrecoEm = agoraMs;
+      ultimoPrecoPintado = preco;
+      k('preco', preco ? n(preco, 2) : '--', (document.getElementById('tf-select') ? document.getElementById('tf-select').value : '15m'), '');
+    }
     var v = estado.var24;
     k('var24', v == null ? '--' : ((v >= 0 ? '+' : '') + num(v) + '%'), '', v == null ? '' : (v >= 0 ? 'up' : 'dn'));
     k('dominio', (g >= 0 ? '+' : '') + Math.round(g), estado.consenso.up + ' alta · ' + estado.consenso.dn + ' baixa', g >= 18 ? 'up' : (g <= -18 ? 'dn' : ''));

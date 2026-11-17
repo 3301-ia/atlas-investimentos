@@ -77,8 +77,26 @@
     selecionar(abaAtiva);
   }
 
+  function abrirDock() {
+    // a coluna da mesa pode estar encolhida: cartão hospedado precisa dela aberta
+    var work = document.getElementById('vx-work');
+    if (work && work.classList.contains('vx-fechada')) {
+      work.classList.remove('vx-fechada');
+      var f = document.getElementById('vx-work-fold');
+      if (f) f.textContent = '\u27e9';
+      try { localStorage.setItem('vx_mesa_aberta', '1'); } catch (e) {}
+    }
+    if (!dock || !dock.classList.contains('recolhido')) return;
+    dock.classList.remove('recolhido');
+    var b = dock.querySelector('#vx-dock-toggle');
+    if (b) { b.textContent = '\u27e9'; b.title = 'recolher o painel'; }
+    try { localStorage.setItem('vxDockRecolhido', '0'); } catch (e) {}
+  }
+
   function selecionar(chave) {
     abaAtiva = chave;
+    // cartão hospedado na mesa recolhida ficaria com largura zero: abre a mesa
+    if (chave !== 'mercado') abrirDock();
     if (!abas) return;
     [].forEach.call(abas.querySelectorAll('.vx-aba'), function (b) {
       b.setAttribute('aria-selected', b.getAttribute('data-aba') === chave ? 'true' : 'false');
@@ -180,7 +198,8 @@
       var t = (itens[i].innerText || itens[i].title || '').toLowerCase();
       if (t.indexOf(alvo) >= 0) {
         try { itens[i].click(); } catch (e) {}
-        setTimeout(function () { adotar(); selecionar(id); }, 260);
+        abrirDock();
+        setTimeout(function () { adotar(); selecionar(id); abrirDock(); }, 260);
         return;
       }
     }
