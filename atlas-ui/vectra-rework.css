@@ -137,3 +137,48 @@
 /* itens do sinal: deixam o texto ocupar a linha, sem encostar no vizinho */
 #body-analise .sig-item{ min-width:0 !important; flex-wrap:wrap !important; gap:6px !important }
 #body-analise .sig-px, #body-analise .sig-type{ flex:0 0 auto !important; white-space:nowrap !important }
+
+/* ══════════ faixa de contexto e distâncias ══════════ */
+#vx-contexto{
+  display:flex; align-items:center; gap:0; flex-wrap:wrap;
+  margin:0 0 9px; border:1px solid var(--vx-line); border-radius:11px;
+  background:linear-gradient(180deg,rgba(255,255,255,.022),rgba(255,255,255,.006));
+  overflow:hidden;
+}
+.vx-ctx-estado{
+  flex:1 1 380px; min-width:0; padding:9px 14px;
+  font-size:11.5px; line-height:1.45; color:#aab2c0; letter-spacing:.01em;
+}
+.vx-ctx-estado b{ color:#eef2f8; font-weight:600 }
+.vx-ctx-n{ color:#8d97a8; font-size:10.5px }
+.vx-ctx-sep{ color:rgba(201,168,96,.55); margin:0 3px }
+.vx-ctx-dist{
+  display:flex; gap:0; flex:0 0 auto; align-items:stretch;
+  border-left:1px solid var(--vx-line);
+}
+.vx-dist{
+  display:flex; flex-direction:column; align-items:flex-end; gap:0;
+  padding:6px 12px; min-width:84px; border-left:1px solid rgba(255,255,255,.045);
+}
+.vx-dist:first-child{ border-left:0 }
+.vx-dist u{ font-size:7px; letter-spacing:.18em; text-transform:uppercase; color:#7f8794; text-decoration:none }
+.vx-dist b{ font-size:12.5px; font-variant-numeric:tabular-nums; color:#d7dde7; line-height:1.15 }
+.vx-dist s{ font-size:8.6px; text-decoration:none; color:#6f7787 }
+.vx-dist-alvo b{ color:#d8c48f }
+.vx-dist-alvo u{ color:#b99f68 }
+
+/* sanfona da coluna lateral: só o primeiro bloco nasce aberto */
+.vx-acc{ border-bottom:1px solid rgba(255,255,255,.045) }
+.vx-acc > .sp-sec{ cursor:pointer; user-select:none; position:relative }
+.vx-acc > .sp-sec::after{
+  content:'+'; position:absolute; right:12px; top:50%; transform:translateY(-50%);
+  font-size:12px; color:rgba(201,168,96,.65); transition:transform .18s ease;
+}
+.vx-acc.aberto > .sp-sec::after{ content:'−' }
+.vx-acc > :not(.sp-sec){ display:none }
+.vx-acc.aberto > :not(.sp-sec){ display:block }
+
+@media (max-width:1100px){
+  .vx-ctx-dist{ flex:1 1 100%; border-left:0; border-top:1px solid var(--vx-line); overflow-x:auto }
+  .vx-dist{ min-width:78px }
+}
