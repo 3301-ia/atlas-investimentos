@@ -70,7 +70,9 @@
     var botao = barra.querySelector('#vx-ativos-mini');
     var guardado = null;
     try { guardado = localStorage.getItem('vx_ativos_mini'); } catch (e) {}
-    aplicarMini(guardado === '1');
+    // no celular a fita nasce recolhida: três cartões empilhados comem meia tela
+    var mini = guardado === '1' || (guardado === null && window.innerWidth <= 760);
+    aplicarMini(mini);
     if (botao) {
       botao.addEventListener('click', function (ev) {
         ev.stopPropagation();

@@ -452,3 +452,59 @@ table td, table th, .vx-card-b, .vx-sinais-val{
 /* tabelas da mesa: linha com altura fixa, nada de pulsar a altura */
 #vx-work table tr{ height:22px }
 #vx-work table td{ line-height:1.25; padding-top:2px; padding-bottom:2px }
+
+/* ══════════════════════════════════════════════════════════════════
+   CELULAR: cabeçalho de duas linhas, sem animação e sem desfoque.
+   Menos chrome, gráfico de verdade, nada de fliperama.
+   ══════════════════════════════════════════════════════════════════ */
+@media (max-width:760px){
+  #vx-head{ margin:0 0 4px !important; border-radius:0 !important }
+  #vx-head .vx-hline{
+    display:flex !important; flex-wrap:wrap !important; align-items:center !important;
+    gap:6px !important; padding:6px 8px !important; min-height:0 !important;
+  }
+  #vx-head .vx-brand{ flex:1 1 auto !important; min-width:0 !important; gap:7px !important }
+  #vx-head .vx-mark{ width:30px !important; min-width:30px !important; height:30px !important }
+  #vx-head .vx-brand b{ font-size:11.5px !important; letter-spacing:.1em !important }
+  #vx-head .vx-brand small{ display:none !important }
+  #vx-head .vx-price{ flex:0 0 auto !important; gap:5px !important; padding:0 !important }
+  #vx-head .vx-price b{ font-size:14.5px !important }
+  #vx-head .vx-price span{ font-size:9px !important }
+  #vx-head .vx-live{ display:none !important }
+  #vx-head .vx-toolbtn{ width:34px !important; height:34px !important; min-width:34px !important; padding:0 !important; border-radius:9px !important }
+  #vx-head .vx-toolbtn span{ display:none !important }
+  #vx-head .vx-gg{ width:34px !important }
+  #vx-head .vx-brand{ order:1; flex:0 0 auto !important }
+  #vx-head .vx-price{ order:2; margin-left:auto !important }
+  #vx-head .vx-inst{
+    order:3; flex:1 1 120px !important; width:auto !important; overflow:visible !important;
+    min-width:0 !important; gap:6px !important; padding:0 !important; border-left:0 !important;
+  }
+  #vx-head .vx-toolbtn{ order:4 }
+  #vx-head .vx-inst select{ flex:1 1 0 !important; min-width:0 !important; height:30px !important;
+    font-size:10px !important; padding:4px 6px !important }
+  #vx-head #cat-bar{ flex:0 0 auto !important; min-width:0 !important }
+  #vx-head #cat-bar .cp{ font-size:8px !important; padding:4px 6px !important }
+
+  #vx-kpis{
+    flex-wrap:nowrap !important; overflow-x:auto !important; overflow-y:hidden !important;
+    height:48px !important; scrollbar-width:none;
+  }
+  #vx-kpis::-webkit-scrollbar{ display:none }
+  #vx-kpis .kpi{ flex:0 0 auto !important; min-width:92px !important; padding:5px 9px !important }
+  #vx-kpis .kpi u{ font-size:6px !important; letter-spacing:.14em !important }
+  #vx-kpis .kpi b{ font-size:13px !important }
+  #vx-kpis .kpi small{ display:none !important }
+
+  #vx-assets{ margin:5px 0 6px !important }
+  #vx-assets .vx-a-card{ min-height:0 !important }
+
+  /* calma de verdade: nenhuma animação, nenhum desfoque de vidro */
+  #vx-head .vx-brand b, #vx-head .vx-brand small, #vx-kpis .kpi u, #vx-kpis .kpi b,
+  #vx-head .vx-mark::before, #vx-head .vx-mark::after, .rpanel .sp-sec > span:first-child,
+  .vx-motor-selo, .vx-a-vies, .dot{ animation:none !important }
+  *{ backdrop-filter:none !important; -webkit-backdrop-filter:none !important }
+  .vx-a-card::before{ display:none !important }
+  #vx-head .vx-brand b{ background:none !important; color:#dfe6f0 !important; -webkit-text-fill-color:#dfe6f0 !important }
+  #vx-head .vx-mark::before{ box-shadow:0 0 0 1px rgba(217,180,91,.25) !important }
+}
