@@ -134,18 +134,24 @@
       alvo.className = 'vx-ctx-ativos';
       ctx.appendChild(alvo);
     }
-    var partes = [], compra = 0, venda = 0;
+    var partes = [], compra = 0, venda = 0, comLado = [];
     ['BTC', 'ETH', 'ZEC'].forEach(function (k) {
       var r = resumo[k];
       if (!r) return;
-      if (r.lado === 'COMPRA') compra++;
-      else if (r.lado === 'VENDA') venda++;
+      if (r.lado === 'COMPRA') { compra++; comLado.push(k); }
+      else if (r.lado === 'VENDA') { venda++; comLado.push(k); }
       partes.push('<span class="vx-ma"><u>' + k + '</u>' +
         (r.lado ? '<b class="' + (r.lado === 'COMPRA' ? 'c' : 'v') + '">' + r.lado.toLowerCase() + ' ' + r.n + '/' + r.total + '</b>'
                 : '<b class="n">conflito</b>') + '</span>');
     });
-    var fecho = compra + venda === 3 ? 'os três concordam' :
-      (compra === 2 ? 'dois de três compram' : (venda === 2 ? 'dois de três vendem' : 'os três divergem'));
+    var fecho;
+    if (compra === 3) fecho = 'os três compram';
+    else if (venda === 3) fecho = 'os três vendem';
+    else if (compra === 2 && venda === 0) fecho = 'dois de três compram';
+    else if (venda === 2 && compra === 0) fecho = 'dois de três vendem';
+    else if (comLado.length === 1) fecho = 'só o ' + comLado[0] + ' tem lado; os outros dois estão divididos';
+    else if (comLado.length === 0) fecho = 'nenhum dos três tem lado ainda';
+    else fecho = 'dois com lado, um dividido';
     alvo.innerHTML = partes.join('') + '<span class="vx-ma-fecho">' + fecho + '</span>';
   }
 
