@@ -478,6 +478,7 @@
     head.querySelector('#vx-imersao-btn').addEventListener('click', function () { alternarImersao(); });
     head.querySelector('#vx-ind-btn').addEventListener('click', function () {
       densoForcado = document.body.classList.contains('vx-denso');
+      try { localStorage.setItem('vx_subs', densoForcado ? 'off' : 'on'); } catch (e) {}
       aplicarDensidade();
     });
     document.addEventListener('keydown', function (ev) {
@@ -735,9 +736,14 @@
 
   /* em janela baixa, os sub-painéis roubam metade do gráfico: começam recolhidos
      e voltam por um botão, sem obrigar ninguém a arrastar divisória */
+  // o gráfico manda: os sub-painéis nascem recolhidos e só voltam se forem chamados
   var densoForcado = null;
+  function _prefSubs() {
+    try { return localStorage.getItem('vx_subs') === 'on' ? false : true; } catch (e) { return true; }
+  }
   function aplicarDensidade() {
-    var recolher = (densoForcado == null) ? (window.innerHeight < 780) : densoForcado;
+    var recolher = (densoForcado == null) ? _prefSubs() : densoForcado;
+    try { localStorage.setItem('vx_subs', recolher ? 'off' : 'on'); } catch (e) {}
     document.body.classList.toggle('vx-denso', recolher);
     var rot = recolher ? 'Sub-painéis (ocultos)' : 'Sub-painéis';
     var b = document.getElementById('vx-ind-btn');

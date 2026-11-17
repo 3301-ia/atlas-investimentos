@@ -1,0 +1,139 @@
+/* VECTRA · REWORK 2
+   Espaço para o preço, números do topo em faixa fina, painel lateral respirando
+   e um fio de luz nas etiquetas. Nada de caixa gigante roubando o gráfico. */
+
+/* ── mesa de ativos: fita, não vitrine ── */
+#vx-assets{
+  margin:8px 0 9px !important;
+  padding:0 !important;
+  border-radius:11px !important;
+  background:linear-gradient(180deg,rgba(255,255,255,.022),rgba(255,255,255,.006)) !important;
+  border:1px solid rgba(201,168,96,.16) !important;
+  overflow:hidden;
+}
+.vx-assets-top{ display:none !important; }
+.vx-assets-linha{ display:grid !important; grid-template-columns:repeat(3,minmax(0,1fr)) !important; gap:0 !important; }
+.vx-a-card{
+  padding:8px 12px 8px !important;
+  border:0 !important; border-left:1px solid rgba(255,255,255,.055) !important;
+  border-radius:0 !important; background:none !important;
+}
+.vx-a-card:first-child{ border-left:0 !important }
+.vx-a-card:hover{ background:rgba(201,168,96,.06) !important; transform:none !important }
+.vx-a-card header{ margin-bottom:2px !important; gap:6px !important }
+.vx-a-card header b{ font-size:10.5px !important; letter-spacing:.14em !important }
+.vx-a-card header small{ font-size:9px !important; opacity:.55 !important }
+.vx-a-card .vx-a-preco, .vx-a-card [class*="preco"]{ font-size:17px !important; line-height:1.05 !important }
+.vx-a-leitura{ margin-top:2px !important; gap:9px !important; font-size:9.5px !important }
+.vx-a-card.perto::after{ top:7px !important; right:10px !important; font-size:8px !important }
+
+/* ── números do topo: faixa fina, posição fechada ── */
+#vx-kpis{ background:#080d16 }
+#vx-kpis .kpi{ padding:7px 12px !important; gap:2px !important }
+#vx-kpis .kpi u{ font-size:7px !important; letter-spacing:.2em !important; opacity:.62 !important }
+#vx-kpis .kpi b{ font-size:13.5px !important; line-height:1.05 !important }
+#vx-kpis .kpi small{ font-size:8.4px !important; opacity:.6 !important }
+#kpi-posicao, #kpi-risco{ display:none !important }
+
+/* ── painel lateral: largura e respiro ── */
+.rpanel{ width:332px !important; max-width:342px !important }
+.rpanel-body{ scrollbar-width:thin }
+.rpanel .sp-sec{
+  padding:8px 12px !important;
+  letter-spacing:.16em !important;
+}
+.rpanel .sp-sec > span:first-child{ font-size:9px !important }
+#body-analise > div, #body-ia > div, #body-operar > div{ min-width:0 }
+#body-analise [style*="padding:7px 9px"],
+#body-analise [style*="padding:6px 9px"],
+#body-ia [style*="padding:7px 9px"],
+#body-ia [style*="padding:6px 9px"],
+#body-ia [style*="padding:12px 14px"]{ padding:11px 13px !important }
+#body-analise [style*="font-size:9px"],
+#body-ia [style*="font-size:9px"]{ font-size:11px !important; line-height:1.5 !important }
+#body-analise [style*="font-size:9.5px"],
+#body-ia [style*="font-size:9.5px"]{ font-size:11px !important; line-height:1.45 !important }
+#body-analise [style*="font-size:8.5px"],
+#body-ia [style*="font-size:8.5px"]{ font-size:10px !important }
+#body-analise [style*="line-height:1.35"]{ line-height:1.55 !important }
+
+/* mesa (coluna direita do gráfico): linhas mais altas, sem aperto */
+#vx-work{ padding:11px !important; gap:11px !important }
+#vx-work .vx-dom-tab td{ padding:5.5px 0 !important; font-size:10.5px !important }
+#vx-work .vx-dom-tab td.num{ font-size:10px !important }
+#vx-work .vx-card-h{ height:32px !important }
+#vx-work .vx-card-h h3{ font-size:8.8px !important }
+
+/* ── fio de luz: etiquetas e números ganham brilho discreto ── */
+@keyframes vxLuz{ 0%,100%{ opacity:.72 } 50%{ opacity:1 } }
+@keyframes vxLuzOuro{
+  0%,100%{ text-shadow:0 0 0 rgba(201,168,96,0) }
+  50%{ text-shadow:0 0 11px rgba(201,168,96,.42) }
+}
+@keyframes vxVarredura{
+  0%{ background-position:-140% 0 }
+  100%{ background-position:240% 0 }
+}
+.rpanel .sp-sec > span:first-child{
+  animation:vxLuzOuro 7.5s ease-in-out infinite;
+  color:#d8c48f !important;
+}
+#vx-kpis .kpi b{ text-shadow:0 0 14px rgba(201,168,96,.16) }
+#vx-kpis .kpi u{ animation:vxLuz 6s ease-in-out infinite }
+#vx-head .vx-brand small{ animation:vxLuz 8s ease-in-out infinite }
+#vx-head .vx-brand b{
+  background:linear-gradient(100deg,#cfd6e2 0%,#8d97a8 18%,#eef3fa 34%,#9aa4b4 52%,#cfd6e2 70%);
+  background-size:220% 100%;
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+  animation:vxVarredura 9s linear infinite;
+}
+.side-nav .nav-item.on svg, .side-nav .nav-item:hover svg{ filter:drop-shadow(0 0 6px rgba(201,168,96,.55)) }
+.vx-a-card{ position:relative }
+.vx-a-card::before{
+  content:''; position:absolute; inset:0; pointer-events:none; border-radius:inherit;
+  background:linear-gradient(100deg,transparent 42%,rgba(255,255,255,.055) 50%,transparent 58%);
+  background-size:260% 100%; animation:vxVarredura 11s linear infinite;
+}
+
+/* ── motor do código: selo e componentes por tempo ── */
+.vx-motor-selo{
+  display:inline-flex; align-items:center; gap:5px;
+  font-size:8px; letter-spacing:.16em; text-transform:uppercase;
+  color:#9fe3c4; border:1px solid rgba(95,214,164,.35); border-radius:99px;
+  padding:2px 7px; background:rgba(95,214,164,.07);
+}
+.vx-ag-comp{
+  display:flex; gap:8px; flex-wrap:wrap; margin-top:4px;
+  font-size:8.4px; letter-spacing:.03em; color:#7f8794;
+  font-variant-numeric:tabular-nums;
+}
+.vx-ag-comp b{ color:#c3c9d3; font-weight:600 }
+.vx-motor-nota{
+  font-size:9.6px; line-height:1.45; color:#7f8794;
+  padding:8px 10px; border-left:2px solid rgba(95,214,164,.45);
+  background:rgba(95,214,164,.05); border-radius:0 6px 6px 0;
+}
+
+@media (max-width:1100px){
+  .rpanel{ width:100% !important; max-width:100% !important }
+  .vx-assets-linha{ grid-template-columns:1fr !important }
+  .vx-a-card{ border-left:0 !important; border-top:1px solid rgba(255,255,255,.055) !important }
+  .vx-a-card:first-child{ border-top:0 !important }
+}
+
+/* cabeçalho mais baixo: sobra altura para a vela */
+#vx-head .vx-hline{ padding:7px 12px !important; gap:10px !important }
+#vx-head .vx-mark{ width:56px !important; min-width:56px !important; height:56px !important }
+#vx-kpis .kpi{ padding:6px 12px !important }
+#vx-kpis .kpi b{ font-size:12.5px !important }
+#vx-assets{ margin:7px 0 8px !important }
+
+/* chips internos da aba Análise não estouram */
+#body-analise .sig-px, #body-analise .sig-type{ min-width:0 !important; font-size:10px !important; padding:2px 6px !important }
+#body-analise .rsi-heat-scatter{ width:100% !important; max-width:100% !important }
+#body-analise [class*="heat"]{ max-width:100% !important }
+#body-analise span[style*="width"]{ max-width:100% }
+
+/* itens do sinal: deixam o texto ocupar a linha, sem encostar no vizinho */
+#body-analise .sig-item{ min-width:0 !important; flex-wrap:wrap !important; gap:6px !important }
+#body-analise .sig-px, #body-analise .sig-type{ flex:0 0 auto !important; white-space:nowrap !important }
