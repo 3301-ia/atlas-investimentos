@@ -250,3 +250,19 @@ body.vx-sem-sinal #vx-contexto{ display:none !important }
 /* alturas travadas na fita de ativos: nada de empurrar o gráfico */
 #vx-assets .vx-a-card{ min-height:76px !important }
 #vx-assets .vx-a-leitura{ min-height:14px !important }
+
+/* rótulos do cabeçalho nunca cortados em tela larga */
+@media (min-width:1201px){
+  #vx-head .vx-toolbtn{ width:auto !important; max-width:none !important; min-width:36px !important; flex:0 0 auto !important }
+  #vx-head .vx-toolbtn span{ display:inline-block !important; white-space:nowrap }
+  #vx-head .vx-hline{ flex-wrap:nowrap }
+  #vx-head .vx-marca{ min-width:0 }
+}
+/* o cabeçalho se ajusta: nada de botão saindo pela direita */
+@media (min-width:1201px){
+  #vx-head .vx-hline{ overflow:hidden }
+  #vx-head .vx-hline > .vx-inst{ flex:0 1 auto !important; min-width:130px !important; overflow:hidden }
+  #vx-head .vx-hline > .ts-chip{ flex:0 1 auto !important; min-width:0 !important; overflow:hidden }
+  #vx-head .vx-hline > .vx-price, #vx-head .vx-hline > .vx-live{ flex:0 0 auto !important }
+  #vx-head .vx-hline > .vx-extra{ flex:0 1 auto !important; min-width:0 !important; overflow:hidden }
+}

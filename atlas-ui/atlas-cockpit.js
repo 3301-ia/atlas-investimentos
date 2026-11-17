@@ -758,9 +758,10 @@
     var recolher = (densoForcado == null) ? _prefSubs() : densoForcado;
     try { localStorage.setItem('vx_subs', recolher ? 'off' : 'on'); } catch (e) {}
     document.body.classList.toggle('vx-denso', recolher);
-    var rot = recolher ? 'Sub-painéis (ocultos)' : 'Sub-painéis';
+    var rot = 'Sub-painéis';
+    var dica = recolher ? 'Sub-painéis (ocultos)' : 'Sub-painéis (abertos)';
     var b = document.getElementById('vx-ind-btn');
-    if (b) { var bs = b.querySelector('span'); if (bs) bs.textContent = rot; else b.textContent = rot; b.title = rot;
+    if (b) { var bs = b.querySelector('span'); if (bs) bs.textContent = rot; else b.textContent = rot; b.title = dica;
              b.classList.toggle('vx-on', !recolher); }
     var b2 = document.getElementById('vx-ind-btn2');
     if (b2) b2.textContent = rot;
