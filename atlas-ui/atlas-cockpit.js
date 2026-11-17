@@ -490,9 +490,12 @@
     if (marca && lg) { marca.appendChild(lg); marca.classList.add('vx-mark-img'); }
     head.querySelector('#vx-imersao-btn').addEventListener('click', function () { alternarImersao(); });
     head.querySelector('#vx-ind-btn').addEventListener('click', function () {
-      densoForcado = document.body.classList.contains('vx-denso');
+      /* o clique inverte o estado atual: se estão escondidos, abre; se estão
+         abertos, recolhe. Antes ele lia o estado e repetia o mesmo. */
+      densoForcado = !document.body.classList.contains('vx-denso');
       try { localStorage.setItem('vx_subs', densoForcado ? 'off' : 'on'); } catch (e) {}
       aplicarDensidade();
+      setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 320);
     });
     document.addEventListener('keydown', function (ev) {
       if (ev.key === 'f' || ev.key === 'F') {

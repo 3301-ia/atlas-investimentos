@@ -419,3 +419,36 @@ body.vx-sem-sinal #vx-contexto{ display:none !important }
   background:#0c1420; border:1px solid #1d2838; color:#93a0b3; font-variant-numeric:tabular-nums }
 .vx-fibo-cz.alta{ color:#7fd6c4; border-color:rgba(38,166,154,.4) }
 .vx-fibo-cz.baixa{ color:#f08e8c; border-color:rgba(239,83,80,.4) }
+
+/* ══════════ coluna da mesa: cartão não encolhe nunca ══════════ */
+#vx-work{ overflow-y:auto !important; overflow-x:hidden !important; scrollbar-width:thin }
+#vx-work > *{ flex:0 0 auto !important }
+#vx-work > section, #vx-work .vx-card, #vx-work > div:not(#vx-work-top){
+  min-height:0 !important; height:auto !important; flex-shrink:0 !important;
+}
+#vx-work::-webkit-scrollbar{ width:6px }
+#vx-work::-webkit-scrollbar-track{ background:transparent }
+#vx-work::-webkit-scrollbar-thumb{ background:#223047; border-radius:3px }
+#vx-work::-webkit-scrollbar-thumb:hover{ background:#2d3f5a }
+
+/* ══════════ zero deslocamento de pixel: número não muda de largura ══════════ */
+#vx-price, #vx-live, #vx-kpis .kpi b, .vx-dist b, .vx-ma b, .vx-ma-fecho,
+#vx-ctx-estado b, .vx-fibo-niv b, .vx-fibo-niv, .vx-fibo-perna b,
+table td, table th, .vx-card-b, .vx-sinais-val{
+  font-variant-numeric:tabular-nums !important;
+  font-feature-settings:"tnum" 1,"lnum" 1 !important;
+}
+#vx-price{ min-width:11ch; display:inline-block; text-align:right }
+#vx-live{ display:inline-block; min-width:6ch }
+/* a frase de contexto não pode empurrar o resto quando o texto muda de tamanho */
+#vx-ctx-estado{ min-height:30px; display:block }
+
+
+/* frase de contexto: duas linhas fixas, o texto não empurra mais nada */
+#vx-ctx-estado{
+  display:-webkit-box !important; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+  overflow:hidden; min-height:0 !important; max-height:2.9em; height:2.9em;
+}
+/* tabelas da mesa: linha com altura fixa, nada de pulsar a altura */
+#vx-work table tr{ height:22px }
+#vx-work table td{ line-height:1.25; padding-top:2px; padding-bottom:2px }
