@@ -266,3 +266,26 @@ body.vx-sem-sinal #vx-contexto{ display:none !important }
   #vx-head .vx-hline > .vx-price, #vx-head .vx-hline > .vx-live{ flex:0 0 auto !important }
   #vx-head .vx-hline > .vx-extra{ flex:0 1 auto !important; min-width:0 !important; overflow:hidden }
 }
+
+/* ══════════ fita de ativos: modo minimizado, uma linha por ativo ══════════ */
+#vx-assets{ position:relative; display:flex !important; align-items:stretch; gap:6px }
+#vx-assets > .vx-assets-linha{ flex:1 1 auto; min-width:0 }
+#vx-ativos-mini{
+  flex:0 0 22px; width:22px; align-self:center; height:38px; padding:0;
+  border:1px solid rgba(217,180,91,.22); border-radius:9px;
+  background:rgba(217,180,91,.05); color:#c9b98e; cursor:pointer;
+  font-size:12px; line-height:1; display:flex; align-items:center; justify-content:center;
+}
+#vx-ativos-mini:hover{ border-color:rgba(217,180,91,.55); color:#f0e2be }
+#vx-assets.mini{ margin:5px 0 6px !important; align-items:center }
+#vx-assets.mini .vx-a-card{
+  display:flex !important; align-items:center; gap:8px;
+  min-height:32px !important; height:32px; padding:0 10px !important; border-radius:9px;
+}
+#vx-assets.mini .vx-a-card header{ display:flex; align-items:center; gap:7px; margin:0 !important; flex:0 0 auto }
+#vx-assets.mini .vx-a-card header small{ display:none }
+#vx-assets.mini .vx-a-card header b{ font-size:10px }
+#vx-assets.mini .vx-a-preco{ margin:0 !important; flex:1 1 auto; justify-content:flex-end; font-size:13.5px !important; line-height:1 !important }
+#vx-assets.mini .vx-a-nivel, #vx-assets.mini .vx-a-leitura{ display:none !important }
+#vx-assets.mini .vx-a-var{ font-size:10px !important }
+#vx-assets.mini .vx-a-vies{ font-size:8px !important; padding:1px 5px !important }

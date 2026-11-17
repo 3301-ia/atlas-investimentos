@@ -40,6 +40,19 @@
     return v >= 1000 ? v.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) : fmt(v);
   }
 
+  function aplicarMini(mini) {
+    var barra = document.getElementById('vx-assets');
+    if (!barra) return;
+    barra.classList.toggle('mini', !!mini);
+    var b = document.getElementById('vx-ativos-mini');
+    if (b) {
+      b.textContent = mini ? '\u2303' : '\u2304';
+      b.title = mini ? 'Expandir os ativos' : 'Minimizar os ativos';
+      b.setAttribute('aria-label', b.title);
+    }
+    setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 220);
+  }
+
   /* ---------- desenho ---------- */
 
   function montar() {
@@ -49,10 +62,23 @@
     barra.id = 'vx-assets';
     barra.innerHTML = '<div class="vx-assets-top"><span class="vx-assets-titulo">Ativos vigiados pelo robô</span>' +
       '<span class="vx-assets-nota">clique no ativo para abrir o gráfico · clique no nível para trocar</span></div>' +
-      '<div class="vx-assets-linha" id="vx-assets-linha"></div>';
+      '<div class="vx-assets-linha" id="vx-assets-linha"></div>' +
+      '<button type="button" id="vx-ativos-mini" title="Minimizar os ativos" aria-label="minimizar os ativos">\u2304</button>';
     var cabecalho = document.getElementById('vx-head');
     if (cabecalho && cabecalho.parentNode) cabecalho.insertAdjacentElement('afterend', barra);
     else pagina.insertBefore(barra, pagina.firstChild);
+    var botao = barra.querySelector('#vx-ativos-mini');
+    var guardado = null;
+    try { guardado = localStorage.getItem('vx_ativos_mini'); } catch (e) {}
+    aplicarMini(guardado === '1');
+    if (botao) {
+      botao.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        var mini = !barra.classList.contains('mini');
+        aplicarMini(mini);
+        try { localStorage.setItem('vx_ativos_mini', mini ? '1' : '0'); } catch (e) {}
+      });
+    }
     pintar();
     buscar();
     setInterval(buscar, 25000);
