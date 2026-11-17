@@ -13,9 +13,12 @@
 (function () {
   'use strict';
 
-  var NIVEIS = [-0.618, -0.272, 0, 0.236, 0.382, 0.5, 0.618, 0.786, 1, 1.272, 1.618];
-  var DESENHA = [0, 0.382, 0.5, 0.618, 0.786, 1, 1.618];
-  var DESENHA_NEG = [-0.272, -0.618];
+  /* régua do Lucas, em terços: -0,999 · -0,666 · -0,333 · 0 ·
+     0,333 · 0,666 · 0,999 (fim da perna) · 1,333 · 1,666 (alvo) · 2,333 */
+  var NIVEIS = [-0.999, -0.666, -0.333, 0, 0.333, 0.666, 0.999, 1.333, 1.666, 2.333];
+  var DESENHA = [0, 0.333, 0.666, 0.999, 1.333, 1.666];
+  var DESENHA_NEG = [-0.333, -0.666, -0.999];
+  var FIM = 0.999, ALVO = 1.666, MEIO = 0.666, TERCO = 0.333;
   var linhas = [], assinatura = '', ultimo = null;
   var ligado = localStorage.getItem('vx_fibo_linhas') !== '0';
 
@@ -74,15 +77,12 @@
 
   function faixaTexto(perna, pos) {
     if (pos < 0) return 'perdeu o zero — a perna virou, agora joga nos pontos negativos';
-    if (pos <= 0.236) return 'no 0,236 — voltando para o início da perna';
-    if (pos <= 0.382) return 'no 0,382';
-    if (pos <= 0.5) return 'entre 0,382 e 0,5';
-    if (pos <= 0.618) return 'no 0,5–0,618 — a região que decide';
-    if (pos <= 0.786) return 'no 0,786 — retração profunda';
-    if (pos <= 1) return 'entre 0,786 e 1 — retração quase completa';
-    if (pos <= 1.272) return 'acima de 1 — surfando na progressão, mirando 1,618';
-    if (pos <= 1.618) return 'na progressão 1,272–1,618';
-    return 'passou de 1,618 — progressão estendida';
+    if (pos <= 0.333) return 'entre 0 e 0,333 — primeiro terço da perna';
+    if (pos <= 0.666) return 'entre 0,333 e 0,666 — meio da perna';
+    if (pos <= 0.999) return 'entre 0,666 e 0,999 — reta final da perna';
+    if (pos <= 1.333) return 'acima de 0,999 — progressão aberta, mirando 1,666';
+    if (pos <= 1.666) return 'na progressão 1,333–1,666';
+    return 'passou de 1,666 — progressão estendida';
   }
 
   function leitura() {
@@ -97,8 +97,9 @@
     return {
       dir: perna.dir, tempo: perna.tempo, tf: (typeof currentTF !== 'undefined' ? currentTF : ''),
       p0: perna.p0, p1: perna.p1, preco: p, pos: pos,
-      alvo: preco(perna, 1.618), invalida: perna.dir === 'baixa' ? perna.p0 : perna.p0,
+      alvo: preco(perna, ALVO), invalida: perna.dir === 'baixa' ? perna.p0 : perna.p0,
       niveis: NIVEIS.map(function (n) { return { n: n, v: preco(perna, n) }; }),
+      fim: preco(perna, FIM),
       texto: faixaTexto(perna, pos), pernas: ps.length,
       seq: seq,
       zero: perna.p0,
@@ -130,13 +131,13 @@
       });
     }
     DESENHA.forEach(function (n) {
-      var v = preco(r, n), forte = (n === 0 || n === 1 || n === 0.618);
+      var v = preco(r, n), forte = (n === 0 || n === FIM || n === ALVO);
       try {
         linhas.push(candleSeries.createPriceLine({
           price: v,
           color: forte ? '#d9b45b' : cor,
           lineWidth: forte ? 2 : 1,
-          lineStyle: n === 1 ? 0 : 2,
+          lineStyle: n === FIM ? 0 : 2,
           axisLabelVisible: true,
           title: 'fib ' + String(n).replace('.', ',')
         }));
@@ -163,13 +164,13 @@
     }
     if (!r) { el.innerHTML = '<div class="vx-fibo-h"><h3>Fibo do cruzamento</h3><span>sem leitura</span></div>'; return el; }
     var cor = r.dir === 'baixa' ? '#ef5350' : '#26a69a';
-    var niveis = [0.382, 0.5, 0.618, 1, 1.618].map(function (n) {
+    var niveis = [0.333, 0.666, 0.999, 1.333, 1.666].map(function (n) {
       var v = preco(r, n), perto = Math.abs(r.pos - n) < 0.06;
       return '<span class="vx-fibo-niv' + (perto ? ' perto' : '') + '">' + String(n).replace('.', ',') +
              ' <b>' + formatar(v) + '</b></span>';
     }).join('');
     if (r.perdeuZero) {
-      niveis += [-0.272, -0.618].map(function (n) {
+      niveis += [-0.333, -0.666, -0.999].map(function (n) {
         return '<span class="vx-fibo-niv negativo">' + String(n).replace('.', ',') +
                ' <b>' + formatar(preco(r, n)) + '</b></span>';
       }).join('');
@@ -184,7 +185,7 @@
       return '<span class="vx-fibo-cz ' + x.dir + '">' + x.dir.slice(0, 1).toUpperCase() + ' ' + hora(x.tempo) + '</span>';
     }).join('');
     var nomeZero = r.dir === 'baixa' ? 'máxima anterior ao cruzamento' : 'fundo anterior ao cruzamento';
-    var nomeUm = r.dir === 'baixa' ? 'mínima depois do cruzamento' : 'topo depois do cruzamento';
+    var nomeUm = r.dir === 'baixa' ? 'mínima depois do cruzamento (fim da perna)' : 'topo depois do cruzamento (fim da perna)';
     el.innerHTML =
       '<div class="vx-fibo-h"><h3>Fibo do cruzamento</h3>' +
         '<button id="vx-fibo-olho" title="mostrar ou esconder as linhas">' + (ligado ? 'linhas on' : 'linhas off') + '</button></div>' +
@@ -192,7 +193,7 @@
         '<div class="vx-fibo-perna" style="border-left:3px solid ' + cor + '">' +
           '<span>perna de <b style="color:' + cor + '">' + r.dir + '</b> · ' + r.tf + '</span>' +
           '<span>0 <b>' + formatar(r.p0) + '</b> <i>' + nomeZero + '</i></span>' +
-          '<span>1 <b>' + formatar(r.p1) + '</b> <i>' + nomeUm + '</i></span>' +
+          '<span>0,999 <b>' + formatar(r.fim) + '</b> <i>' + nomeUm + '</i></span>' +
         '</div>' +
         '<div class="vx-fibo-pos">' + r.texto + '</div>' +
         '<div class="vx-fibo-niveis">' + niveis + '</div>' +

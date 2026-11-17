@@ -127,8 +127,8 @@
         var pos = (fechas[fechas.length - 1] - perna.p0) / (perna.p1 - perna.p0);
         // a perna manda enquanto o zero está de pé; perdido o zero, ela inverte
         if (pos < 0) partes.fib = perna.dir === 'alta' ? -1 : 1;
-        else if (pos >= 0.382) partes.fib = perna.dir === 'alta' ? 1 : -1;
-        else partes.fib = 0;   // ainda devolvendo, sem voto
+        else if (pos >= 0.666) partes.fib = perna.dir === 'alta' ? 1 : -1;
+        else partes.fib = 0;   // ainda no primeiro terço, sem voto
       }
     }
 
