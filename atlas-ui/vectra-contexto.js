@@ -139,3 +139,38 @@
     if (el) el.addEventListener('change', function () { setTimeout(pintarFaixa, 900); });
   });
 })();
+
+/* ---------- redutores das duas faixas ---------- */
+(function () {
+  'use strict';
+  var alvos = {
+    ativos: { id: 'vx-toggle-ativos', classe: 'vx-sem-ativos', chave: 'vx_faixa_ativos' },
+    sinal: { id: 'vx-toggle-sinal', classe: 'vx-sem-sinal', chave: 'vx_faixa_sinal' }
+  };
+
+  function aplicar(chaveAlvo, ligado) {
+    var cfg = alvos[chaveAlvo];
+    document.body.classList.toggle(cfg.classe, !ligado);
+    var b = document.getElementById(cfg.id);
+    if (b) { b.classList.toggle('vx-off', !ligado); b.setAttribute('aria-pressed', ligado ? 'true' : 'false'); }
+    try { localStorage.setItem(cfg.chave, ligado ? 'on' : 'off'); } catch (e) {}
+    setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 180);
+  }
+
+  function ligar() {
+    Object.keys(alvos).forEach(function (k) {
+      var cfg = alvos[k], b = document.getElementById(cfg.id);
+      if (!b || b.dataset.pronto) return;
+      b.dataset.pronto = '1';
+      var estado = true;
+      try { estado = localStorage.getItem(cfg.chave) !== 'off'; } catch (e) {}
+      aplicar(k, estado);
+      b.addEventListener('click', function () {
+        var agora = b.getAttribute('aria-pressed') === 'true';
+        aplicar(k, !agora);
+      });
+    });
+  }
+
+  [1500, 3000, 6000, 10000].forEach(function (t) { setTimeout(ligar, t); });
+})();

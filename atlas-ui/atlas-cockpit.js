@@ -325,9 +325,9 @@
       if (b) b.innerHTML = valorHtml;
       if (s) s.innerHTML = sub || '&nbsp;';
     };
-    k('preco', preco ? n(preco, 2) : '--', 'fonte OKX · ' + (document.getElementById('tf-select') ? document.getElementById('tf-select').value : '15m'), '');
+    k('preco', preco ? n(preco, 2) : '--', (document.getElementById('tf-select') ? document.getElementById('tf-select').value : '15m'), '');
     var v = estado.var24;
-    k('var24', v == null ? '--' : ((v >= 0 ? '+' : '') + num(v) + '%'), v == null ? 'sem leitura' : (v >= 0 ? 'compra no dia' : 'venda no dia'), v == null ? '' : (v >= 0 ? 'up' : 'dn'));
+    k('var24', v == null ? '--' : ((v >= 0 ? '+' : '') + num(v) + '%'), '', v == null ? '' : (v >= 0 ? 'up' : 'dn'));
     k('dominio', (g >= 0 ? '+' : '') + Math.round(g), estado.consenso.up + ' alta · ' + estado.consenso.dn + ' baixa', g >= 18 ? 'up' : (g <= -18 ? 'dn' : ''));
     var pos = estado.pos;
     if (pos) {
@@ -434,17 +434,18 @@
         '<div class="vx-inst" id="vx-inst"></div>' +
         '<div class="vx-price"><b id="vx-preco">--</b><span id="vx-var">--</span></div>' +
         '<div class="vx-live"><i></i><span id="vx-live-txt">ao vivo</span></div>' +
+        '<button type="button" class="vx-toolbtn vx-gg" id="vx-toggle-ativos" aria-pressed="true" title="Faixa de ativos"><svg class="vx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h18M3 12h18M3 17h18"/></svg></button>' +
+        '<button type="button" class="vx-toolbtn vx-gg" id="vx-toggle-sinal" aria-pressed="true" title="Faixa de leitura"><svg class="vx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v3M12 18v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M3 12h3M18 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/></svg></button>' +
         '<button type="button" class="vx-toolbtn" id="vx-ind-btn" title="Sub-painéis"><svg class="vx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span>Sub-painéis</span></button>' +
         '<button type="button" class="vx-toolbtn" id="vx-imersao-btn" title="Imersão (F)"><svg class="vx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 15v5h-5M15 4h5v5M9 20H4v-5"/></svg><span>Imersão</span></button>' +
         '<button type="button" class="vx-toolbtn" id="vx-tools-btn" aria-expanded="false" title="Ferramentas"><svg class="vx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h10M4 17h6M18 12v8M14 5v6"/></svg><span>Ferramentas</span></button>' +
       '</div>' +
       '<div id="vx-kpis">' +
         '<div class="kpi" id="kpi-preco"><u>Preço</u><b>--</b><small>&nbsp;</small></div>' +
-        '<div class="kpi" id="kpi-var24"><u>Variação 24h</u><b>--</b><small>&nbsp;</small></div>' +
-        '<div class="kpi" id="kpi-dominio"><u>Dominância</u><b>--</b><small>&nbsp;</small></div>' +
-        '<div class="kpi" id="kpi-posicao"><u>Posição</u><b>--</b><small>&nbsp;</small></div>' +
-        '<div class="kpi" id="kpi-risco"><u>Distância do stop</u><b>--</b><small>&nbsp;</small></div>' +
-        '<div class="kpi" id="kpi-sinais"><u>Viradas</u><b>--</b><small>&nbsp;</small></div>' +
+        '<div class="kpi" id="kpi-var24"><u>24h</u><b>--</b><small>&nbsp;</small></div>' +
+        '<div class="kpi kpi-dom" id="kpi-btcdom"><u>BTC.D</u><b>--</b><small>&nbsp;</small></div>' +
+        '<div class="kpi kpi-dom" id="kpi-ethdom"><u>ETH.D</u><b>--</b><small>&nbsp;</small></div>' +
+        '<div class="kpi kpi-dom" id="kpi-zecdom"><u>ZEC.D</u><b>--</b><small>&nbsp;</small></div>' +
       '</div>' +
       '<div id="vx-tools"></div>';
 

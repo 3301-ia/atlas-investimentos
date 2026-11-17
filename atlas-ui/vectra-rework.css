@@ -194,3 +194,34 @@
 .vx-ma b.c{ color:#5fd6a4 } .vx-ma b.v{ color:#ef8a86 } .vx-ma b.n{ color:#8d97a8 }
 .vx-ma-fecho{ color:#6f7787; font-size:9px; padding-left:4px; border-left:1px solid rgba(255,255,255,.08) }
 .vx-a-vies{ font-variant-numeric:tabular-nums; letter-spacing:.06em }
+
+/* ══════════ cabeçalho mais baixo e faixas equilibradas ══════════ */
+#vx-head .vx-hline{ padding:5px 12px !important; gap:9px !important; min-height:0 !important }
+#vx-head .vx-mark{ width:50px !important; min-width:50px !important; height:50px !important }
+#vx-head .vx-brand b{ font-size:15px !important; letter-spacing:.16em !important }
+#vx-head .vx-brand small{ font-size:7.2px !important }
+#vx-kpis .kpi{ padding:5px 11px !important; min-height:0 !important }
+#vx-kpis .kpi u{ font-size:6.8px !important; letter-spacing:.17em !important; margin-bottom:1px !important }
+#vx-kpis .kpi b{ font-size:13px !important; line-height:1.05 !important }
+#vx-kpis .kpi small{ font-size:7.4px !important; line-height:1 !important; color:#7d8593 !important }
+#vx-kpis .kpi small:empty{ display:none }
+#vx-kpis .kpi-dom b{ font-size:13.5px !important }
+#vx-kpis{ flex-wrap:nowrap !important }
+
+/* fita de ativos mais fina para casar com a régua de números */
+#vx-assets{ margin:6px 0 7px !important }
+#vx-assets .vx-a-card{ padding:7px 11px !important }
+#vx-assets .vx-a-card header{ margin-bottom:2px !important }
+#vx-assets .vx-a-preco{ font-size:15px !important; line-height:1.1 !important }
+#vx-assets .vx-a-nivel{ margin-top:3px !important }
+#vx-assets .vx-a-leitura{ margin-top:2px !important; font-size:9px !important }
+#vx-assets .vx-a-vies{ font-size:8.4px !important; padding:1px 6px !important }
+
+/* botões-redutores das faixas */
+.vx-gg{ width:32px !important; height:32px !important; padding:0 !important; justify-content:center !important }
+.vx-gg.vx-off{ opacity:.42 }
+.vx-gg.vx-off svg{ color:#7b8391 }
+
+/* sanfonas: some com a faixa inteira quando desligada */
+body.vx-sem-ativos #vx-assets{ display:none !important }
+body.vx-sem-sinal #vx-contexto{ display:none !important }
