@@ -1,14 +1,14 @@
 {
  "aberta": null,
- "atualizado_em": "2026-11-17T00:22:32.480Z",
+ "atualizado_em": "2026-11-17T08:18:40.583Z",
  "versao": 1,
- "preco": 64500,
+ "preco": 64563.7,
  "estrutura": {
   "lado": "alta",
-  "stop": 64295.78,
-  "viradas": 20,
-  "distancia": 583.62,
-  "folga_pct": 0.9
+  "stop": 64472.15,
+  "viradas": 19,
+  "distancia": 263.05,
+  "folga_pct": 0.41
  },
  "timeframe": "1H",
  "filtros": {
@@ -20,14 +20,8 @@
  "ultimo_lado": "venda",
  "acoes": [
   {
-   "tipo": "fechou",
-   "motivo": "virada de lado",
-   "resultado_r": 0.133,
-   "resultado_usd": 0.35
-  },
-  {
    "tipo": "aguardando",
-   "motivo": "stop apertado: 0.32% < 1%"
+   "motivo": "stop apertado: 0.14% < 1%"
   }
  ]
 }
