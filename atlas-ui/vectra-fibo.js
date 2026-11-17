@@ -13,8 +13,9 @@
 (function () {
   'use strict';
 
-  var NIVEIS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1, 1.272, 1.618];
+  var NIVEIS = [-0.618, -0.272, 0, 0.236, 0.382, 0.5, 0.618, 0.786, 1, 1.272, 1.618];
   var DESENHA = [0, 0.382, 0.5, 0.618, 0.786, 1, 1.618];
+  var DESENHA_NEG = [-0.272, -0.618];
   var linhas = [], assinatura = '', ultimo = null;
   var ligado = localStorage.getItem('vx_fibo_linhas') !== '0';
 
@@ -72,7 +73,7 @@
   }
 
   function faixaTexto(perna, pos) {
-    if (pos < 0) return 'devolveu a perna inteira — acima do ponto 0';
+    if (pos < 0) return 'perdeu o zero — a perna virou, agora joga nos pontos negativos';
     if (pos <= 0.236) return 'no 0,236 — voltando para o início da perna';
     if (pos <= 0.382) return 'no 0,382';
     if (pos <= 0.5) return 'entre 0,382 e 0,5';
@@ -92,12 +93,16 @@
     var perna = ps[ps.length - 1];
     var p = velas[velas.length - 1].close;
     var pos = posicao(perna, p);
+    var seq = ps.slice(-4).map(function (x) { return { dir: x.dir, tempo: x.tempo }; });
     return {
       dir: perna.dir, tempo: perna.tempo, tf: (typeof currentTF !== 'undefined' ? currentTF : ''),
       p0: perna.p0, p1: perna.p1, preco: p, pos: pos,
       alvo: preco(perna, 1.618), invalida: perna.dir === 'baixa' ? perna.p0 : perna.p0,
       niveis: NIVEIS.map(function (n) { return { n: n, v: preco(perna, n) }; }),
-      texto: faixaTexto(perna, pos), pernas: ps.length
+      texto: faixaTexto(perna, pos), pernas: ps.length,
+      seq: seq,
+      zero: perna.p0,
+      perdeuZero: pos < 0,
     };
   }
 
@@ -114,6 +119,16 @@
     limpar();
     if (!ligado || !r) return;
     var cor = r.dir === 'baixa' ? 'rgba(239,83,80,.75)' : 'rgba(38,166,154,.75)';
+    if (r.perdeuZero) {
+      DESENHA_NEG.forEach(function (n) {
+        try {
+          linhas.push(candleSeries.createPriceLine({
+            price: preco(r, n), color: 'rgba(140,150,165,.85)', lineWidth: 1, lineStyle: 2,
+            axisLabelVisible: true, title: 'fib ' + String(n).replace('.', ',')
+          }));
+        } catch (e) {}
+      });
+    }
     DESENHA.forEach(function (n) {
       var v = preco(r, n), forte = (n === 0 || n === 1 || n === 0.618);
       try {
@@ -153,16 +168,36 @@
       return '<span class="vx-fibo-niv' + (perto ? ' perto' : '') + '">' + String(n).replace('.', ',') +
              ' <b>' + formatar(v) + '</b></span>';
     }).join('');
+    if (r.perdeuZero) {
+      niveis += [-0.272, -0.618].map(function (n) {
+        return '<span class="vx-fibo-niv negativo">' + String(n).replace('.', ',') +
+               ' <b>' + formatar(preco(r, n)) + '</b></span>';
+      }).join('');
+    }
+    var hora = function (t) {
+      var d = new Date(t * 1000);
+      return d.toLocaleDateString('pt-BR', { day: '2-digit', timeZone: 'America/Sao_Paulo' }) + '/' +
+             d.toLocaleDateString('pt-BR', { month: '2-digit', timeZone: 'America/Sao_Paulo' }) + ' ' +
+             d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
+    };
+    var seq = (r.seq || []).map(function (x) {
+      return '<span class="vx-fibo-cz ' + x.dir + '">' + x.dir.slice(0, 1).toUpperCase() + ' ' + hora(x.tempo) + '</span>';
+    }).join('');
+    var nomeZero = r.dir === 'baixa' ? 'máxima anterior ao cruzamento' : 'fundo anterior ao cruzamento';
+    var nomeUm = r.dir === 'baixa' ? 'mínima depois do cruzamento' : 'topo depois do cruzamento';
     el.innerHTML =
       '<div class="vx-fibo-h"><h3>Fibo do cruzamento</h3>' +
         '<button id="vx-fibo-olho" title="mostrar ou esconder as linhas">' + (ligado ? 'linhas on' : 'linhas off') + '</button></div>' +
       '<div class="vx-fibo-corpo">' +
         '<div class="vx-fibo-perna" style="border-left:3px solid ' + cor + '">' +
           '<span>perna de <b style="color:' + cor + '">' + r.dir + '</b> · ' + r.tf + '</span>' +
-          '<span>0 <b>' + formatar(r.p0) + '</b> → 1 <b>' + formatar(r.p1) + '</b></span>' +
+          '<span>0 <b>' + formatar(r.p0) + '</b> <i>' + nomeZero + '</i></span>' +
+          '<span>1 <b>' + formatar(r.p1) + '</b> <i>' + nomeUm + '</i></span>' +
         '</div>' +
         '<div class="vx-fibo-pos">' + r.texto + '</div>' +
         '<div class="vx-fibo-niveis">' + niveis + '</div>' +
+        '<div class="vx-fibo-rule">a perna só morre quando perde o <b>0</b> em ' + formatar(r.p0) + '</div>' +
+        (seq ? '<div class="vx-fibo-seq">' + seq + '</div>' : '') +
       '</div>';
     var olho = document.getElementById('vx-fibo-olho');
     if (olho) olho.onclick = function () {

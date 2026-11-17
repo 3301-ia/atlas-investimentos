@@ -409,3 +409,13 @@ body.vx-sem-sinal #vx-contexto{ display:none !important }
 .vx-fibo-niv.perto{ border-color:rgba(217,180,91,.55); color:#d9b45b }
 .vx-fibo-niv.perto b{ color:#f0e2be }
 @media (max-width:860px){ .vx-fibo{ margin:6px 8px } }
+
+.vx-fibo-perna i{ font:600 8px/1.3 'Inter',sans-serif; color:#7d8899; font-style:normal; letter-spacing:.02em }
+.vx-fibo-rule{ font:600 9px/1.4 'Inter',sans-serif; color:#95a1b2; border-top:1px solid #1a2432; padding-top:6px }
+.vx-fibo-rule b{ color:#d9b45b }
+.vx-fibo-niv.negativo{ border-color:#3a475c; color:#8c96a5 }
+.vx-fibo-seq{ display:flex; flex-wrap:wrap; gap:4px; border-top:1px solid #1a2432; padding-top:6px }
+.vx-fibo-cz{ font:700 7.6px/1 'Inter',sans-serif; letter-spacing:.06em; padding:3px 5px; border-radius:5px;
+  background:#0c1420; border:1px solid #1d2838; color:#93a0b3; font-variant-numeric:tabular-nums }
+.vx-fibo-cz.alta{ color:#7fd6c4; border-color:rgba(38,166,154,.4) }
+.vx-fibo-cz.baixa{ color:#f08e8c; border-color:rgba(239,83,80,.4) }

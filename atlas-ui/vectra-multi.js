@@ -125,8 +125,10 @@
       var perna = pernaDoCruzamento(velas);
       if (perna) {
         var pos = (fechas[fechas.length - 1] - perna.p0) / (perna.p1 - perna.p0);
-        if (pos >= 0.5 && pos <= 1.6) partes.fib = perna.dir === 'alta' ? 1 : -1;
-        else if (pos < 0.382) partes.fib = perna.dir === 'alta' ? -1 : 1;   // devolveu a perna
+        // a perna manda enquanto o zero está de pé; perdido o zero, ela inverte
+        if (pos < 0) partes.fib = perna.dir === 'alta' ? -1 : 1;
+        else if (pos >= 0.382) partes.fib = perna.dir === 'alta' ? 1 : -1;
+        else partes.fib = 0;   // ainda devolvendo, sem voto
       }
     }
 
