@@ -112,3 +112,26 @@ body.vx b,body.vx strong{font-weight:600}
   body #vx-var{font-size:10.5px!important;min-width:0!important}
   body #vx-price{flex-wrap:wrap!important;gap:6px 10px!important}
 }
+
+/* ── vencer os estilos antigos que usavam !important com seletor maior ── */
+#vx-head .vx-price #vx-preco,
+#vx-head .vx-price b#vx-preco,
+#vx-hline .vx-price #vx-preco{
+  font-size:26px!important;line-height:1.28!important;min-width:196px!important;
+  height:auto!important;overflow:visible!important;text-align:right!important}
+#vx-head .vx-price #vx-var,
+#vx-head .vx-price span#vx-var{
+  font-size:11px!important;line-height:1.3!important;min-width:112px!important;height:auto!important}
+.side-nav .nav-item #vx-nav-lbl,
+.side-nav .nav-item .nav-lbl{
+  font-size:9px!important;line-height:1.15!important;letter-spacing:.01em!important;
+  overflow:visible!important;text-overflow:clip!important;white-space:nowrap!important;display:block}
+.side-nav .nav-item .nav-icon,
+.side-nav .nav-item #nav-icon{font-size:11px!important;line-height:1!important}
+#vx-kpis .kpi u,#vx-kpis .kpi span u{font-size:9px!important;letter-spacing:.12em!important}
+
+@media (max-width:600px){
+  #vx-head .vx-price #vx-preco,#vx-head .vx-price b#vx-preco{font-size:18px!important;min-width:0!important;text-align:left!important}
+  #vx-head .vx-price #vx-var{font-size:10.5px!important;min-width:0!important;text-align:left!important}
+  .side-nav .nav-item #vx-nav-lbl{font-size:9px!important}
+}
