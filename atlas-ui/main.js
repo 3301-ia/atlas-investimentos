@@ -13526,6 +13526,27 @@ function corTemperaturaVela(score, exausto){
   return "rgb("+c[0]+","+c[1]+","+c[2]+")";
 }
 
+// =====================================================================
+// "Gradient Candle Coloring" — o mesmo input do indicador master do
+// repositório (atlas-ui/pine/indicador_master_atlas_v10.pine, linha 60,
+// grupo Visuals). Ligado, a vela usa o gradiente de temperatura; desligado,
+// volta à cor chapada de alta e baixa, como no gráfico puro. A escolha fica
+// guardada no navegador, então abre do jeito que o Lucas deixou.
+// =====================================================================
+let candleGradientOn = (function(){
+  try{ const v = localStorage.getItem('vx_cor_gradiente'); return v === null ? true : v === '1'; }
+  catch(e){ return true; }
+})();
+function alternarGradienteVelas(){
+  candleGradientOn = !candleGradientOn;
+  try{ localStorage.setItem('vx_cor_gradiente', candleGradientOn ? '1' : '0'); }catch(e){}
+  try{ refreshPhiRibbonAndBorders(); }catch(e){}
+  try{ if (typeof renderizarListaIndicadoresModal === 'function') renderizarListaIndicadoresModal(); }catch(e){}
+  return candleGradientOn;
+}
+window.alternarGradienteVelas = alternarGradienteVelas;
+window.isGradienteVelasLigado = () => candleGradientOn;
+
 function refreshPhiRibbonAndBorders(){
   const savedRange = (chart && typeof chartHasRendered !== 'undefined' && chartHasRendered) ? chart.timeScale().getVisibleLogicalRange() : null;
   const closes=candles.map(c=>c.close);
@@ -13594,6 +13615,11 @@ function refreshPhiRibbonAndBorders(){
         wickColor: borderCor,
         borderColor: borderCor
       };
+    }
+    if(!candleGradientOn){
+      // gradiente desligado: cor chapada, alta em verde e baixa em vermelho
+      const chapada = c.close >= c.open ? 'rgb(8,153,129)' : 'rgb(242,54,69)';
+      return { ...c, color: chapada, wickColor: chapada, borderColor: chapada };
     }
     const ce = corEmaBar[i];
     if(ce){
@@ -23817,6 +23843,16 @@ window.toggleDefaultMAsVisibility = toggleDefaultMAsVisibility;
 
 // 2. REGISTRO OFICIAL DE INDICADORES DO DASHBOARD (ESTILO TRADINGVIEW)
 const INDICATORS_REGISTRY = [
+  {
+    id: 'gradientcandles',
+    name: '\ud83d\udd6f\ufe0f Gradient Candle Coloring (cor das velas)',
+    category: 'overlay',
+    desc: 'Input do indicador master (grupo Visuals). Ligado, a vela passa pelo branco no centro, cinza tingido no meio e cor cheia na ponta. Desligado, volta à cor chapada de alta e baixa.',
+    isLigado: () => !!candleGradientOn,
+    toggle: () => { alternarGradienteVelas(); onIndicatorStateChanged(); },
+    isVisible: () => true,
+    toggleVisible: () => {},
+  },
   {
     id: 'defaultmas',
     name: '📈 Médias Base Iniciais (EMA 8/16/55/98/200 + MA 56/89)',
