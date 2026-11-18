@@ -121,3 +121,10 @@ body, body *{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscal
 .vx-assets .vx-a-var{font-size:9.5px!important}
 .vx-contexto{height:28px!important;min-height:28px!important;max-height:28px!important;overflow:hidden!important}
 .vx-ctx-estado{height:auto!important;padding:2px 8px!important;font-size:9px!important}
+/* legibilidade mínima: nada abaixo de 9 px, nada cortado */
+#vx-head .vx-palavra, #vx-head .vx-simbolo{font-size:9px!important;white-space:nowrap!important;overflow:visible!important}
+#vx-head .vx-toolbtn{font-size:9px!important;white-space:nowrap!important}
+.vx-assets .vx-a-nome, .vx-assets .vx-a-simbolo, .vx-assets .vx-a-var,
+.vx-assets .vx-a-vies, .vx-contexto *{font-size:9px!important;line-height:1.25!important}
+#tv-chart-indicators-legend, #tv-chart-indicators-legend *{font-size:9px!important}
+#big-sym{font-size:11px!important}

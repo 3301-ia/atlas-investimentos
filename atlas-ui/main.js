@@ -1259,10 +1259,11 @@ function setupChart(){
   maS.ema8=chart.addLineSeries({color:C.ema8,lineWidth:1,...maCfg});
   maS.ema16=chart.addLineSeries({color:C.ema16,lineWidth:1,...maCfg});
   maS.ema55=chart.addLineSeries({color:C.ema55,lineWidth:1,...maCfg});
-  maS.ema98=chart.addLineSeries({color:C.ema98,lineWidth:1,...maCfg});
-  maS.ema200=chart.addLineSeries({color:C.ema200,lineWidth:1,...maCfg});
-  maS.ma56=chart.addLineSeries({color:C.ma56,lineWidth:1,...maCfg});
-  maS.ma89=chart.addLineSeries({color:C.ma89,lineWidth:1,...maCfg});
+  const maCfgSec={...maCfg, visible:false};
+  maS.ema98=chart.addLineSeries({color:C.ema98,lineWidth:1,...maCfgSec});
+  maS.ema200=chart.addLineSeries({color:C.ema200,lineWidth:1,...maCfgSec});
+  maS.ma56=chart.addLineSeries({color:C.ma56,lineWidth:1,...maCfgSec});
+  maS.ma89=chart.addLineSeries({color:C.ma89,lineWidth:1,...maCfgSec});
 
   // VECTRA NEON RAINBOW — 9 faixas dinâmicas para leitura solo (KAMA 100 + DEMA 21 + Envelopes)
   const nrCfg={priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,visible:false};
