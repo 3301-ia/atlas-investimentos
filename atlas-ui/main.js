@@ -13476,17 +13476,23 @@ function serieCorEma(velas, exaustao){
     else if(lado<0 && suave > COR_ZONA) lado=1;
 
     const seco = Math.max(0, Math.min(1, (exaustao && exaustao[i]) || 0));
-    // momentum sem forca esfria ate o branco; a cor volta conforme o movimento
-    // ganha corpo. No mercado seco o branco fica ainda mais puro.
-    const base   = escuro ? [222,228,236] : [250,251,253];
-    const puro   = escuro ? [242,246,251] : [255,255,255];
-    const neutro = base.map((v,k)=> v + (puro[k]-v)*seco);
-
-    // intensidade contínua: perto do zero ela quase não tem pigmento, então a
-    // vela sai cinza; perto do extremo sai cheia. É o gradiente, coerente.
-    const f = Math.pow(Math.min(1, Math.abs(suave) * (1 - 0.35*seco)), 1.15);
-    const alvo = lado>0 ? [8,153,129] : lado<0 ? [242,54,69] : neutro;
-    const c = neutro.map((v,k)=> Math.round(v + (alvo[k]-v)*f));
+    // RAMPA DE TRÊS PONTOS: branco no centro do gradiente, cinza no meio do
+    // caminho e a cor cheia só na extremidade. Saindo do zero a vela é branca,
+    // vai perdendo luz até o cinza e só então se colore de verde ou vermelho.
+    const branco = escuro ? [236,241,247] : [255,255,255];
+    const cinza  = escuro ? [96,103,114]  : [120,128,140];
+    const verde  = [8,153,129], vermelho = [242,54,69];
+    const t = Math.min(1, Math.abs(suave) * (1 - 0.30*seco));
+    const meio = 0.34;                       // onde o cinza fica
+    let c;
+    if(t <= meio){
+      const k = t / meio;                    // branco -> cinza
+      c = branco.map((v,idx)=> Math.round(v + (cinza[idx]-v)*k));
+    } else {
+      const k = (t - meio) / (1 - meio);     // cinza -> verde/vermelho
+      const extremo = lado>0 ? verde : lado<0 ? vermelho : cinza;
+      c = cinza.map((v,idx)=> Math.round(v + (extremo[idx]-v)*k));
+    }
     out.push({
       cor: "rgb("+c[0]+","+c[1]+","+c[2]+")",
       score: Number(suave.toFixed(3)),
