@@ -13502,6 +13502,49 @@ function serieCorEma(velas, exaustao){
   return out;
 }
 
+
+// =====================================================================
+// GRADIENTE CONTEXTUAL DE MÉDIAS — o Pine v6 que o Lucas mandou
+// ("Gradiente Contextual de Médias", overlay). A força não vem do voto das
+// médias: vem da INCLINAÇÃO da média lenta medida contra o ATR. Isso é o que
+// separa tendência de deriva. Tradução fiel:
+//   slope      = (EMA16 - EMA16[3]) / (ATR14 * 3)
+//   força      = |slope|
+//   alta       = EMA8 > EMA16 e slope >  0,05
+//   baixa      = EMA8 < EMA16 e slope < -0,05
+//   transp     = tendência ? max(45, 92 - força*110) : 96
+// Transparência 96 é o mercado parado: quase invisível, o branco do neutro.
+// Transparência 45 é tendência forte: cor cheia (#00E676 / #FF1744).
+// =====================================================================
+const CTX_VERDE=[0,230,118], CTX_VERMELHO=[255,23,68], CTX_NEUTRO=[120,123,134];
+function serieContextoMedias(velas){
+  const n=velas.length, closes=velas.map(c=>c.close);
+  const e8=ema(closes,8), e16=ema(closes,16);
+  const atrArr=atrCalc(velas.map(c=>c.high), velas.map(c=>c.low), closes, 14);
+  const escuro=(typeof darkMode!=="undefined") && darkMode;
+  const branco = escuro ? [236,240,245] : [252,253,254];
+  const out=new Array(n).fill(null);
+  for(let i=0;i<n;i++){
+    if(i<4 || e8[i]==null || e16[i]==null || atrArr[i]==null || !atrArr[i]) continue;
+    const slope=(e16[i]-e16[i-3])/(atrArr[i]*3);
+    const forca=Math.abs(slope);
+    const alta = e8[i]>e16[i] && slope>0.05;
+    const baixa= e8[i]<e16[i] && slope<-0.05;
+    const tendencia = alta||baixa;
+    const transp = tendencia ? Math.max(45, 92 - forca*110) : 96;
+    // 96 -> 0 (parado), 45 -> 1 (tendência cheia)
+    const t = Math.max(0, Math.min(1, (96-transp)/51));
+    const alvo = alta?CTX_VERDE : baixa?CTX_VERMELHO : CTX_NEUTRO;
+    // no parado a vela esfria até o branco; a cor volta com a força
+    const f = Math.pow(t, 0.7);
+    const base = tendencia ? branco : branco;
+    const c = base.map((v,k)=> Math.round(v + (alvo[k]-v)*f));
+    out[i]={ cor:"rgb("+c[0]+","+c[1]+","+c[2]+")", alta, baixa, tendencia, forca:+forca.toFixed(3), transp, t:+t.toFixed(3) };
+  }
+  return out;
+}
+window.serieContextoMedias = serieContextoMedias;
+
 function corTemperaturaVela(score, exausto){
   const escuro = (typeof darkMode!=="undefined") && darkMode;
   // No mercado seco o ponto neutro vira BRANCO, nao o cinza de sempre. E o
@@ -13547,6 +13590,26 @@ function alternarGradienteVelas(){
 window.alternarGradienteVelas = alternarGradienteVelas;
 window.isGradienteVelasLigado = () => candleGradientOn;
 
+
+// As duas médias do gradiente (EMA8 e EMA16) vestem a cor do contexto: verde
+// neon na alta com inclinação, vermelho na baixa com inclinação, cinza neutro
+// no parado — e a opacidade segue a mesma transparência do Pine, então elas
+// "respiram" conforme a força da tendência.
+function pintarMediasContextuais(corCtx){
+  try{
+    if(!corCtx || !maS || !maS.ema8 || !maS.ema16) return;
+    let ultimo=null;
+    for(let i=corCtx.length-1;i>=0;i--){ if(corCtx[i]){ ultimo=corCtx[i]; break; } }
+    if(!ultimo) return;
+    const alvo = ultimo.alta ? CTX_VERDE : ultimo.baixa ? CTX_VERMELHO : CTX_NEUTRO;
+    const alpha = 0.25 + 0.75*ultimo.t;   // parado fica apagado, tendência acende
+    const cor = "rgba("+alvo[0]+","+alvo[1]+","+alvo[2]+","+alpha.toFixed(2)+")";
+    maS.ema8.applyOptions({ color: cor });
+    maS.ema16.applyOptions({ color: cor });
+  }catch(e){}
+}
+window.pintarMediasContextuais = pintarMediasContextuais;
+
 function refreshPhiRibbonAndBorders(){
   const savedRange = (chart && typeof chartHasRendered !== 'undefined' && chartHasRendered) ? chart.timeScale().getVisibleLogicalRange() : null;
   const closes=candles.map(c=>c.close);
@@ -13555,6 +13618,11 @@ function refreshPhiRibbonAndBorders(){
   const scorePerBar=computePhiScoreSeries(phiArrs);
   const corEmaBar=serieCorEma(candles, null);
   window.__corEmaBar=corEmaBar;
+  // o gradiente contextual das médias (Pine do Lucas) entra no lugar do voto
+  // das 19 médias quando o interruptor está ligado
+  const corCtx=serieContextoMedias(candles);
+  window.__corCtx=corCtx;
+  pintarMediasContextuais(corCtx);
   renderPhiRibbonSegments(candles,phiArrs,alignmentPerBar);
 
   // marcos de volume: a maior vela do dia, da semana e do mes
@@ -13621,6 +13689,10 @@ function refreshPhiRibbonAndBorders(){
       const chapada = c.close >= c.open ? 'rgb(8,153,129)' : 'rgb(242,54,69)';
       return { ...c, color: chapada, wickColor: chapada, borderColor: chapada };
     }
+    const cc = corCtx && corCtx[i];
+    if(cc){
+      return { ...c, color: cc.cor, wickColor: cc.cor, borderColor: cc.cor };
+    }
     const ce = corEmaBar[i];
     if(ce){
       return { ...c, color: ce.cor, wickColor: ce.cor, borderColor: ce.cor };
@@ -13666,8 +13738,10 @@ function updateLiveCandleBorder(){
   });
   if(up===0&&down===0)return;
   const last=candles[n];
+  const ctx=serieContextoMedias(candles);
+  const cc=ctx && ctx[n];
   const ce=serieCorEma(candles, null);
-  const cor=(ce[n] && ce[n].cor) || corTemperaturaVela((up-down)/(up+down), ultimaExaustao[n]);
+  const cor=(cc && cc.cor) || (ce[n] && ce[n].cor) || corTemperaturaVela((up-down)/(up+down), ultimaExaustao[n]);
   try{ candleSeries.update({time:last.time,open:last.open,high:last.high,low:last.low,close:last.close,
     color:cor, wickColor:cor,
     borderColor: last.close>=last.open ? BORDER_BULL : BORDER_BEAR}); }catch(e){}
