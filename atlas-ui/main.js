@@ -1145,6 +1145,34 @@ function fitAllChartsContent(){
   });
 }
 
+// A escala de preço tinha largura fixa (75 px). Quando o ativo tem preço
+// comprido, ou mais casas decimais, o rótulo do último preço encostava na
+// borda e saía cortado. Aqui a largura passa a ser medida de verdade, com a
+// fonte do gráfico, sobre os preços que estão na tela.
+function ajustaEscalaPreco(){
+  try{
+    if(!candles || !candles.length || !chart) return;
+    const o = chart.options();
+    const fs = (o.layout && o.layout.fontSize) || 12;
+    const fam = (o.layout && o.layout.fontFamily) || 'sans-serif';
+    const ctx2 = document.createElement('canvas').getContext('2d');
+    ctx2.font = fs + 'px ' + fam;
+    const ult = candles[candles.length-1];
+    const amostras = [ult.close, ult.high, ult.low];
+    const visivel = chart.timeScale().getVisibleRange();
+    if(visivel){
+      candles.forEach(c=>{ if(c.time>=visivel.from && c.time<=visivel.to){ amostras.push(c.high, c.low); } });
+    }
+    const fmt = v => v>=1000
+      ? v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})
+      : v.toFixed(v<10?4:2);
+    const larg = Math.max(...amostras.map(v=>ctx2.measureText(fmt(v)).width));
+    const alvo = Math.max(getMinPriceScaleWidth(), Math.ceil(larg)+20);
+    const aplicar = (c)=>{ if(!c) return; try{ c.applyOptions({rightPriceScale:{minimumWidth:alvo}}); }catch(e){} };
+    aplicar(chart); [stochChart,phiChart,squeezeChart,effortChart,quantumChart,mtfRibbonChart].forEach(aplicar);
+  }catch(e){}
+}
+
 function getMinPriceScaleWidth() {
   const isMob = typeof window !== 'undefined' && (window.innerWidth <= 768 || (typeof navigator !== 'undefined' && /android|iphone|ipad|mobile/i.test(navigator.userAgent || '')));
   return isMob ? 55 : 75;
@@ -13521,6 +13549,7 @@ function refreshPhiRibbonAndBorders(){
   if(savedRange && savedRange.from != null && savedRange.to != null){
     try { chart.timeScale().setVisibleLogicalRange(savedRange); } catch(e){}
   }
+  ajustaEscalaPreco();
   return {phiArrs,alignmentPerBar,scorePerBar,exaustao};
 }
 

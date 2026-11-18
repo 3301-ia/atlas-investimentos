@@ -394,7 +394,7 @@
       <div class="nav-item active" title="Inicio"><span class="nav-icon">🏠</span><span class="nav-lbl">Inicio</span></div>
       <div class="nav-item" id="nav-analise" title="Analise" onclick="switchRTab('analise')"><span class="nav-icon">📊</span><span class="nav-lbl">Analise</span></div>
       <div class="nav-item" id="nav-alerts" title="Central de Alertas: medias, Fibonacci e preco" onclick="(window.atlasAbrirAlertas||toggleAlerts)()"><span class="nav-icon">🔔</span><span class="nav-lbl">Alertas</span></div>
-      <div class="nav-item" title="Ajuda" onclick="alert('ATLAS Dashboard: chart em tempo real + motor de sinais (ATLAS/GOLD/Fibonacci) + ferramentas de desenho. Aba OPERAR prepara a ordem para a Deriv.')"><span class="nav-icon">❓</span><span class="nav-lbl">Ajuda</span></div>
+      <div class="nav-item" title="Ajuda" onclick="alert('VECTRA: chart em tempo real + motor de sinais (ATLAS/GOLD/Fibonacci) + ferramentas de desenho. Aba OPERAR prepara a ordem para a Deriv.')"><span class="nav-icon">❓</span><span class="nav-lbl">Ajuda</span></div>
       <div class="nav-item" title="Idioma"><span class="nav-icon">🌐</span><span class="nav-lbl">PT-BR</span></div>
     </div>
     <div class="nav-item" id="nav-config" title="Configuracoes" onclick="openDerivModal()"><span class="nav-icon">⚙️</span><span class="nav-lbl">Config</span></div>
@@ -496,7 +496,7 @@
       <button class="btn" id="btn-modo" onclick="trocaModo()" title="Auto: o painel segue o lado mais perto de entrar. Comprador/Vendedor: trava no lado que voce escolheu, mesmo faltando muito">◈ Auto</button>
       <button class="btn" id="btn-multi" onclick="toggleMultiView()" title="Abre BTC, ETH, XAU e XAG juntos na mesma tela">🔲 Multi</button>
       <button class="btn" id="btn-mtf" onclick="toggleMtfView()" title="Abre 4 timeframes diferentes para o ativo selecionado">⏱ Multi-TF</button>
-      <button class="btn" id="btn-validador" onclick="toggleValidatorPanel()" title="Valida todos os ativos da lista com o checklist ATLAS (Score + EMAs + StochRSI)">🛡 Validador</button>
+      <button class="btn" id="btn-validador" onclick="toggleValidatorPanel()" title="Valida todos os ativos da lista com o checklist VECTRA (Score + EMAs + StochRSI)">🛡 Validador</button>
       <button class="btn" id="btn-rsitable" onclick="toggleRsiTable()" title="Tabela RSI multi-timeframe pra todos os ativos, com alvo de preco inverso">📊 RSI Table</button>
       <button class="btn" id="btn-rainbow" onclick="toggleRainbowTab()" title="Rainbow Chart isolado (regressao log de longo prazo)">🌈 Rainbow</button>
       <button class="btn" id="btn-estudo" onclick="toggleStudyArchive()" title="Arquivo de estudo: angulo das EMAs 8/16 por timeframe, pra registrar observacoes ao longo do tempo">📚 Arquivo</button>
@@ -869,7 +869,7 @@
              cotacao ao vivo via SimpleFX + RSI multi-timeframe via Binance. -->
         <div id="gold-view" class="gold-view">
           <div class="rainbow-toolbar">
-            <span class="rainbow-title">🥇 ATLAS GOLD · MERCADOS GLOBAIS</span>
+            <span class="rainbow-title">🥇 VECTRA GOLD · MERCADOS GLOBAIS</span>
             <span class="rainbow-sub" id="gold-ws-st">Conectando...</span>
             <div class="gold-cats" id="gold-cats">
               <div class="cp active" data-cat="ALL" onclick="goldSetCategory('ALL')">ALL</div>
@@ -912,7 +912,7 @@
                 <canvas id="gold-globe-canvas" width="260" height="150"></canvas>
                 <div class="globe-overlay">
                   <div class="globe-cnt" id="gold-globe-cnt">0 cotacoes</div>
-                  <div class="globe-sub">ATLAS GOLD ENGINE</div>
+                  <div class="globe-sub">VECTRA GOLD ENGINE</div>
                 </div>
               </div>
               <div class="sp-sec"><span>WATCHLIST (TOP 60)</span></div>
@@ -1286,7 +1286,7 @@
         <div class="phi-wrap" id="phi-wrap-el"><div id="phi-chart"></div></div>
       </div>
 
-      <!-- PAINEL DIREITO: OPERAR (ticket estilo Deriv) / ANALISE (motor ATLAS) - INICIA RECOLHIDO -->
+      <!-- PAINEL DIREITO: OPERAR (ticket estilo Deriv) / ANALISE (motor VECTRA) - INICIA RECOLHIDO -->
       <div class="rpanel collapsed">
         <div class="rpanel-col">
           <div class="rtabs">
@@ -1335,7 +1335,7 @@
             </div>
           </div>
 
-          <!-- ANALISE (motor ATLAS existente) -->
+          <!-- ANALISE (motor VECTRA existente) -->
           <div class="rpanel-body" id="body-analise">
             <!-- GLOBE -->
             <div class="globe-wrap">
@@ -1346,7 +1346,7 @@
               </div>
               <div class="globe-overlay">
                 <div class="globe-cnt" id="globe-cnt">0 sinais</div>
-                <div class="globe-sub">ATLAS INDICATOR</div>
+                <div class="globe-sub">VECTRA INDICATOR</div>
               </div>
             </div>
 
@@ -1636,7 +1636,7 @@
             <div class="sig-list" id="sig-list"><div style="padding:5px 9px;font-size:9px;color:var(--t3);">Aguardando sinais...</div></div>
           </div>
 
-          <!-- IA (visao geral do mercado, analise do ativo atual e chat com o ATLAS) -->
+          <!-- IA (visao geral do mercado, analise do ativo atual e chat com o VECTRA) -->
           <div class="rpanel-body" id="body-ia">
             <!-- CHAVE DE API -->
             <div class="sp-sec"><span>CONEXAO IA</span></div>
@@ -1750,7 +1750,7 @@
 <!-- CONFLUATOR GOLD MODAL -->
 <div id="confluator-gold-modal" style="display:none;position:fixed;bottom:20px;left:80px;z-index:9999;background:rgba(20,24,32,0.9);border:1px solid var(--bd2);border-radius:10px;padding:12px;width:300px;box-shadow:0 4px 15px rgba(0,0,0,0.8);backdrop-filter:blur(4px);">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;border-bottom:1px solid var(--bd);padding-bottom:6px;">
-    <span style="font-weight:bold;color:var(--goldd);font-size:12px;cursor:move;" class="drag-header">🏆 ATLAS GOLD (RSI MTF)</span>
+    <span style="font-weight:bold;color:var(--goldd);font-size:12px;cursor:move;" class="drag-header">🏆 VECTRA GOLD (RSI MTF)</span>
     <button onclick="toggleConfluatorGoldModal()" style="background:none;border:none;color:var(--t2);cursor:pointer;font-size:16px;line-height:1;">&times;</button>
   </div>
   <table style="width:100%;font-size:10px;text-align:left;border-collapse:collapse;" id="confluator-gold-table">
