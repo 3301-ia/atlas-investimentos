@@ -308,3 +308,10 @@ body.vx #vx-head .vx-hline > .vx-inst, #vx-head .vx-hline > .vx-inst{
 }
 body.vx #vx-head .vx-hline > *, #vx-head .vx-hline > *{ flex-shrink: 0 !important }
 body.vx #vx-head .vx-hline > .vx-inst, #vx-head .vx-hline > .vx-inst{ flex-shrink: 1 !important }
+
+/* Em 1920 os nomes dos botões voltam, e aí a faixa de ativos precisa ceder
+   mais 100 px para "Ferramentas" não sair da tela. Ela cede, e o seletor de
+   classe rola dentro dela. */
+@media (min-width: 1700px){
+  body.vx #vx-head .vx-hline > .vx-inst, #vx-head .vx-hline > .vx-inst{ max-width: 356px !important }
+}
