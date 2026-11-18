@@ -72,3 +72,23 @@ body.vx b,body.vx strong{font-weight:600}
 *::-webkit-scrollbar{width:6px;height:6px}
 *::-webkit-scrollbar-thumb{background:var(--vx-fio2);border-radius:6px}
 *::-webkit-scrollbar-track{background:transparent}
+
+/* ── o preço não pode ser cortado em nenhuma tela ────────────────────── */
+#vx-preco{line-height:1.28!important;height:auto!important;overflow:visible!important}
+#vx-var{line-height:1.3!important;height:auto!important}
+#vx-price,#vx-hline{align-items:baseline!important;min-height:0!important}
+#vx-price{overflow:visible!important}
+/* a palavra do título estava mais larga que a caixa e saía cortada */
+#vx-palavra{overflow:visible!important;max-width:none!important;white-space:nowrap!important;
+  letter-spacing:.10em!important;flex:0 0 auto!important}
+
+@media (max-width:900px){
+  #vx-preco{font-size:20px!important;min-width:0!important;text-align:left!important}
+  #vx-var{font-size:10.5px!important;min-width:0!important;text-align:left!important}
+}
+@media (max-width:480px){
+  #vx-preco{font-size:17px!important;letter-spacing:-.01em!important}
+  #vx-var{font-size:10px!important}
+  #vx-head{overflow-x:auto!important;overflow-y:hidden!important}
+  #vx-head::-webkit-scrollbar{height:0}
+}
