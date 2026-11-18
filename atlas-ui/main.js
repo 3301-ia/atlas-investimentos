@@ -13464,27 +13464,23 @@ const COR_LIMIAR=0.14, COR_K=2/13, COR_ZONA=0.22;
 const CTX_VERDE=[0,230,118], CTX_VERMELHO=[255,23,68], CTX_NEUTRO=[120,123,134];
 function serieContextoMedias(velas){
   const n=velas.length, closes=velas.map(c=>c.close);
-  const e8=ema(closes,8), e16=ema(closes,16);
+  const e8=ema(closes,8), e16=ema(closes,16), e55=ema(closes,55), e98=ema(closes,98), e200=ema(closes,200);
+  const atrArr=atrCalc(velas.map(c=>c.high), velas.map(c=>c.low), closes, 14);
   const out=new Array(n).fill(null);
 
   // ═══ GRADIENTE DO ATLAS v11, refinado ═══
-  // Base do indicador do Lucas:
-  //   cDist   = EMA8 - EMA16
-  //   maxDist = SMA(|cDist|,100) * 2
-  //   cor     = from_gradient(cDist, -maxDist, maxDist, #f23645, #089981)
+  // Base do indicador: cDist = EMA8 - EMA16, escala = afastamento das últimas
+  // 100 velas, rampa de #f23645 a #089981.
   //
-  // O problema do original: quando a distância passa de maxDist a cor trava no
-  // extremo, e a vela fica vermelha (ou verde) idêntica por 15, 20 velas
-  // seguidas — justamente no trecho em que o preço se afasta das médias e o
-  // movimento está mudando. Aqui a mesma rampa ganha dois ajustes:
-  //
-  //  1. a escala é o MAIOR afastamento das últimas 100 velas (não a média),
-  //     então ela acompanha o regime em vez de ficar defasada;
-  //  2. em vez de cortar no extremo, comprime com tanh: a cor nunca satura de
-  //     vez e continua respondendo a cada vela que o preço anda, mesmo longe.
-  //
-  // O meio da rampa (médias coladas) continua sendo a mistura do vermelho com
-  // o verde, e a ponta continua #f23645 / #089981.
+  // Três ajustes, todos contínuos (nada pisca):
+  //  1. sem platô — a escala é o MAIOR afastamento recente e a compressão é
+  //     tanh, então a cor nunca trava no extremo;
+  //  2. FEIXE ALINHADO GANHA FORÇA — quantas das quatro relações do feixe
+  //     (8>16, 16>55, 55>98, 98>200, ou o inverso) estão do lado do
+  //     movimento. 4 de 4 = cor cheia; feixe embolado = cor pálida;
+  //  3. PERTO DA EMA55 ESFRIA — quando o preço chega no meio do feixe (a 55)
+  //     ou fura ela, a vela perde corpo, porque é ali que a direção costuma
+  //     trocar.
   const VERM = [242,54,69], VERDE = [8,153,129];
   const JAN = 100;
   const dist = new Array(n).fill(null);
@@ -13492,6 +13488,7 @@ function serieContextoMedias(velas){
     if(e8[i]==null || e16[i]==null) continue;
     dist[i] = e8[i]-e16[i];
   }
+  let alinSuave = null;
   for(let i=0;i<n;i++){
     if(dist[i]==null){ out[i]=null; continue; }
     let maxAbs = 0;
@@ -13500,13 +13497,35 @@ function serieContextoMedias(velas){
       if(a>maxAbs) maxAbs = a;
     }
     if(!(maxAbs>0)){ out[i]=null; continue; }
-    // tanh(1,25·z): perto do zero a cor anda quase linear; longe ela ainda
-    // desliza em vez de travar. 0,85 deixa o extremo alcançável nos picos.
     const z = dist[i] / (maxAbs*0.85);
-    const t = 0.5 + 0.5*Math.tanh(1.25*z);
+    const t0 = 0.5 + 0.5*Math.tanh(1.25*z);
+
+    // 2. força pelo alinhamento do feixe (0 a 4 relações do lado do movimento)
+    let alin = 0;
+    const alta = dist[i] > 0;
+    const ok = (a,b)=> (a==null||b==null) ? false : (alta ? a>b : a<b);
+    if(ok(e8[i],e16[i])) alin++;
+    if(ok(e16[i],e55[i])) alin++;
+    if(ok(e55[i],e98[i])) alin++;
+    if(ok(e98[i],e200[i])) alin++;
+    const alinN = alin/4;
+    alinSuave = (alinSuave==null) ? alinN : alinSuave + (alinN-alinSuave)*0.5;
+    let forca = 0.5 + 0.5*alinSuave;      // 0,5 embolado · 1,0 alinhado
+
+    // 3. toque na EMA55 esfria
+    const atr = atrArr[i] || 0;
+    let toque = 0;
+    if(atr>0 && e55[i]!=null){
+      const prox = Math.abs(closes[i]-e55[i]) / atr;   // 0 = em cima da 55
+      toque = Math.max(0, 1 - prox/0.35);              // 1 no toque, 0 longe
+      forca *= (1 - 0.35*toque);
+    }
+
+    const t = Math.max(0, Math.min(1, 0.5 + (t0-0.5)*forca));
     const c = [0,1,2].map(k=> Math.round(VERM[k] + (VERDE[k]-VERM[k])*t));
     out[i]={ cor:"rgb("+c[0]+","+c[1]+","+c[2]+")",
       dist:+dist[i].toFixed(2), maxDist:+maxAbs.toFixed(2), t:+t.toFixed(3),
+      alin, forca:+forca.toFixed(2), toque:+toque.toFixed(2),
       alta: dist[i]>0, baixa: dist[i]<0 };
   }
   return out;
