@@ -13476,23 +13476,21 @@ function serieCorEma(velas, exaustao){
     else if(lado<0 && suave > COR_ZONA) lado=1;
 
     const seco = Math.max(0, Math.min(1, (exaustao && exaustao[i]) || 0));
-    // RAMPA DE TRÊS PONTOS: branco no centro do gradiente, cinza no meio do
-    // caminho e a cor cheia só na extremidade. Saindo do zero a vela é branca,
-    // vai perdendo luz até o cinza e só então se colore de verde ou vermelho.
-    const branco = escuro ? [236,241,247] : [255,255,255];
-    const cinza  = escuro ? [96,103,114]  : [120,128,140];
-    const verde  = [8,153,129], vermelho = [242,54,69];
-    const t = Math.min(1, Math.abs(suave) * (1 - 0.30*seco));
-    // A rampa não é em dois tempos: a cor da extremidade entra JÁ no primeiro
-    // passo, só que com pouca opacidade, enquanto a luz cai de branco para
-    // cinza. Conforme o movimento ganha corpo, o pigmento fica mais nítido, até
-    // chegar na cor cheia da ponta. Branco no centro, cinza tingido no meio,
-    // verde ou vermelho vivo na extremidade.
-    const extremo = lado>0 ? verde : lado<0 ? vermelho : cinza;
-    const luz = Math.min(1, t / 0.55);                 // branco -> cinza
-    const base = branco.map((v,idx)=> v + (cinza[idx]-v)*luz);
-    const pigmento = Math.pow(t, 0.85);                 // opacidade do pigmento
-    const c = base.map((v,idx)=> Math.round(v + (extremo[idx]-v)*pigmento));
+    // FÓRMULA DA REFERÊNCIA — é a corTemperaturaVela do backup do repositório
+    // (main.js da raiz), trazida inteira para o painel. Nada de rampa inventada
+    // aqui: o neutro caminha do cinza até o branco conforme o mercado seca, e a
+    // cor entra por interpolação com expoente 0,7. O expoente é o que faz a
+    // vela só ficar pastel quando o regime está mesmo indeciso: perto do zero
+    // ela é branca, no meio aparece o cinza já tingido, e só na extremidade a
+    // cor fica cheia. O lado vem da memória (histerese), então a cor não pisca.
+    const cinzaRef  = escuro ? [64,70,80]    : [219,224,230];
+    const brancoRef = escuro ? [236,240,245] : [252,253,254];
+    const neutroRef = cinzaRef.map((v,idx)=> v + (brancoRef[idx]-v)*seco);
+    const ladoCor   = lado !== 0 ? lado : (suave >= 0 ? 1 : -1);
+    const alvoRef   = ladoCor > 0 ? verde : vermelho;
+    const intensidade = Math.abs(suave) * (1 - 0.55*seco);
+    const fRef = Math.pow(Math.min(1, intensidade), 0.7);
+    const c = neutroRef.map((v,idx)=> Math.round(v + (alvoRef[idx]-v)*fRef));
     out.push({
       cor: "rgb("+c[0]+","+c[1]+","+c[2]+")",
       score: Number(suave.toFixed(3)),
