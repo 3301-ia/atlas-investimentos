@@ -87,3 +87,37 @@ body, body *{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscal
     flex:0 0 62px!important;flex-basis:62px!important;padding:8px 4px!important;
   }
 }
+/* ── gráfico em primeiro lugar: a faixa de ativos e o contexto encolhem ── */
+.vx-ativos{height:48px!important;min-height:48px!important;max-height:48px!important;
+  overflow:hidden!important;padding:0 8px!important;gap:8px!important;align-items:center!important}
+.vx-ativos .vx-a-card{height:40px!important;min-height:40px!important;padding:4px 10px!important;
+  display:flex!important;flex-direction:row!important;align-items:center!important;gap:8px!important;
+  border-radius:5px!important}
+.vx-ativos .vx-a-nome,.vx-ativos .vx-a-simbolo{font-size:9px!important;font-weight:600!important;letter-spacing:.08em!important}
+.vx-ativos .vx-a-preco{font-size:13px!important;font-weight:500!important}
+.vx-ativos .vx-a-var{font-size:9.5px!important}
+.vx-ativos .vx-a-nivel{display:none!important}
+.vx-ativos .vx-a-leitura{display:none!important}
+.vx-contexto{height:26px!important;min-height:26px!important;padding:0 10px!important;
+  font-size:9px!important;gap:10px!important;overflow:hidden!important}
+.vx-contexto .vx-ctx-dist,.vx-contexto .vx-ctx-estado{font-size:9px!important;line-height:1.2!important}
+/* barra de desenho em duas colunas, nunca maior que o gráfico */
+#drawing-toolbar{display:grid!important;grid-template-columns:1fr 1fr!important;
+  width:64px!important;max-height:calc(100% - 130px)!important;overflow:auto!important;
+  top:70px!important;left:8px!important;padding:4px!important;gap:2px!important}
+#drawing-toolbar .tool-sep{grid-column:1 / -1!important}
+/* nada abaixo de 9 px na leitura */
+.vx-ativos *, .vx-contexto *, #vx-kpis *{min-font-size:9px}
+/* a faixa de ativos real chama .vx-assets (97 px -> 50 px) */
+.vx-assets{height:50px!important;min-height:50px!important;max-height:50px!important;overflow:hidden!important;
+  padding:2px 8px!important;align-items:center!important}
+.vx-assets-linha{height:46px!important;min-height:46px!important;max-height:46px!important;
+  display:flex!important;align-items:center!important;gap:8px!important;overflow:hidden!important}
+.vx-assets .vx-a-card{height:42px!important;min-height:42px!important;padding:3px 10px!important;
+  display:flex!important;flex-direction:row!important;align-items:center!important;gap:8px!important}
+.vx-assets .vx-a-nivel,.vx-assets .vx-a-leitura,.vx-assets .vx-a-faixa{display:none!important}
+.vx-assets .vx-a-nome,.vx-assets .vx-a-simbolo{font-size:9px!important}
+.vx-assets .vx-a-preco{font-size:13px!important;font-weight:500!important}
+.vx-assets .vx-a-var{font-size:9.5px!important}
+.vx-contexto{height:28px!important;min-height:28px!important;max-height:28px!important;overflow:hidden!important}
+.vx-ctx-estado{height:auto!important;padding:2px 8px!important;font-size:9px!important}
