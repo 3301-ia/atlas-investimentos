@@ -368,7 +368,14 @@
     item.innerHTML = '<span class="nav-icon">\u25C8</span><span class="nav-lbl">Deriv</span>';
     item.addEventListener('click', abrir);
     const irmao = document.getElementById('nav-imperial');
-    pai.parentNode.insertBefore(item, irmao ? irmao.nextSibling : null);
+    // o irmao pode estar em outro pai (o trilho muda de lugar no celular):
+    // inserir com uma referencia que nao e filha do mesmo no estourava
+    // "not a child of this node" e o menu parava de ser montado.
+    const destino = pai.parentNode || pai;
+    try{
+      const ref = (irmao && irmao.parentNode === destino) ? irmao.nextSibling : null;
+      destino.insertBefore(item, ref);
+    }catch(e){ destino.appendChild(item); }
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', instalarNav);

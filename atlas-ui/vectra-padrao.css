@@ -180,3 +180,33 @@ body.vx .vx-a-preco, body.vx .vx-a-var, body.vx .vx-a-num-preco{
   body.vx .drawing-toolbar .vx-palavra, .drawing-toolbar .vx-palavra{ display: none !important }
   body.vx .drawing-toolbar .vx-simbolo, .drawing-toolbar .vx-simbolo{ font-size: 12px !important; line-height: 1 !important }
 }
+
+/* 7 · A coluna de ferramentas é um DIV com id, não classe: as regras anteriores
+      caíam no vazio e os botões de 52 px não cabiam em 56 px, então a segunda
+      coluna nascia fora da tela. */
+@media (max-width: 760px){
+  body.vx #drawing-toolbar, #drawing-toolbar{
+    width: 58px !important;
+    max-width: 58px !important;
+    min-width: 58px !important;
+    overflow: visible !important;
+    padding: 2px !important;
+    box-sizing: border-box !important;
+  }
+  body.vx #drawing-toolbar .tool-btn, #drawing-toolbar .tool-btn{
+    width: 26px !important;
+    min-width: 26px !important;
+    max-width: 26px !important;
+    height: 26px !important;
+    min-height: 26px !important;
+    max-height: 26px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 12px !important;
+  }
+  body.vx #drawing-toolbar .vx-palavra, #drawing-toolbar .vx-palavra{ display: none !important }
+  body.vx #drawing-toolbar .vx-simbolo, #drawing-toolbar .vx-simbolo{ font-size: 12px !important; line-height: 1 !important }
+}
