@@ -13483,6 +13483,7 @@ function serieCorEma(velas, exaustao){
     // vela só ficar pastel quando o regime está mesmo indeciso: perto do zero
     // ela é branca, no meio aparece o cinza já tingido, e só na extremidade a
     // cor fica cheia. O lado vem da memória (histerese), então a cor não pisca.
+    const verde = [8,153,129], vermelho = [242,54,69];
     const cinzaRef  = escuro ? [64,70,80]    : [219,224,230];
     const brancoRef = escuro ? [236,240,245] : [252,253,254];
     const neutroRef = cinzaRef.map((v,idx)=> v + (brancoRef[idx]-v)*seco);
