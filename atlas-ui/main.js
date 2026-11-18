@@ -1337,6 +1337,7 @@ function setupChart(){
   // nas abas proprias "🌈 Rainbow" e "📐 Macro", por pedido anterior.
   maS.ema8=chart.addLineSeries({color:C.ema8,lineWidth:1,...maCfg});
   maS.ema16=chart.addLineSeries({color:C.ema16,lineWidth:1,...maCfg});
+  window.maS = maS;
   maS.ema55=chart.addLineSeries({color:C.ema55,lineWidth:1,...maCfg});
   const maCfgSec={...maCfg, visible:false};
   maS.ema98=chart.addLineSeries({color:C.ema98,lineWidth:1,...maCfgSec});
