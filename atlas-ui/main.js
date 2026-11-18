@@ -13353,6 +13353,58 @@ function serieExaustao(velas, rsiArr, e200){
 //
 // O expoente 0,7 acende a cor mais rapido perto dos extremos, entao a vela
 // so fica pastel de verdade quando o ribbon esta mesmo indeciso.
+// ── Cor das velas pela LÓGICA DAS EMAs, com memória ───────────────────────
+// Quem pinta a vela não é a vela: é o regime das médias. Preço contra a 8,
+// 8 contra a 16, 16 contra a 50, 50 contra a 200 e as rápidas subindo ou
+// descendo. Isso dá um score de -1 a +1. O score passa por um filtro com
+// limiar: só se mexe quando a mudança passa de 0,16, e se mexe devagar.
+// É esse limiar que acaba com o cintilar de vermelho e verde de vela em vela.
+// A cor sai do score atravessando o cinza claro, e o branco no mercado seco:
+// só fica verde ou vermelho cheio quando o regime está inteiro de um lado.
+const LIMIAR_COR = 0.16, K_COR = 2/(8+1);
+function serieCorEma(velas, exaustao){
+  const n = velas.length;
+  const closes = velas.map(c=>c.close);
+  const e8 = ema(closes,8), e16 = ema(closes,16), e50 = ema(closes,50), e200 = ema(closes,200);
+  const escuro = (typeof darkMode!=="undefined") && darkMode;
+  const bruto = new Array(n).fill(null);
+  for(let i=0;i<n;i++){
+    if(e200[i]==null) continue;
+    const d=(a,b)=> (a==null||b==null)?0:Math.sign(a-b);
+    const sl=(arr)=> i<4?0:Math.sign(arr[i]-arr[i-4]);
+    const s = 0.26*d(e8[i],e16[i]) + 0.16*d(e16[i],e50[i]) + 0.18*d(closes[i],e50[i])
+            + 0.14*d(e50[i],e200[i]) + 0.12*d(closes[i],e200[i]) + 0.08*sl(e8) + 0.06*sl(e50);
+    bruto[i] = Math.max(-1, Math.min(1, s));
+  }
+  let suave=null, sinal=0;
+  const out=[];
+  for(let i=0;i<n;i++){
+    const b=bruto[i];
+    if(b==null){ out.push(null); continue; }
+    if(suave==null) suave=b;
+    else if(Math.abs(b-suave) > LIMIAR_COR) suave = suave + (b-suave)*K_COR;
+    // o lado só vira quando o score passa de 0,12 do outro lado: sem isso a
+    // vela troca de cor no empate e volta na seguinte
+    if(sinal===0) sinal = suave>0.12?1:suave<-0.12?-1:0;
+    else if(sinal>0 && suave < -0.12) sinal=-1;
+    else if(sinal<0 && suave > 0.12) sinal=1;
+    const seco = Math.max(0, Math.min(1, (exaustao && exaustao[i]) || 0));
+    const cinza  = escuro ? [64,70,80]    : [219,224,230];
+    const branco = escuro ? [236,240,245] : [252,253,254];
+    const neutro = cinza.map((v,k)=> v + (branco[k]-v)*seco);
+    const alvo = sinal>0 ? [8,153,129] : sinal<0 ? [242,54,69] : neutro;
+    const f = Math.pow(Math.min(1, Math.abs(suave) * (1 - 0.35*seco)), 1.25);
+    const c = neutro.map((v,k)=> Math.round(v + (alvo[k]-v)*f));
+    out.push({
+      cor: "rgb("+c[0]+","+c[1]+","+c[2]+")",
+      score: Number(suave.toFixed(3)),
+      lado: sinal>0?'quente':sinal<0?'frio':'neutro',
+      faixa: Math.abs(suave)<0.15?'neutro': Math.abs(suave)<0.45?'morno': Math.abs(suave)<0.75?'definido':'cheio'
+    });
+  }
+  return out;
+}
+
 function corTemperaturaVela(score, exausto){
   const escuro = (typeof darkMode!=="undefined") && darkMode;
   // No mercado seco o ponto neutro vira BRANCO, nao o cinza de sempre. E o
@@ -13383,6 +13435,8 @@ function refreshPhiRibbonAndBorders(){
   const phiArrs=PHI_PERIODS.map(p=>ema(closes,p));
   const alignmentPerBar=computePhiAlignmentSeries(phiArrs);
   const scorePerBar=computePhiScoreSeries(phiArrs);
+  const corEmaBar=serieCorEma(candles, null);
+  window.__corEmaBar=corEmaBar;
   renderPhiRibbonSegments(candles,phiArrs,alignmentPerBar);
 
   // marcos de volume: a maior vela do dia, da semana e do mes
@@ -13444,6 +13498,10 @@ function refreshPhiRibbonAndBorders(){
         borderColor: borderCor
       };
     }
+    const ce = corEmaBar[i];
+    if(ce){
+      return { ...c, color: ce.cor, wickColor: ce.cor, borderColor: ce.cor };
+    }
     if(s == null) return c;
     const cor = corTemperaturaVela(s, exaustao[i]);
     return {
@@ -13484,7 +13542,8 @@ function updateLiveCandleBorder(){
   });
   if(up===0&&down===0)return;
   const last=candles[n];
-  const cor=corTemperaturaVela((up-down)/(up+down), ultimaExaustao[n]);
+  const ce=serieCorEma(candles, null);
+  const cor=(ce[n] && ce[n].cor) || corTemperaturaVela((up-down)/(up+down), ultimaExaustao[n]);
   try{ candleSeries.update({time:last.time,open:last.open,high:last.high,low:last.low,close:last.close,
     color:cor, wickColor:cor,
     borderColor: last.close>=last.open ? BORDER_BULL : BORDER_BEAR}); }catch(e){}
