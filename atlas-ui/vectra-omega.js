@@ -97,6 +97,7 @@
         <span><i style="display:inline-block;width:8px;height:8px;background:${CORES.aquecendo};border-radius:2px;margin-right:6px"></i>AQUECENDO</span>
         <span><i style="display:inline-block;width:8px;height:8px;background:${CORES.quente};border-radius:2px;margin-right:6px"></i>SOBREAQUECIDO</span>
         <span id="om-partes" style="margin-left:auto"></span>
+        <span id="om-alcance" style="display:flex;gap:6px"></span>
       </div>
       <div id="om-chart" style="flex:1;min-height:0"></div>`;
     document.body.appendChild(caixa);
@@ -145,7 +146,31 @@
       const pontos = serie.filter((x) => x).map((x) => ({ time: velas[x.i].time, value: x.score, color: CORES[faixa(x.score)] }));
       const linha = grafico.addLineSeries({ lineWidth: 2, priceScaleId: 'left', priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: true });
       linha.setData(pontos);
-      [20, 45, 70].forEach((n) => linha.createPriceLine({ price: n, color: '#2b3140', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '' }));
+      // faixas com nome, como as linhas de referência do original
+      [[0, 'FRIO'], [20, 'neutro'], [45, 'aquecendo'], [70, 'sobreaquecido'], [100, '']].forEach(([n, titulo]) => {
+        if (!titulo) return;
+        linha.createPriceLine({ price: n, color: '#2b3140', lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: titulo });
+      });
+      // ponto de agora, com o mesmo destaque da leitura de referência
+      const ultimoPonto = pontos[pontos.length - 1];
+      if (ultimoPonto) {
+        linha.setMarkers([{ time: ultimoPonto.time, position: 'inCircle', color: CORES[f], shape: 'circle', text: '' }]);
+        preco.setMarkers([{ time: velas[velas.length - 1].time, position: 'inCircle', color: '#3d7bff', shape: 'circle', text: '' }]);
+      }
+      // alcance: 1, 2, 3 anos ou tudo
+      const barra = caixa.querySelector('#om-alcance');
+      barra.innerHTML = '';
+      [['1A', 365], ['2A', 730], ['3A', 1095], ['Tudo', 0]].forEach(([rot, dias]) => {
+        const b = document.createElement('button');
+        b.textContent = rot;
+        b.style.cssText = 'background:transparent;border:1px solid #242935;color:#8a92a6;border-radius:3px;padding:3px 8px;font-size:10px;cursor:pointer';
+        b.onclick = () => {
+          if (!dias) { grafico.timeScale().fitContent(); return; }
+          const de = velas.length - dias;
+          grafico.timeScale().setVisibleLogicalRange({ from: Math.max(0, de), to: velas.length + 3 });
+        };
+        barra.appendChild(b);
+      });
       grafico.timeScale().fitContent();
     } catch (e) {
       caixa.querySelector('#om-valor').textContent = 'erro';
