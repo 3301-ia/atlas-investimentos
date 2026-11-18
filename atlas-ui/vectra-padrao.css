@@ -210,3 +210,66 @@ body.vx .vx-a-preco, body.vx .vx-a-var, body.vx .vx-a-num-preco{
   body.vx #drawing-toolbar .vx-palavra, #drawing-toolbar .vx-palavra{ display: none !important }
   body.vx #drawing-toolbar .vx-simbolo, #drawing-toolbar .vx-simbolo{ font-size: 12px !important; line-height: 1 !important }
 }
+
+/* =====================================================================
+   8 · O QUE ESTAVA FORA DE PADRÃO NO PC (medido no painel no ar)
+   As regras da coluna de ferramentas estavam presas dentro dos blocos
+   "max-width: 760px", então no PC nada valia: a barra ficava com 62 px,
+   os botões com 58 px e a SEGUNDA COLUNA nascia em x=145, 65 px fora da
+   barra, por cima do gráfico. Os separadores, com 118 px, também
+   vazavam. Aqui vale em qualquer largura.
+   ===================================================================== */
+body.vx #drawing-toolbar, #drawing-toolbar{
+  width: 58px !important;
+  min-width: 58px !important;
+  max-width: 58px !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: wrap !important;
+  align-content: flex-start !important;
+  gap: 2px !important;
+  padding: 2px !important;
+  overflow: hidden !important;
+}
+body.vx #drawing-toolbar .tool-btn, #drawing-toolbar .tool-btn{
+  width: 26px !important;
+  min-width: 26px !important;
+  max-width: 26px !important;
+  height: 26px !important;
+  min-height: 26px !important;
+  max-height: 26px !important;
+  flex: 0 0 26px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 12px !important;
+  line-height: 1 !important;
+  border-radius: 3px !important;
+}
+body.vx #drawing-toolbar .vx-palavra, #drawing-toolbar .vx-palavra{ display: none !important }
+body.vx #drawing-toolbar .vx-simbolo, #drawing-toolbar .vx-simbolo{ font-size: 12px !important; line-height: 1 !important }
+body.vx #drawing-toolbar .tool-sep, #drawing-toolbar .tool-sep{
+  width: 100% !important; min-width: 100% !important; max-width: 100% !important;
+  height: 1px !important; margin: 2px 0 !important; flex: 0 0 100% !important;
+}
+
+/* A faixa de classes de ativo cortava TODOS/CRYPTO/METALS/FX: 104 px do
+   conteúdo ficavam para fora da caixa com overflow hidden. Passa a rolar
+   dentro de si, sem empurrar o cabeçalho. */
+#vx-head .vx-inst, #vx-head .vx-hline > .vx-inst{
+  min-width: 0 !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  flex-wrap: nowrap !important;
+  scrollbar-width: none !important;
+}
+#vx-head .vx-inst::-webkit-scrollbar{ height: 0 !important; display: none !important }
+#vx-head .vx-inst > *{ flex: 0 0 auto !important }
+.cat-bar, .topbar{ overflow-x: auto !important; scrollbar-width: none !important }
+.cat-bar::-webkit-scrollbar, .topbar::-webkit-scrollbar{ height: 0 !important }
+
+/* O ícone do tema vazava 26 px da própria caixa. */
+#vx-extra{ padding-right: 2px !important; box-sizing: border-box !important; overflow: hidden !important }
