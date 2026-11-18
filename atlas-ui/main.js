@@ -14238,20 +14238,65 @@ async function loadFullHistory(){
 // desenho, o painel vai puxando lotes de 1.000 em segundo plano até 5.000
 // velas (o botão 🕰 Tudo continua levando até o teto de 20.000). O zoom atual
 // é preservado em cada lote, então nada pula na tela.
-const AUTO_HIST_ALVO = 20000; // o teto de HIST_CAP: vai até onde a fonte tiver
+const AUTO_HIST_ALVO = 20000; // o teto de HIST_CAP
 let histFundoSeq = 0;
+
+// Puxa varios lotes antigos ANTES de redesenhar. Redesenhar 20 vezes a serie
+// inteira (uma por lote de 1.000) levava ~15 s por lote; em blocos de 5.000
+// com um unico applySeriesData por bloco o historico inteiro entra em segundos.
+async function puxarLotesAntigos(quantos){
+  const sym=currentSym, tf=currentTF;
+  if(!candles.length) return 0;
+  let base = candles[0].time;
+  const novos = [];
+  for(let k=0;k<quantos;k++){
+    const sig = safeTimeoutSignal(9000);
+    let d = null;
+    try{
+      const r = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${sym}&interval=${tf}&limit=1000&endTime=${base*1000-1}`, sig?{signal:sig}:{});
+      if(r.ok) d = await r.json();
+    }catch(e){ d = null; }
+    if(!d || !Array.isArray(d) || !d.length){
+      // binance recusou: tenta a spot, que tem o mesmo formato
+      try{
+        const r2 = await fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${tf}&limit=1000&endTime=${base*1000-1}`, sig?{signal:sig}:{});
+        if(r2.ok) d = await r2.json();
+      }catch(e){ d = null; }
+    }
+    if(!d || !Array.isArray(d) || !d.length){ noMoreHistory = true; break; }
+    if(sym!==currentSym || tf!==currentTF) return 0;
+    const arr = d.map(k=>({time:Math.floor(k[0]/1000),open:+k[1],high:+k[2],low:+k[3],close:+k[4],volume:+k[5],
+        compra:+k[10]||0, venda:Math.max(0,(+k[7]||0)-(+k[10]||0))}))
+      .filter(c=>c.time<base);
+    if(!arr.length){ noMoreHistory = true; break; }
+    novos.unshift(...arr);
+    base = arr[0].time;
+  }
+  if(!novos.length) return 0;
+  const visRange = chart ? chart.timeScale().getVisibleLogicalRange() : null;
+  candles = [...novos, ...candles];
+  if(candles.length>HIST_CAP) candles = candles.slice(-HIST_CAP);
+  try{ semeiaFluxoDoHistorico(); }catch(e){}
+  try{ applySeriesData(); }catch(e){}
+  if(visRange && chart){
+    try{ chart.timeScale().setVisibleLogicalRange({from:visRange.from+novos.length, to:visRange.to+novos.length}); }catch(e){}
+  }
+  return novos.length;
+}
+
 async function carregarHistoricoFundo(){
   if(loadingFullHistory || loadingMoreHistory) return;
   const meu = ++histFundoSeq, seq = loadSeq;
-  let i = 0;
-  while(seq === loadSeq && meu === histFundoSeq && !noMoreHistory && candles.length < AUTO_HIST_ALVO && i < 40){
-    const ok = await fetchOlderBatch();
-    if(!ok) break;
-    await new Promise(r=>setTimeout(r,110));
-    i++;
+  let rodadas = 0;
+  while(seq === loadSeq && meu === histFundoSeq && !noMoreHistory && candles.length < AUTO_HIST_ALVO && rodadas < 6){
+    const add = await puxarLotesAntigos(5);   // 5.000 velas por rodada
+    if(!add) break;
+    await new Promise(r=>setTimeout(r,220));
+    rodadas++;
   }
 }
 window.carregarHistoricoFundo = carregarHistoricoFundo;
+window.puxarLotesAntigos = puxarLotesAntigos;
 // estado legivel de fora, pra conferir sem abrir o console
 window.vxEstado = ()=>({
   velas: (typeof candles!=='undefined'?candles.length:0),
