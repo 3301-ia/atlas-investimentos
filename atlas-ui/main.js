@@ -13483,16 +13483,16 @@ function serieCorEma(velas, exaustao){
     const cinza  = escuro ? [96,103,114]  : [120,128,140];
     const verde  = [8,153,129], vermelho = [242,54,69];
     const t = Math.min(1, Math.abs(suave) * (1 - 0.30*seco));
-    const meio = 0.34;                       // onde o cinza fica
-    let c;
-    if(t <= meio){
-      const k = t / meio;                    // branco -> cinza
-      c = branco.map((v,idx)=> Math.round(v + (cinza[idx]-v)*k));
-    } else {
-      const k = (t - meio) / (1 - meio);     // cinza -> verde/vermelho
-      const extremo = lado>0 ? verde : lado<0 ? vermelho : cinza;
-      c = cinza.map((v,idx)=> Math.round(v + (extremo[idx]-v)*k));
-    }
+    // A rampa não é em dois tempos: a cor da extremidade entra JÁ no primeiro
+    // passo, só que com pouca opacidade, enquanto a luz cai de branco para
+    // cinza. Conforme o movimento ganha corpo, o pigmento fica mais nítido, até
+    // chegar na cor cheia da ponta. Branco no centro, cinza tingido no meio,
+    // verde ou vermelho vivo na extremidade.
+    const extremo = lado>0 ? verde : lado<0 ? vermelho : cinza;
+    const luz = Math.min(1, t / 0.55);                 // branco -> cinza
+    const base = branco.map((v,idx)=> v + (cinza[idx]-v)*luz);
+    const pigmento = Math.pow(t, 0.85);                 // opacidade do pigmento
+    const c = base.map((v,idx)=> Math.round(v + (extremo[idx]-v)*pigmento));
     out.push({
       cor: "rgb("+c[0]+","+c[1]+","+c[2]+")",
       score: Number(suave.toFixed(3)),
