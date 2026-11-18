@@ -1,0 +1,106 @@
+/* ══════════════════════════════════════════════════════════════════════
+   VECTRA · PADRÃO
+   Folha final, carregada depois de todas as outras. Ela não desenha um
+   tema novo: só impede que as camadas antigas se sobreponham e que os
+   elementos fiquem fora da tela. Regra da casa: nada por cima de nada,
+   nada cortado, nada saindo do enquadramento.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* 1 · HUD do preço não fica mais embaixo da legenda de indicadores.
+      A legenda é do gráfico e mora no canto; o HUD desce e passa a
+      começar onde a legenda termina. */
+#tv-chart-indicators-legend{
+  z-index: 14 !important;
+  max-width: calc(100% - 120px) !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#chart-price-overlay{
+  top: 34px !important;
+  left: 56px !important;
+  z-index: 13 !important;
+  pointer-events: none;
+}
+#chart-price-overlay *{ pointer-events: auto; }
+
+/* 2 · A barra de ativos não empurra nada para fora: se não couber, ela rola
+      dentro de si mesma. */
+.vx-ativos-bar, [class*="ativos-bar"]{
+  max-width: 100% !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  scrollbar-width: none;
+}
+.vx-ativos-bar::-webkit-scrollbar, [class*="ativos-bar"]::-webkit-scrollbar{ height: 0 }
+
+/* 3 · Números e rótulos com um padrão só: 9 px para rótulo, 11 px para
+      número, sempre com dígito de largura fixa. */
+body.vx .vx-nav-lbl, body.vx .vx-a-nome, body.vx .nav-lbl{ font-size: 9px !important }
+body.vx .vx-a-preco, body.vx .vx-a-var, body.vx .vx-a-num-preco{
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+/* 4 · Celular: o trilho vira barra de baixo, inteira, sem item cortado.
+      Antes ele tinha 62 px de largura com o conteúdo em linha de 228 px,
+      então metade dos ícones nascia fora da tela (x negativo). */
+@media (max-width: 760px){
+  body.vx .side-nav, .side-nav{
+    flex-direction: row !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 58px !important;
+    min-height: 58px !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    gap: 0 !important;
+    padding: 0 4px !important;
+    scrollbar-width: none;
+  }
+  body.vx .side-nav::-webkit-scrollbar, .side-nav::-webkit-scrollbar{ height: 0 }
+
+  body.vx .side-nav-top, .side-nav-top{
+    flex-direction: row !important;
+    flex: 1 1 auto !important;
+    width: auto !important;
+    max-width: none !important;
+    height: 58px !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    gap: 0 !important;
+    align-items: center !important;
+  }
+
+  .side-nav .nav-item, .side-nav #btn-robo, .side-nav #nav-mais,
+  body.vx .side-nav .nav-item, body.vx .side-nav #btn-robo, body.vx .side-nav #nav-mais{
+    min-width: 58px !important;
+    max-width: 58px !important;
+    width: 58px !important;
+    height: 56px !important;
+    min-height: 0 !important;
+    flex: 0 0 58px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 2px !important;
+    font-size: 9px !important;
+  }
+  .side-nav .vx-nav-lbl, .side-nav .nav-lbl, body.vx .side-nav .vx-nav-lbl{
+    font-size: 8.5px !important;
+    line-height: 1 !important;
+    display: block !important;
+  }
+  .side-nav .nav-icon{ font-size: 16px !important; line-height: 1 !important }
+
+  /* o HUD desce um degrau no celular, para não encostar na legenda */
+  #chart-price-overlay{ top: 30px !important; left: 10px !important }
+  #tv-chart-indicators-legend{ max-width: calc(100% - 90px) !important; font-size: 9px !important }
+
+  /* nenhuma barra de topo pode criar rolagem lateral */
+  .app-shell{ overflow-x: hidden !important }
+  .cat-bar, .topbar, header{ max-width: 100% !important; overflow-x: auto !important }
+}
