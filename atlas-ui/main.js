@@ -13389,15 +13389,13 @@ function serieExaustao(velas, rsiArr, e200){
 // É esse limiar que acaba com o cintilar de vermelho e verde de vela em vela.
 // A cor sai do score atravessando o cinza claro, e o branco no mercado seco:
 // só fica verde ou vermelho cheio quando o regime está inteiro de um lado.
-// A cor é ESTADO, não gradiente. Gradiente faz cada vela sair de um tom
-// diferente e o olho lê isso como cintilar, mesmo sem trocar de lado.
-// Aqui o regime das EMAs vira um lado (quente/frio) e um nível (1 a 3), e os
-// dois só mudam quando a mudança é confirmada por três velas. Quando o lado
-// vira, a vela não salta de vermelho para verde: entra em resfriamento e passa
-// três velas em cinza, branqueando. É esse degrau que dá o efeito delicado.
-const COR_LIMIAR=0.14, COR_K=2/13, COR_ZONA=0.22, COR_T1=0.38, COR_T2=0.68,
-      COR_HIST=0.07, COR_CONF=3, COR_RESFRIO=3;
-const COR_NIVEL=[0, 0.34, 0.68, 1];
+// A cor é um GRADIENTE simples, mas com coerência. Gradiente puro, sem
+// memória, era o defeito: o voto das médias oscilava no empate e a vela
+// trocava de lado. Aqui o lado (quente/frio) tem histerese e só vira quando o
+// regime cruza 0,22 do outro lado; a intensidade, essa sim, é contínua, sai
+// direto do score. Então a cor desliza devagar do cheio para o pastel, passa
+// pelo cinza e branqueia no mercado seco, sem saltar de vermelho para verde.
+const COR_LIMIAR=0.14, COR_K=2/13, COR_ZONA=0.22;
 function serieCorEma(velas, exaustao){
   const n = velas.length;
   const closes = velas.map(c=>c.close);
@@ -13412,49 +13410,35 @@ function serieCorEma(velas, exaustao){
             + 0.14*d(e50[i],e200[i]) + 0.12*d(closes[i],e200[i]) + 0.08*sl(e8) + 0.06*sl(e50);
     bruto[i] = Math.max(-1, Math.min(1, s));
   }
-  let suave=null, lado=0, nivel=0, pend=null, pendN=0, resfria=0, ladoAnterior=null;
+  let suave=null, lado=0;
   const out=[];
   for(let i=0;i<n;i++){
     const b=bruto[i];
     if(b==null){ out.push(null); continue; }
+    // o score anda devagar e só quando a mudança é real
     if(suave==null) suave=b;
     else if(Math.abs(b-suave) > COR_LIMIAR) suave = suave + (b-suave)*COR_K;
 
+    // o lado tem memória: empate não pinta nada, e a virada exige cruzamento
     if(lado===0) lado = suave>COR_ZONA?1:suave<-COR_ZONA?-1:0;
     else if(lado>0 && suave < -COR_ZONA) lado=-1;
     else if(lado<0 && suave > COR_ZONA) lado=1;
-
-    const abs=Math.abs(suave);
-    let desejado = (lado===0) ? 0 : abs<COR_T1 ? 1 : abs<COR_T2 ? 2 : 3;
-    if(desejado!==nivel){
-      const sobeOk = desejado>nivel && abs > (desejado===2?COR_T1:desejado===3?COR_T2:0) + COR_HIST;
-      const desceOk = desejado<nivel && abs < (nivel===3?COR_T2:nivel===2?COR_T1:9) - COR_HIST;
-      if(sobeOk || desceOk){
-        if(pend===desejado) pendN++; else { pend=desejado; pendN=1; }
-        if(pendN>=COR_CONF){ nivel=desejado; pend=null; pendN=0; }
-      }
-    } else { pend=null; pendN=0; }
-
-    // resfriamento na virada de lado: passa pelo cinza antes de assumir a cor
-    if(lado!==0 && ladoAnterior!==null && lado!==ladoAnterior) resfria=COR_RESFRIO;
-    if(lado!==0) ladoAnterior=lado;
 
     const seco = Math.max(0, Math.min(1, (exaustao && exaustao[i]) || 0));
     const cinza  = escuro ? [64,70,80]    : [219,224,230];
     const branco = escuro ? [236,240,245] : [252,253,254];
     const neutro = cinza.map((v,k)=> v + (branco[k]-v)*seco);
 
-    let f, ladAgora;
-    if(resfria>0){ f=0; ladAgora=0; resfria--; }
-    else { f = COR_NIVEL[nivel] * (1 - 0.35*seco); ladAgora = lado; }
-
-    const alvo = ladAgora>0 ? [8,153,129] : ladAgora<0 ? [242,54,69] : neutro;
+    // intensidade contínua: perto do zero ela quase não tem pigmento, então a
+    // vela sai cinza; perto do extremo sai cheia. É o gradiente, coerente.
+    const f = Math.pow(Math.min(1, Math.abs(suave) * (1 - 0.35*seco)), 1.15);
+    const alvo = lado>0 ? [8,153,129] : lado<0 ? [242,54,69] : neutro;
     const c = neutro.map((v,k)=> Math.round(v + (alvo[k]-v)*f));
     out.push({
       cor: "rgb("+c[0]+","+c[1]+","+c[2]+")",
       score: Number(suave.toFixed(3)),
-      lado: ladAgora>0?'quente':ladAgora<0?'frio':'neutro',
-      faixa: ladAgora===0?'neutro':nivel===1?'morno':nivel===2?'definido':'cheio'
+      lado: lado>0?'quente':lado<0?'frio':'neutro',
+      faixa: Math.abs(suave)<0.15?'neutro':Math.abs(suave)<0.45?'morno':Math.abs(suave)<0.75?'definido':'cheio'
     });
   }
   return out;
