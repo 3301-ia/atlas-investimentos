@@ -20777,6 +20777,9 @@ async function loadAll(){
     console.error('renderChart error in loadAll:', e);
   }
   if(!multiViewOpen) openWS();
+  // reenquadra DEPOIS do grafico existir. Sem esse segundo passe, a troca de
+  // tempo deixava a janela antiga e a serie curta encolhia num canto.
+  setTimeout(()=>{ try{ reenquadraPreco(); }catch(e){} }, 320);
   // em tempo de segundos a fonte cai para 1m e o socket de vela nao abre: o
   // selo ficava travado em "Carregando..." mesmo com o grafico pronto.
   setTimeout(()=>{
