@@ -20607,6 +20607,14 @@ async function loadAll(){
     console.error('renderChart error in loadAll:', e);
   }
   if(!multiViewOpen) openWS();
+  // em tempo de segundos a fonte cai para 1m e o socket de vela nao abre: o
+  // selo ficava travado em "Carregando..." mesmo com o grafico pronto.
+  setTimeout(()=>{
+    const el=document.getElementById('ws-st');
+    if(el && /Carregando/i.test(el.textContent)){
+      el.textContent = (typeof lastDataSource==='string' && lastDataSource) ? lastDataSource.toUpperCase() : 'LIVE';
+    }
+  }, 1800);
 
   // MTF, Micro e Stoch Matrix carregam em segundo plano sem travar a tela
   Promise.all([fetchMTF(), fetchMicro(), fetchMTFStochMatrix(mySym)]).then(()=>{
