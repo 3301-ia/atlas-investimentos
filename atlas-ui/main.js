@@ -14238,16 +14238,16 @@ async function loadFullHistory(){
 // desenho, o painel vai puxando lotes de 1.000 em segundo plano até 5.000
 // velas (o botão 🕰 Tudo continua levando até o teto de 20.000). O zoom atual
 // é preservado em cada lote, então nada pula na tela.
-const AUTO_HIST_ALVO = 5000;
+const AUTO_HIST_ALVO = 20000; // o teto de HIST_CAP: vai até onde a fonte tiver
 let histFundoSeq = 0;
 async function carregarHistoricoFundo(){
   if(loadingFullHistory || loadingMoreHistory) return;
   const meu = ++histFundoSeq, seq = loadSeq;
   let i = 0;
-  while(seq === loadSeq && meu === histFundoSeq && !noMoreHistory && candles.length < AUTO_HIST_ALVO && i < 12){
+  while(seq === loadSeq && meu === histFundoSeq && !noMoreHistory && candles.length < AUTO_HIST_ALVO && i < 40){
     const ok = await fetchOlderBatch();
     if(!ok) break;
-    await new Promise(r=>setTimeout(r,140));
+    await new Promise(r=>setTimeout(r,110));
     i++;
   }
 }
