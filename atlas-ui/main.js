@@ -34,6 +34,51 @@ function safeTimeoutSignal(ms) {
   }
 }
 
+// Saneador de velas: uma barra estragada (preco 1, zero, ou um salto de dez
+// vezes) arrastava a escala do grafico inteiro, e era isso que deixava a linha
+// de preco cortada e o eixo indo de 0 a 90.000 depois de trocar de tempo.
+function saneaVelas(lista){
+  if(!Array.isArray(lista) || !lista.length) return lista;
+  const validas = lista.filter(c=>c && isFinite(c.close) && c.close>0 && isFinite(c.high) && isFinite(c.low));
+  if(!validas.length) return lista;
+  const precos = validas.map(c=>c.close).sort((a,b)=>a-b);
+  const mediana = precos[Math.floor(precos.length/2)];
+  if(!isFinite(mediana) || mediana<=0) return validas;
+  const limpo = validas.filter(c=>{
+    const okAlto = c.high < mediana*6 && c.high > mediana/6;
+    const okBaixo = c.low  < mediana*6 && c.low  > mediana/6;
+    return okAlto && okBaixo;
+  });
+  // ordem de tempo sempre crescente, sem barra repetida
+  const porTempo = new Map();
+  limpo.forEach(c=>porTempo.set(c.time, c));
+  return [...porTempo.values()].sort((a,b)=>a.time-b.time);
+}
+
+// Tempo montado por agregacao (6m, 5h, 15h, 3M...) precisava de mais velas do
+// que uma fonte entrega de uma vez: com 50 velas na tela o grafico abria com
+// dois candles no canto e o resto vazio. Aqui a KuCoin e paginada ate juntar o
+// suficiente antes de agregar.
+async function buscaLongaKucoin(sym, tfBase, precisa){
+  const mapa={'1m':'1min','3m':'3min','5m':'5min','15m':'15min','30m':'30min','1h':'1hour','4h':'4hour','6h':'6hour','12h':'12hour','1d':'1day','1w':'1week'};
+  const tipo=mapa[tfBase]; if(!tipo) return null;
+  const par=toCryptoBase(sym)+'-USDT';
+  let fim=Math.floor(Date.now()/1000), todas=new Map(), voltas=0;
+  const passo={'1min':60,'3min':180,'5min':300,'15min':900,'30min':1800,'1hour':3600,'4hour':14400,'6hour':21600,'12hour':43200,'1day':86400,'1week':604800}[tipo]||3600;
+  while(todas.size < precisa && voltas < 4){
+    const ini=fim-passo*1500;
+    const url=`https://api.kucoin.com/api/v1/market/candles?type=${tipo}&symbol=${par}&startAt=${ini}&endAt=${fim}`;
+    const r=await fetch(url); if(!r.ok) break;
+    const j=await r.json(); const dados=(j&&j.data)||[];
+    if(!dados.length) break;
+    dados.forEach(c=>{ const t=+c[0]; todas.set(t,{time:t,open:+c[1],high:+c[3],low:+c[4],close:+c[2],volume:+c[5]}); });
+    fim=ini; voltas++;
+    if(dados.length<1000) break;
+  }
+  if(!todas.size) return null;
+  return [...todas.values()].sort((a,b)=>a.time-b.time);
+}
+
 function aggregateCandles(candles, factor) {
   if (!candles || candles.length === 0) return candles;
   const result = [];
@@ -1109,8 +1154,14 @@ function reenquadraPreco(){
   requestAnimationFrame(()=>{
     try{
       if(candles && candles.length){
-        const ultimo = candles[candles.length-1].time;
-        chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, candles.length-90), to: candles.length+5 });
+        // serie curta (6m, 5h, 15h, mensal) nao cabe numa janela fixa de 90:
+        // ela encolhia para dois candles no canto direito. Aqui ela ocupa a tela.
+        if(candles.length < 120){
+          chart.timeScale().fitContent();
+          chart.timeScale().setVisibleLogicalRange({ from: -1, to: candles.length+2 });
+        } else {
+          chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, candles.length-90), to: candles.length+5 });
+        }
       }
     }catch(e){}
   });
@@ -13425,9 +13476,11 @@ function serieCorEma(velas, exaustao){
     else if(lado<0 && suave > COR_ZONA) lado=1;
 
     const seco = Math.max(0, Math.min(1, (exaustao && exaustao[i]) || 0));
-    const cinza  = escuro ? [64,70,80]    : [219,224,230];
-    const branco = escuro ? [236,240,245] : [252,253,254];
-    const neutro = cinza.map((v,k)=> v + (branco[k]-v)*seco);
+    // momentum sem forca esfria ate o branco; a cor volta conforme o movimento
+    // ganha corpo. No mercado seco o branco fica ainda mais puro.
+    const base   = escuro ? [222,228,236] : [250,251,253];
+    const puro   = escuro ? [242,246,251] : [255,255,255];
+    const neutro = base.map((v,k)=> v + (puro[k]-v)*seco);
 
     // intensidade contínua: perto do zero ela quase não tem pigmento, então a
     // vela sai cinza; perto do extremo sai cheia. É o gradiente, coerente.
@@ -14585,6 +14638,21 @@ async function fetchCandles(sym,tf,limit=500){
 
   const isMobile = typeof navigator !== 'undefined' && /android|iphone|ipad|mobile/i.test(navigator.userAgent || '');
   const realLimit = Math.min(limit * aggFactor, isMobile ? 800 : 1500);
+
+  // tempo montado por agregacao: junta o suficiente antes de montar as velas
+  if (aggFactor > 1) {
+    try {
+      const longas = await buscaLongaKucoin(sym, fetchTf, Math.min(limit * aggFactor, 5000));
+      if (longas && longas.length > 29) {
+        const montadas = aggregateCandles(saneaVelas(longas), aggFactor);
+        if (montadas.length > 29) {
+          lastDataSource = 'kucoin';
+          updateDataSourceBadge('kucoin', true);
+          return montadas;
+        }
+      }
+    } catch(e) { /* segue para as fontes normais */ }
+  }
   const timeoutMs = isMobile ? 7500 : 4500;
 
   // a fonte que respondeu por ultimo vira a primeira da fila
@@ -14606,9 +14674,12 @@ async function fetchCandles(sym,tf,limit=500){
         if (aggFactor > 1) {
             parsed = aggregateCandles(parsed, aggFactor);
         }
-        lastDataSource=src.name;
-        updateDataSourceBadge(src.name, src.name!=='binance');
-        return parsed;
+        parsed = saneaVelas(parsed);
+        if(parsed.length>0){
+          lastDataSource=src.name;
+          updateDataSourceBadge(src.name, src.name!=='binance');
+          return parsed;
+        }
       }
     }catch(e){ /* tenta a proxima fonte */ }
   }
