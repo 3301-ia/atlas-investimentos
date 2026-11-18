@@ -13467,36 +13467,46 @@ function serieContextoMedias(velas){
   const e8=ema(closes,8), e16=ema(closes,16);
   const out=new Array(n).fill(null);
 
-  // ═══ O GRADIENTE DO ATLAS v11, copiado linha por linha ═══
-  //   float cDist   = activeFast - activeSlow          // EMA8 - EMA16
-  //   float maxDist = nz(ta.sma(math.abs(cDist),100))*2
-  //   color candleColor = color.from_gradient(cDist, -maxDist, maxDist, #f23645, #089981)
-  // A vela não usa inclinação nem ATR: usa a DISTÂNCIA entre as médias,
-  // normalizada pela distância média das últimas 100 velas. Média colada =
-  // ponto neutro (a mistura do vermelho com o verde); média escancarada = cor
-  // cheia. É contínuo, então não pisca.
-  const VERM = [242,54,69], VERDE = [8,153,129];   // #f23645 e #089981
+  // ═══ GRADIENTE DO ATLAS v11, refinado ═══
+  // Base do indicador do Lucas:
+  //   cDist   = EMA8 - EMA16
+  //   maxDist = SMA(|cDist|,100) * 2
+  //   cor     = from_gradient(cDist, -maxDist, maxDist, #f23645, #089981)
+  //
+  // O problema do original: quando a distância passa de maxDist a cor trava no
+  // extremo, e a vela fica vermelha (ou verde) idêntica por 15, 20 velas
+  // seguidas — justamente no trecho em que o preço se afasta das médias e o
+  // movimento está mudando. Aqui a mesma rampa ganha dois ajustes:
+  //
+  //  1. a escala é o MAIOR afastamento das últimas 100 velas (não a média),
+  //     então ela acompanha o regime em vez de ficar defasada;
+  //  2. em vez de cortar no extremo, comprime com tanh: a cor nunca satura de
+  //     vez e continua respondendo a cada vela que o preço anda, mesmo longe.
+  //
+  // O meio da rampa (médias coladas) continua sendo a mistura do vermelho com
+  // o verde, e a ponta continua #f23645 / #089981.
+  const VERM = [242,54,69], VERDE = [8,153,129];
+  const JAN = 100;
   const dist = new Array(n).fill(null);
   for(let i=0;i<n;i++){
     if(e8[i]==null || e16[i]==null) continue;
     dist[i] = e8[i]-e16[i];
   }
-  // SMA(100) de |cDist|, com janela deslizante
-  let soma=0, conta=0;
-  const fila=[];
   for(let i=0;i<n;i++){
     if(dist[i]==null){ out[i]=null; continue; }
-    const a=Math.abs(dist[i]);
-    fila.push(a); soma+=a; conta++;
-    if(conta>100){ soma-=fila.shift(); conta--; }
-    const maxDist = (soma/conta)*2;
-    if(!(maxDist>0)){ out[i]=null; continue; }
-    // color.from_gradient: linear de -maxDist (vermelho) a +maxDist (verde)
-    let t = (dist[i] + maxDist) / (2*maxDist);
-    t = Math.max(0, Math.min(1, t));
+    let maxAbs = 0;
+    for(let k=Math.max(0,i-JAN+1); k<=i; k++){
+      const a = dist[k]==null ? 0 : Math.abs(dist[k]);
+      if(a>maxAbs) maxAbs = a;
+    }
+    if(!(maxAbs>0)){ out[i]=null; continue; }
+    // tanh(1,25·z): perto do zero a cor anda quase linear; longe ela ainda
+    // desliza em vez de travar. 0,85 deixa o extremo alcançável nos picos.
+    const z = dist[i] / (maxAbs*0.85);
+    const t = 0.5 + 0.5*Math.tanh(1.25*z);
     const c = [0,1,2].map(k=> Math.round(VERM[k] + (VERDE[k]-VERM[k])*t));
     out[i]={ cor:"rgb("+c[0]+","+c[1]+","+c[2]+")",
-      dist:+dist[i].toFixed(2), maxDist:+maxDist.toFixed(2), t:+t.toFixed(3),
+      dist:+dist[i].toFixed(2), maxDist:+maxAbs.toFixed(2), t:+t.toFixed(3),
       alta: dist[i]>0, baixa: dist[i]<0 };
   }
   return out;
