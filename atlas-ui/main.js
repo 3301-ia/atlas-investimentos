@@ -13521,33 +13521,39 @@ const CTX_VERDE=[0,230,118], CTX_VERMELHO=[255,23,68], CTX_NEUTRO=[120,123,134];
 function serieContextoMedias(velas){
   const n=velas.length, closes=velas.map(c=>c.close);
   const e8=ema(closes,8), e16=ema(closes,16);
-  const atrArr=atrCalc(velas.map(c=>c.high), velas.map(c=>c.low), closes, 14);
-  const escuro=(typeof darkMode!=="undefined") && darkMode;
-  const cinza = escuro ? [74,80,90]   : [206,212,220];
-  const branco= escuro ? [236,240,245] : [252,253,254];
   const out=new Array(n).fill(null);
+
+  // ═══ O GRADIENTE DO ATLAS v11, copiado linha por linha ═══
+  //   float cDist   = activeFast - activeSlow          // EMA8 - EMA16
+  //   float maxDist = nz(ta.sma(math.abs(cDist),100))*2
+  //   color candleColor = color.from_gradient(cDist, -maxDist, maxDist, #f23645, #089981)
+  // A vela não usa inclinação nem ATR: usa a DISTÂNCIA entre as médias,
+  // normalizada pela distância média das últimas 100 velas. Média colada =
+  // ponto neutro (a mistura do vermelho com o verde); média escancarada = cor
+  // cheia. É contínuo, então não pisca.
+  const VERM = [242,54,69], VERDE = [8,153,129];   // #f23645 e #089981
+  const dist = new Array(n).fill(null);
   for(let i=0;i<n;i++){
-    if(i<4 || e8[i]==null || e16[i]==null || atrArr[i]==null || !atrArr[i]) continue;
-    const atr = atrArr[i];
-    const slope=(e16[i]-e16[i-3])/(atr*3);
-    const forca=Math.abs(slope);
-    // O LADO VEM DAS MÉDIAS: EMA8 acima da EMA16 é alta, abaixo é baixa.
-    // É isso que faz a vela se comportar como as médias.
-    const dist = Math.abs(e8[i]-e16[i]) / atr;         // separação das médias em ATR
-    const lado = e8[i] > e16[i] ? 1 : -1;
-    // A FORÇA VEM DA INCLINAÇÃO (Pine): transparência 92 na deriva, 45 na
-    // tendência cheia.
-    const transp = Math.max(45, 92 - forca*110);
-    const t = Math.max(0, Math.min(1, (92-transp)/47));
-    // No cruzamento (médias coladas) a vela esfria até o branco; assim que as
-    // médias se separam ela assume a cor do lado, e ganha corpo com a inclinação.
-    const separacao = Math.max(0, Math.min(1, dist/0.45));
-    const f = (0.28 + 0.72*Math.pow(t,0.75)) * Math.pow(separacao,0.55);
-    const alvo = lado>0 ? CTX_VERDE : CTX_VERMELHO;
-    const base = cinza.map((v,k)=> Math.round(v + (branco[k]-v)*(1-separacao)));
-    const c = base.map((v,k)=> Math.round(v + (alvo[k]-v)*f));
-    out[i]={ cor:"rgb("+c[0]+","+c[1]+","+c[2]+")", alta:lado>0, baixa:lado<0,
-      tendencia:forca>0.05, forca:+forca.toFixed(3), transp:Math.round(transp), t:+t.toFixed(3), sep:+separacao.toFixed(2) };
+    if(e8[i]==null || e16[i]==null) continue;
+    dist[i] = e8[i]-e16[i];
+  }
+  // SMA(100) de |cDist|, com janela deslizante
+  let soma=0, conta=0;
+  const fila=[];
+  for(let i=0;i<n;i++){
+    if(dist[i]==null){ out[i]=null; continue; }
+    const a=Math.abs(dist[i]);
+    fila.push(a); soma+=a; conta++;
+    if(conta>100){ soma-=fila.shift(); conta--; }
+    const maxDist = (soma/conta)*2;
+    if(!(maxDist>0)){ out[i]=null; continue; }
+    // color.from_gradient: linear de -maxDist (vermelho) a +maxDist (verde)
+    let t = (dist[i] + maxDist) / (2*maxDist);
+    t = Math.max(0, Math.min(1, t));
+    const c = [0,1,2].map(k=> Math.round(VERM[k] + (VERDE[k]-VERM[k])*t));
+    out[i]={ cor:"rgb("+c[0]+","+c[1]+","+c[2]+")",
+      dist:+dist[i].toFixed(2), maxDist:+maxDist.toFixed(2), t:+t.toFixed(3),
+      alta: dist[i]>0, baixa: dist[i]<0 };
   }
   return out;
 }
@@ -13604,16 +13610,12 @@ window.isGradienteVelasLigado = () => candleGradientOn;
 // no parado — e a opacidade segue a mesma transparência do Pine, então elas
 // "respiram" conforme a força da tendência.
 function pintarMediasContextuais(corCtx){
+  // No indicador do Lucas as médias têm cor FIXA: EMA8 #2979FF, EMA16 #E91E63.
+  // O gradiente é só da vela. Aqui elas só são devolvidas à cor original.
   try{
-    if(!corCtx || !maS || !maS.ema8 || !maS.ema16) return;
-    let ultimo=null;
-    for(let i=corCtx.length-1;i>=0;i--){ if(corCtx[i]){ ultimo=corCtx[i]; break; } }
-    if(!ultimo) return;
-    const alvo = ultimo.alta ? CTX_VERDE : ultimo.baixa ? CTX_VERMELHO : CTX_NEUTRO;
-    const alpha = 0.25 + 0.75*ultimo.t;   // parado fica apagado, tendência acende
-    const cor = "rgba("+alvo[0]+","+alvo[1]+","+alvo[2]+","+alpha.toFixed(2)+")";
-    maS.ema8.applyOptions({ color: cor });
-    maS.ema16.applyOptions({ color: cor });
+    if(!maS || !maS.ema8 || !maS.ema16) return;
+    maS.ema8.applyOptions({ color: C.ema8 });
+    maS.ema16.applyOptions({ color: C.ema16 });
   }catch(e){}
 }
 window.pintarMediasContextuais = pintarMediasContextuais;
