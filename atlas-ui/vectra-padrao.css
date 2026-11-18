@@ -285,3 +285,14 @@ body.vx #drawing-toolbar .tool-sep, #drawing-toolbar .tool-sep{
   }
   body.vx #vx-head .vx-inst > *, #vx-head .vx-inst > *{ flex: 0 0 auto !important }
 }
+
+/* Com a faixa de ativos na largura natural, a linha do cabeçalho passou a
+   estourar: "Ferramentas" saía 85 px fora em 1920 e "Sub-painéis" 112 px em
+   1366. Aqui o cabeçalho respira: menos vão entre os blocos e, abaixo de
+   1700 px, os três botões ficam só com o ícone (o nome continua no tooltip). */
+body.vx #vx-head .vx-hline, #vx-head .vx-hline{ gap: 4px !important; flex-wrap: nowrap !important; min-width: 0 !important }
+body.vx #vx-head .vx-toolbtn, #vx-head .vx-toolbtn{ padding: 0 7px !important; flex: 0 0 auto !important }
+@media (max-width: 1700px){
+  body.vx #vx-head .vx-toolbtn span, #vx-head .vx-toolbtn span{ display: none !important }
+  body.vx #vx-head .vx-toolbtn, #vx-head .vx-toolbtn{ width: 30px !important; padding: 0 !important; justify-content: center !important }
+}
