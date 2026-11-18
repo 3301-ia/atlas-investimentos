@@ -16,6 +16,10 @@ services:
     # velho, com o ?v= parado no mesmo numero por doze commits. "no-cache" nao
     # desliga o cache — obriga a revalidar, e quando o arquivo nao mudou a
     # resposta e um 304 vazio.
+    routes:
+      - type: rewrite
+        source: /ctrader-callback
+        destination: /ctrader-callback.html
     headers:
       - path: /
         name: Cache-Control
