@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>VECTRA · conectando cTrader</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0e121a;color:#dfe3ea;font-family:Inter,system-ui,sans-serif}
+.box{border:1px solid #242935;border-radius:6px;padding:28px 32px;max-width:520px}
+h1{font-size:15px;letter-spacing:.14em;margin:0 0 12px}p{font-size:12px;line-height:1.7;color:#9aa3b8;margin:0 0 10px}
+code{font-size:11px;color:#9db4ff;word-break:break-all}</style></head>
+<body><div class="box">
+<h1>VECTRA · cTrader</h1>
+<p id="msg">Recebendo a autorização…</p>
+<p id="det"></p>
+</div>
+<script>
+(function(){
+  var q = new URLSearchParams(location.search);
+  var code = q.get('code');
+  var ponte = 'https://vectra-ctrader.onrender.com/callback';
+  var msg = document.getElementById('msg'), det = document.getElementById('det');
+  if (!code) { msg.textContent = 'A cTrader não devolveu o código de autorização.'; det.textContent = q.toString(); return; }
+  msg.textContent = 'Código recebido. Trocando pelo token na ponte…';
+  fetch(ponte + '?code=' + encodeURIComponent(code))
+    .then(function(r){ return r.json(); })
+    .then(function(j){
+      if (j.ok) { msg.textContent = 'Conectado. Token válido por ' + Math.round((j.expiraEmSegundos||0)/60) + ' minutos.'; }
+      else { msg.textContent = 'A ponte recusou a troca.'; }
+      det.textContent = JSON.stringify(j);
+    })
+    .catch(function(e){ msg.textContent = 'Não consegui falar com a ponte.'; det.textContent = String(e); });
+})();
+</script></body></html>

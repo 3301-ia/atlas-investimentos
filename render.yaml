@@ -39,3 +39,23 @@ services:
       - path: /*.png
         name: Cache-Control
         value: public, max-age=604800
+
+  # Ponte cTrader Open API: Node, sem build, so leitura de velas e precos.
+  # Fica num servico separado porque o site e estatico e o Open API fala TLS
+  # binario (protobuf) nas portas 5035/5036, coisa que o navegador nao faz.
+  - type: web
+    name: vectra-ctrader
+    runtime: node
+    rootDir: ctrader-bridge
+    buildCommand: npm install --omit=dev
+    startCommand: node server.js
+    plan: starter
+    envVars:
+      - key: CTRADER_ENV
+        value: live
+      - key: CTRADER_CLIENT_ID
+        sync: false
+      - key: CTRADER_CLIENT_SECRET
+        sync: false
+      - key: CTRADER_REDIRECT
+        sync: false

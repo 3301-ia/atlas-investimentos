@@ -15,7 +15,8 @@ import http from 'node:http';
 const CLIENT_ID = process.env.CTRADER_CLIENT_ID || '';
 const CLIENT_SECRET = process.env.CTRADER_CLIENT_SECRET || '';
 const ACCOUNT_ID = process.env.CTRADER_ACCOUNT_ID || '';
-const TOKEN = process.env.CTRADER_ACCESS_TOKEN || '';
+let TOKEN = process.env.CTRADER_ACCESS_TOKEN || '';
+const REDIRECT = process.env.CTRADER_REDIRECT || '';
 const AMBIENTE = process.env.CTRADER_ENV || 'live';
 const HOST = AMBIENTE === 'live' ? 'live.ctraderapi.com' : 'demo.ctraderapi.com';
 const PORTA = AMBIENTE === 'live' ? 5035 : 5036;
@@ -113,6 +114,21 @@ async function abrirSessao() {
 }
 const sField = sCampo;
 
+/* ---------- OAuth: code -> access token ---------- */
+async function trocarCodigo(code) {
+  const corpo = new URLSearchParams({
+    grant_type: 'authorization_code', code,
+    redirect_uri: REDIRECT, client_id: CLIENT_ID, client_secret: CLIENT_SECRET,
+  });
+  const r = await fetch('https://openapi.ctrader.com/apps/token', {
+    method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: corpo,
+  });
+  const texto = await r.text();
+  let j = {}; try { j = JSON.parse(texto); } catch (e) { j = { bruto: texto.slice(0, 200) }; }
+  if (j.accessToken) { TOKEN = j.accessToken; log('token obtido, expira em', j.expiresIn, 's'); }
+  return j;
+}
+
 /* ---------- rotas ---------- */
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'https://x');
@@ -124,6 +140,16 @@ const server = http.createServer(async (req, res) => {
     const u = 'https://openapi.ctrader.com/apps/authorize?client_id=' + encodeURIComponent(CLIENT_ID) +
       '&redirect_uri=' + encodeURIComponent(process.env.CTRADER_REDIRECT || '') + '&response_type=code&scope=accounts';
     res.writeHead(302, { location: u }); return res.end();
+  }
+
+  if (url.pathname === '/callback' || url.pathname === '/token') {
+    const code = url.searchParams.get('code') || '';
+    if (!code) return j({ ok: false, erro: 'faltou o code' }, 400);
+    try {
+      const t = await trocarCodigo(code);
+      if (!t.accessToken) return j({ ok: false, etapa: 'troca do code', resposta: t }, 502);
+      return j({ ok: true, expiraEmSegundos: t.expiresIn, temRefresh: !!t.refreshToken, token: '•••' + String(t.accessToken).slice(-6) });
+    } catch (e) { return j({ ok: false, erro: String(e.message || e) }, 502); }
   }
 
   if (url.pathname === '/teste-auth') {
@@ -173,7 +199,7 @@ const server = http.createServer(async (req, res) => {
     } catch (e) { return j({ ok: false, erro: String(e.message || e) }, 502); }
   }
 
-  return j({ ok: true, rotas: ['/saude', '/entrar', '/teste-auth', '/contas', '/velas'] });
+  return j({ ok: true, rotas: ['/saude', '/entrar', '/callback', '/teste-auth', '/contas', '/velas'] });
 });
 
 const P = Number(process.env.PORT || 8080);
