@@ -360,3 +360,14 @@ body #vx-kpis .kpi small, #vx-kpis .kpi small{ font-size: 8.5px !important; line
    de ação. */
 .cp.active, .cp:focus-visible{ border-color: rgba(255,255,255,.28) !important; color: #e9edf2 !important; background: rgba(255,255,255,.07) !important }
 .ts-btn{ border-color: rgba(255,255,255,.12) !important; color: #cfd6de !important }
+
+/* Em 1366 a coluna de ferramentas é mais alta que o gráfico e as últimas
+   ferramentas ficavam cortadas. Ela passa a rolar dentro de si, sem barra
+   visível, mantendo a largura de 58 px. */
+body.vx #drawing-toolbar, #drawing-toolbar{
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  scrollbar-width: none !important;
+  max-height: 100% !important;
+}
+body.vx #drawing-toolbar::-webkit-scrollbar, #drawing-toolbar::-webkit-scrollbar{ width: 0 !important; display: none !important }
