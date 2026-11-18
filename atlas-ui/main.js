@@ -14231,6 +14231,37 @@ async function loadFullHistory(){
   fitAllChartsContent();
 }
 
+// ══════════════════════════════════════════════════════
+// HISTORICO AUTOMATICO
+// Antes o grafico abria com 1.000 velas e só ia buscar as antigas se o Lucas
+// clicasse em 🕰 Tudo ou arrastasse para a esquerda. Agora, depois do primeiro
+// desenho, o painel vai puxando lotes de 1.000 em segundo plano até 5.000
+// velas (o botão 🕰 Tudo continua levando até o teto de 20.000). O zoom atual
+// é preservado em cada lote, então nada pula na tela.
+const AUTO_HIST_ALVO = 5000;
+let histFundoSeq = 0;
+async function carregarHistoricoFundo(){
+  if(loadingFullHistory || loadingMoreHistory) return;
+  const meu = ++histFundoSeq, seq = loadSeq;
+  let i = 0;
+  while(seq === loadSeq && meu === histFundoSeq && !noMoreHistory && candles.length < AUTO_HIST_ALVO && i < 12){
+    const ok = await fetchOlderBatch();
+    if(!ok) break;
+    await new Promise(r=>setTimeout(r,140));
+    i++;
+  }
+}
+window.carregarHistoricoFundo = carregarHistoricoFundo;
+// estado legivel de fora, pra conferir sem abrir o console
+window.vxEstado = ()=>({
+  velas: (typeof candles!=='undefined'?candles.length:0),
+  fonte: (typeof lastDataSource!=='undefined'?lastDataSource:'?'),
+  desde: (typeof candles!=='undefined'&&candles[0])?new Date(candles[0].time*1000).toISOString().slice(0,10):null,
+  ativo: (typeof currentSym!=='undefined'?currentSym:null),
+  tempo: (typeof currentTF!=='undefined'?currentTF:null),
+  semMais: (typeof noMoreHistory!=='undefined'?noMoreHistory:null)
+});
+
 let chartHasRendered = false;
 let needsFullFit = true;
 
@@ -20841,6 +20872,10 @@ async function loadAll(){
       el.textContent = (typeof lastDataSource==='string' && lastDataSource) ? lastDataSource.toUpperCase() : 'LIVE';
     }
   }, 1800);
+
+  // historico: primeiro o grafico aparece com 1.000 velas, depois os lotes
+  // antigos entram por baixo sem mexer no zoom
+  setTimeout(()=>{ if(mySeq===loadSeq){ try{ carregarHistoricoFundo(); }catch(e){} } }, 1500);
 
   // MTF, Micro e Stoch Matrix carregam em segundo plano sem travar a tela
   Promise.all([fetchMTF(), fetchMicro(), fetchMTFStochMatrix(mySym)]).then(()=>{
