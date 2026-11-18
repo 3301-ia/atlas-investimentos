@@ -531,7 +531,12 @@
     });
     if (extra.children.length) {
       var price = head.querySelector('.vx-price');
-      if (price && price.parentElement) price.parentElement.insertBefore(extra, head.querySelector('#vx-tools-btn'));
+      if (price && price.parentElement){
+        // o no de referencia tem que ser filho do mesmo pai, senao a insercao
+        // estourava "not a child of this node" e derrubava o resto do cabecalho
+        const pai = price.parentElement, ref = head.querySelector('#vx-tools-btn');
+        try{ if(ref && ref.parentElement === pai) pai.insertBefore(extra, ref); else pai.appendChild(extra); }catch(e){ pai.appendChild(extra); }
+      }
     }
 
     /* marca repetida, faróis e números sem rótulo saem de cena */
@@ -762,7 +767,8 @@
     if (window.innerWidth >= 1600) {
       var priceBox = head.querySelector('.vx-price');
       if (priceBox && chip.parentElement !== priceBox.parentElement) {
-        priceBox.parentElement.insertBefore(chip, head.querySelector('#vx-imersao-btn'));
+        const paiChip = priceBox.parentElement, refChip = head.querySelector('#vx-imersao-btn');
+        try{ if(refChip && refChip.parentElement === paiChip) paiChip.insertBefore(chip, refChip); else paiChip.appendChild(chip); }catch(e){ paiChip.appendChild(chip); }
       }
     } else if (tools) {
       var g = document.getElementById('vx-tools-passador');

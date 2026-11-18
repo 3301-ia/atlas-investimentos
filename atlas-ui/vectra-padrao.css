@@ -131,3 +131,52 @@ body.vx .vx-a-preco, body.vx .vx-a-var, body.vx .vx-a-num-preco{
     margin-right: 0 !important;
   }
 }
+
+/* 6 · Celular: caixa que corta o próprio conteúdo.
+      Os cartões de ativo tinham 111 px de largura com 275 px de conteúdo, então
+      o preço saía cortado; e a coluna de ferramentas tinha 54 px com 118 px de
+      conteúdo, mostrando uma coluna e meia. Agora a linha de ativos rola dentro
+      de si e as ferramentas cabem em duas colunas. */
+@media (max-width: 760px){
+  body.vx .vx-assets-linha, .vx-assets-linha{
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    gap: 6px !important;
+    scrollbar-width: none;
+  }
+  body.vx .vx-assets-linha::-webkit-scrollbar{ height: 0 }
+
+  body.vx .vx-a-card, .vx-a-card{
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: 126px !important;
+    overflow: visible !important;
+  }
+  body.vx .vx-a-preco, body.vx .vx-a-num-preco, body.vx .vx-a-var, .vx-a-preco, .vx-a-num-preco, .vx-a-var{
+    white-space: nowrap !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+  }
+
+  body.vx .drawing-toolbar, .drawing-toolbar{
+    width: 58px !important;
+    max-width: 58px !important;
+    min-width: 58px !important;
+    overflow: visible !important;
+    padding: 2px !important;
+  }
+  body.vx .drawing-toolbar .tool-btn, .drawing-toolbar .tool-btn{
+    width: 26px !important;
+    min-width: 26px !important;
+    max-width: 26px !important;
+    height: 26px !important;
+    min-height: 26px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+  body.vx .drawing-toolbar .vx-palavra, .drawing-toolbar .vx-palavra{ display: none !important }
+  body.vx .drawing-toolbar .vx-simbolo, .drawing-toolbar .vx-simbolo{ font-size: 12px !important; line-height: 1 !important }
+}
