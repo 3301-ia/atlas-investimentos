@@ -1,0 +1,65 @@
+/* VECTRA · camada TradingView: trilho estreito, faixa fina no topo,
+   grafico sangrando, HUDs flutuantes. Plano, borda de 1 px, sem brilho. */
+:root{--tv-bg:#131722;--tv-panel:#1e222d;--tv-line:#2a2e39;--tv-line2:#363a45;
+  --tv-txt:#d1d4dc;--tv-dim:#787b86;--tv-blue:#2962ff;--tv-up:#26a69a;--tv-down:#ef5350}
+body{background:var(--tv-bg)!important;color:var(--tv-txt)!important;
+  font-family:'Inter',system-ui,-apple-system,sans-serif!important;-webkit-font-smoothing:antialiased}
+body *{font-variant-numeric:tabular-nums}
+.side-nav{width:52px!important;min-width:52px!important;background:var(--tv-panel)!important;
+  border-right:1px solid var(--tv-line)!important}
+.nav-icon{border-radius:4px!important;color:var(--tv-dim)!important}
+.nav-icon:hover{background:#2a2e39!important;color:var(--tv-txt)!important}
+.nav-item.active .nav-icon{background:rgba(41,98,255,.14)!important;color:var(--tv-blue)!important}
+#vx-head{background:var(--tv-panel)!important;border-bottom:1px solid var(--tv-line)!important;
+  box-shadow:none!important;padding:0!important}
+#vx-head .vx-hline{padding:6px 10px!important;gap:8px!important;min-height:44px}
+#vx-head .vx-brand b{font-size:12.5px!important;letter-spacing:.16em!important;color:var(--tv-txt)!important}
+#vx-head .vx-brand small{color:var(--tv-dim)!important;font-size:8.5px!important}
+#vx-head .vx-mark{background:transparent!important;box-shadow:none!important;border:none!important}
+#vx-head .vx-toolbtn{background:transparent!important;border:1px solid transparent!important;
+  border-radius:4px!important;color:var(--tv-dim)!important}
+#vx-head .vx-toolbtn:hover{background:#2a2e39!important;color:var(--tv-txt)!important}
+#vx-kpis{background:var(--tv-panel)!important;border-bottom:1px solid var(--tv-line)!important;
+  height:34px!important;padding:0!important;gap:0!important}
+#vx-kpis .kpi{border:none!important;border-right:1px solid var(--tv-line)!important;
+  border-radius:0!important;background:transparent!important;padding:4px 12px!important;box-shadow:none!important}
+#vx-kpis .kpi u{font-size:8px!important;letter-spacing:.14em!important;color:var(--tv-dim)!important}
+#vx-kpis .kpi b{font-size:13px!important;font-weight:600!important}
+#vx-kpis .kpi small{font-size:8.5px!important;color:var(--tv-dim)!important}
+.main-area{background:var(--tv-bg)!important;padding:0!important;gap:0!important}
+.chart-wrap{margin:0!important;border:none!important;border-radius:0!important;
+  box-shadow:none!important;background:var(--tv-bg)!important}
+#chart{border:none!important;border-radius:0!important}
+#chart-price-overlay{top:8px!important;left:60px!important;gap:0!important}
+#big-sym{font-size:12px!important;font-weight:700!important;letter-spacing:.06em!important;color:var(--tv-txt)!important}
+#big-price{font-size:20px!important;font-weight:600!important}
+#candle-timer{font-size:11px!important;font-weight:500!important;color:var(--tv-dim)!important}
+#tv-chart-indicators-legend,#stoch-matrix-hud{background:rgba(30,34,45,.96)!important;
+  border:1px solid var(--tv-line)!important;border-radius:6px!important;
+  box-shadow:0 2px 10px rgba(0,0,0,.35)!important}
+#tv-chart-indicators-legend{font-size:10.5px!important;color:var(--tv-dim)!important}
+#drawing-toolbar{flex-direction:column!important;left:8px!important;top:92px!important;bottom:auto!important;
+  width:34px!important;height:auto!important;padding:4px!important;gap:2px!important;
+  background:rgba(30,34,45,.92)!important;border:1px solid var(--tv-line)!important;border-radius:6px!important}
+#drawing-toolbar .tool-btn{width:26px!important;height:26px!important;border-radius:3px!important;
+  font-size:12px!important;color:var(--tv-dim)!important;background:transparent!important}
+#drawing-toolbar .tool-btn:hover{background:#2a2e39!important;color:var(--tv-txt)!important}
+#drawing-toolbar .tool-btn.active{background:rgba(41,98,255,.18)!important;color:#7ba1ff!important}
+#drawing-toolbar .tool-sep{width:100%!important;height:1px!important;background:var(--tv-line)!important;margin:2px 0!important}
+#vx-work{background:var(--tv-panel)!important;border-left:1px solid var(--tv-line)!important}
+#vx-work .vx-card,#vx-work section{border-radius:0!important;border:none!important;
+  border-bottom:1px solid var(--tv-line)!important;background:transparent!important;box-shadow:none!important}
+.vx-a-card{border-radius:4px!important;box-shadow:none!important;background:var(--tv-panel)!important;
+  border:1px solid var(--tv-line)!important}
+/* trava final: trilho de 52 px e faixa de 40 px, ganhando de qualquer media query */
+body .side-nav{width:52px!important;min-width:52px!important;max-width:52px!important;padding:6px 4px!important}
+body #vx-head .vx-hline{min-height:40px!important;padding:4px 10px!important}
+body #vx-kpis{height:32px!important}
+body .side-nav{flex:0 0 52px!important}
+/* o trilho do TV ganha da regra body.vx de 98 px */
+@media (min-width:761px){
+  body.vx .side-nav, body.vx .layout > .side-nav, body .side-nav{
+    width:52px!important; min-width:52px!important; max-width:52px!important; flex:0 0 52px!important;
+    flex-basis:52px!important; padding:6px 4px!important;
+  }
+}
