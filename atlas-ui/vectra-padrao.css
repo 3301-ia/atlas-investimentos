@@ -561,3 +561,35 @@ body.vx #drawing-toolbar > *, #drawing-toolbar > *{
   background: transparent !important; color: #b7bec8 !important;
 }
 body.vx #drawing-toolbar > *:hover, #drawing-toolbar > *:hover{ background: rgba(255,255,255,.07) !important; color: #eef1f5 !important }
+
+/* O botão do Robô perdeu a classe nav-item e virava um bloco de 56 px sem
+   estilo, abrindo o buraco embaixo do Início. E os dois Ω usam .nav-icon /
+   .nav-lbl, não .vx-ico / .vx-nav-lbl — por isso ficaram sem rótulo. */
+body.vx .side-nav .side-nav-top > div:not(.nav-item), .side-nav .side-nav-top > div:not(.nav-item){
+  position: relative !important;
+  width: 56px !important; min-width: 56px !important;
+  height: 46px !important; min-height: 46px !important; max-height: 46px !important;
+  margin: 0 !important; padding: 5px 0 4px !important;
+  border: 0 !important; border-radius: 4px !important;
+  background: transparent !important;
+  display: flex !important; flex-direction: column !important;
+  align-items: center !important; justify-content: center !important;
+  gap: 3px !important; color: #8b929c !important;
+  box-sizing: border-box !important; overflow: hidden !important; cursor: pointer !important;
+}
+body.vx .side-nav .side-nav-top > div:not(.nav-item) .vx-ico, .side-nav .side-nav-top > div:not(.nav-item) .vx-ico{
+  width: 18px !important; height: 18px !important; flex: 0 0 18px !important;
+}
+body.vx .side-nav .side-nav-top > div:not(.nav-item):hover, .side-nav .side-nav-top > div:not(.nav-item):hover{
+  background: rgba(255,255,255,.04) !important; color: #cfd6de !important;
+}
+body.vx .side-nav .nav-item .nav-icon, .side-nav .nav-item .nav-icon{
+  font-size: 16px !important; line-height: 17px !important; height: 17px !important;
+  display: block !important; letter-spacing: 0 !important;
+}
+body.vx .side-nav .nav-item .nav-lbl, .side-nav .nav-item .nav-lbl{
+  font-size: 8.5px !important; line-height: 9px !important;
+  letter-spacing: .03em !important; text-transform: uppercase !important;
+  white-space: nowrap !important; max-width: 52px !important;
+  overflow: hidden !important; text-overflow: clip !important; display: block !important;
+}
