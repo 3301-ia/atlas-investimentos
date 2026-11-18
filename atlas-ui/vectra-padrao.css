@@ -315,3 +315,11 @@ body.vx #vx-head .vx-hline > .vx-inst, #vx-head .vx-hline > .vx-inst{ flex-shrin
 @media (min-width: 1700px){
   body.vx #vx-head .vx-hline > .vx-inst, #vx-head .vx-hline > .vx-inst{ max-width: 356px !important }
 }
+
+/* Em 1920 o cabeçalho ainda estourava 82 px com os nomes ligados. Os três
+   botões passam a viver só de ícone em qualquer tela abaixo de 2000 px — o
+   nome fica no tooltip, e o cabeçalho nunca sai da tela. */
+@media (max-width: 1999px){
+  body.vx #vx-head .vx-toolbtn span, #vx-head .vx-toolbtn span{ display: none !important }
+  body.vx #vx-head .vx-toolbtn, #vx-head .vx-toolbtn{ width: 30px !important; padding: 0 !important; justify-content: center !important }
+}
