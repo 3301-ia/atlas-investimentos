@@ -13448,62 +13448,6 @@ function serieExaustao(velas, rsiArr, e200){
 // direto do score. Então a cor desliza devagar do cheio para o pastel, passa
 // pelo cinza e branqueia no mercado seco, sem saltar de vermelho para verde.
 const COR_LIMIAR=0.14, COR_K=2/13, COR_ZONA=0.22;
-function serieCorEma(velas, exaustao){
-  const n = velas.length;
-  const closes = velas.map(c=>c.close);
-  const e8 = ema(closes,8), e16 = ema(closes,16), e50 = ema(closes,50), e200 = ema(closes,200);
-  const escuro = (typeof darkMode!=="undefined") && darkMode;
-  const bruto = new Array(n).fill(null);
-  for(let i=0;i<n;i++){
-    if(e200[i]==null) continue;
-    const d=(a,b)=> (a==null||b==null)?0:Math.sign(a-b);
-    const sl=(arr)=> i<4?0:Math.sign(arr[i]-arr[i-4]);
-    const s = 0.26*d(e8[i],e16[i]) + 0.16*d(e16[i],e50[i]) + 0.18*d(closes[i],e50[i])
-            + 0.14*d(e50[i],e200[i]) + 0.12*d(closes[i],e200[i]) + 0.08*sl(e8) + 0.06*sl(e50);
-    bruto[i] = Math.max(-1, Math.min(1, s));
-  }
-  let suave=null, lado=0;
-  const out=[];
-  for(let i=0;i<n;i++){
-    const b=bruto[i];
-    if(b==null){ out.push(null); continue; }
-    // o score anda devagar e só quando a mudança é real
-    if(suave==null) suave=b;
-    else if(Math.abs(b-suave) > COR_LIMIAR) suave = suave + (b-suave)*COR_K;
-
-    // o lado tem memória: empate não pinta nada, e a virada exige cruzamento
-    if(lado===0) lado = suave>COR_ZONA?1:suave<-COR_ZONA?-1:0;
-    else if(lado>0 && suave < -COR_ZONA) lado=-1;
-    else if(lado<0 && suave > COR_ZONA) lado=1;
-
-    const seco = Math.max(0, Math.min(1, (exaustao && exaustao[i]) || 0));
-    // FÓRMULA DA REFERÊNCIA — é a corTemperaturaVela do backup do repositório
-    // (main.js da raiz), trazida inteira para o painel. Nada de rampa inventada
-    // aqui: o neutro caminha do cinza até o branco conforme o mercado seca, e a
-    // cor entra por interpolação com expoente 0,7. O expoente é o que faz a
-    // vela só ficar pastel quando o regime está mesmo indeciso: perto do zero
-    // ela é branca, no meio aparece o cinza já tingido, e só na extremidade a
-    // cor fica cheia. O lado vem da memória (histerese), então a cor não pisca.
-    const verde = [8,153,129], vermelho = [242,54,69];
-    const cinzaRef  = escuro ? [64,70,80]    : [219,224,230];
-    const brancoRef = escuro ? [236,240,245] : [252,253,254];
-    const neutroRef = cinzaRef.map((v,idx)=> v + (brancoRef[idx]-v)*seco);
-    const ladoCor   = lado !== 0 ? lado : (suave >= 0 ? 1 : -1);
-    const alvoRef   = ladoCor > 0 ? verde : vermelho;
-    const intensidade = Math.abs(suave) * (1 - 0.55*seco);
-    const fRef = Math.pow(Math.min(1, intensidade), 0.7);
-    const c = neutroRef.map((v,idx)=> Math.round(v + (alvoRef[idx]-v)*fRef));
-    out.push({
-      cor: "rgb("+c[0]+","+c[1]+","+c[2]+")",
-      score: Number(suave.toFixed(3)),
-      lado: lado>0?'quente':lado<0?'frio':'neutro',
-      faixa: Math.abs(suave)<0.15?'neutro':Math.abs(suave)<0.45?'morno':Math.abs(suave)<0.75?'definido':'cheio'
-    });
-  }
-  return out;
-}
-
-
 // =====================================================================
 // GRADIENTE CONTEXTUAL DE MÉDIAS — o Pine v6 que o Lucas mandou
 // ("Gradiente Contextual de Médias", overlay). A força não vem do voto das
@@ -13559,30 +13503,6 @@ function serieContextoMedias(velas){
 }
 window.serieContextoMedias = serieContextoMedias;
 
-function corTemperaturaVela(score, exausto){
-  const escuro = (typeof darkMode!=="undefined") && darkMode;
-  // No mercado seco o ponto neutro vira BRANCO, nao o cinza de sempre. E o
-  // mesmo gradiente, so trocando de onde ele parte: a vela nasce branca e vai
-  // esverdeando quando a forca volta, em vez de sair de um cinza morto.
-  // 'exausto' e um grau de 0 a 1: o neutro caminha do cinza de sempre ate o
-  // branco na mesma proporcao, em vez de trocar de um golpe
-  const seco = Math.max(0, Math.min(1, exausto||0));
-  const cinza  = escuro ? [64,70,80]    : [219,224,230];
-  const branco = escuro ? [236,240,245] : [252,253,254];
-  const neutro = cinza.map((v,i)=> v + (branco[i]-v)*seco);
-  const alvo   = score >= 0 ? [8,153,129] : [242,54,69];
-  // No mercado seco a cor tambem PERDE PIGMENTO, nao so muda de ponto de
-  // partida. Um score de -0,5 num mercado sem volume nao e uma queda convicta:
-  // e o preco escorregando porque nao ha ninguem do outro lado. Pintar isso de
-  // vermelho forte diria uma coisa que o dado nao sustenta. Entao a exaustao
-  // corta a intensidade pra menos da metade, e a vela fica quase branca nos
-  // dois sentidos — que e o ponto: falta de forca nao tem lado.
-  const intensidade = Math.abs(score) * (1 - 0.55*seco);
-  const f = Math.pow(Math.min(1, intensidade), 0.7);
-  const c = neutro.map((v,i)=> Math.round(v + (alvo[i]-v)*f));
-  return "rgb("+c[0]+","+c[1]+","+c[2]+")";
-}
-
 // =====================================================================
 // "Gradient Candle Coloring" — o mesmo input do indicador master do
 // repositório (atlas-ui/pine/indicador_master_atlas_v10.pine, linha 60,
@@ -13626,10 +13546,8 @@ function refreshPhiRibbonAndBorders(){
   const phiArrs=PHI_PERIODS.map(p=>ema(closes,p));
   const alignmentPerBar=computePhiAlignmentSeries(phiArrs);
   const scorePerBar=computePhiScoreSeries(phiArrs);
-  const corEmaBar=serieCorEma(candles, null);
-  window.__corEmaBar=corEmaBar;
-  // o gradiente contextual das médias (Pine do Lucas) entra no lugar do voto
-  // das 19 médias quando o interruptor está ligado
+  // Fonte única de cor das velas: o gradiente do ATLAS v11.
+  // (a série antiga por voto de 19 médias foi removida)
   const corCtx=serieContextoMedias(candles);
   window.__corCtx=corCtx;
   pintarMediasContextuais(corCtx);
@@ -13703,18 +13621,10 @@ function refreshPhiRibbonAndBorders(){
     if(cc){
       return { ...c, color: cc.cor, wickColor: cc.cor, borderColor: cc.cor };
     }
-    const ce = corEmaBar[i];
-    if(ce){
-      return { ...c, color: ce.cor, wickColor: ce.cor, borderColor: ce.cor };
-    }
-    if(s == null) return c;
-    const cor = corTemperaturaVela(s, exaustao[i]);
-    return {
-      ...c,
-      color: cor,
-      wickColor: cor,
-      borderColor: borderCor
-    };
+    // Sem gradiente antigo: ou vem a cor do ATLAS v11 (distância das médias),
+    // ou a vela sai chapada. Não existe mais um segundo caminho para brigar.
+    const chapada2 = c.close >= c.open ? 'rgb(8,153,129)' : 'rgb(242,54,69)';
+    return { ...c, color: chapada2, wickColor: chapada2, borderColor: chapada2 };
   }));
   ultimaExaustao = exaustao;
   // As marcas acabaram de ser recalculadas — a de carater pode ter MIGRADO pra
@@ -13750,8 +13660,7 @@ function updateLiveCandleBorder(){
   const last=candles[n];
   const ctx=serieContextoMedias(candles);
   const cc=ctx && ctx[n];
-  const ce=serieCorEma(candles, null);
-  const cor=(cc && cc.cor) || (ce[n] && ce[n].cor) || corTemperaturaVela((up-down)/(up+down), ultimaExaustao[n]);
+  const cor=(cc && cc.cor) || (last.close>=last.open ? 'rgb(8,153,129)' : 'rgb(242,54,69)');
   try{ candleSeries.update({time:last.time,open:last.open,high:last.high,low:last.low,close:last.close,
     color:cor, wickColor:cor,
     borderColor: last.close>=last.open ? BORDER_BULL : BORDER_BEAR}); }catch(e){}
@@ -14112,7 +14021,7 @@ function applySeriesData(){
   try {
     const closes=candles.map(c=>c.close);
 
-    // O gradiente térmico das velas (corTemperaturaVela) permanece SEMPRE ativo,
+    // O gradiente das velas (ATLAS v11, distância das médias) permanece SEMPRE ativo,
     // mesmo nos modos crus do Neon Rainbow ou Fractal Suite
     refreshPhiRibbonAndBorders();
 
