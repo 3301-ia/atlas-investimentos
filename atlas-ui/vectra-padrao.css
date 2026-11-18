@@ -273,3 +273,15 @@ body.vx #drawing-toolbar .tool-sep, #drawing-toolbar .tool-sep{
 
 /* O ícone do tema vazava 26 px da própria caixa. */
 #vx-extra{ padding-right: 2px !important; box-sizing: border-box !important; overflow: hidden !important }
+
+/* A faixa de ativos era espremida em 249 px e o seletor de classe (TODOS,
+   CRYPTO, METALS, FX) virava rolagem dentro de rolagem. No PC sobra espaço:
+   ela passa a ocupar a largura natural. */
+@media (min-width: 1100px){
+  body.vx #vx-head .vx-hline > .vx-inst, #vx-head .vx-hline > .vx-inst{
+    flex: 0 0 auto !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+  }
+  body.vx #vx-head .vx-inst > *, #vx-head .vx-inst > *{ flex: 0 0 auto !important }
+}

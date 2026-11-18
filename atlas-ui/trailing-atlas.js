@@ -176,7 +176,7 @@
       try {
         linhasFib.push(candleSeries.createPriceLine({
           price: plano.p1, color: '#78909C', lineWidth: 1, lineStyle: 3,
-          axisLabelVisible: true, title: 'ancora P1'
+          axisLabelVisible: true, title: 'P1'
         }));
       } catch (e) {}
 
@@ -190,7 +190,7 @@
             lineWidth: 1,
             lineStyle: 2,
             axisLabelVisible: true,
-            title: lv.toFixed(3) + (plano.lado === 'alta' ? ' alta' : ' baixa') + (a.bateu ? ' ok' : '')
+            title: lv.toFixed(3) + (a.bateu ? ' ok' : '')
           }));
         } catch (e) {}
       });
@@ -212,7 +212,7 @@
     chip = document.createElement('div');
     chip.id = 'ts-chip';
     chip.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:9998;display:flex;align-items:center;gap:8px;' +
-      'background:rgba(8,14,22,.92);border:1px solid rgba(217,180,91,.45);border-radius:6px;padding:6px 9px;' +
+      'background:rgba(8,14,22,.92);border:1px solid rgba(255,255,255,.10);border-radius:4px;padding:6px 9px;' +
       'font:11px/1.3 ui-monospace,Consolas,monospace;color:#cfe9f7;box-shadow:0 4px 16px rgba(0,0,0,.4)';
     chip.innerHTML =
       '<span id="ts-lado" style="font-weight:700;color:#D9B45B">TS --</span>' +
