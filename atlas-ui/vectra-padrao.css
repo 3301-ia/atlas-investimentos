@@ -456,3 +456,10 @@ body.vx #vx-head .vx-toolbtn .vx-ico, #vx-head .vx-toolbtn .vx-ico{
   width: 16px !important; height: 16px !important; flex: 0 0 16px !important;
 }
 body.vx #vx-head .vx-live i, #vx-head .vx-live i{ width: 6px !important; height: 6px !important; flex: 0 0 6px !important }
+
+/* A marca em si: o bloco de duas linhas media 27 px e caía em y=15,5. Com
+   26 px (15 + 2 + 9) ele começa em 16, sem meio pixel. */
+body.vx #vx-head .vx-brand > div, #vx-head .vx-brand > div{
+  display: flex !important; flex-direction: column !important;
+  gap: 2px !important; height: 26px !important; justify-content: center !important;
+}
