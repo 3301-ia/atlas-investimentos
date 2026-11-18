@@ -13523,24 +13523,31 @@ function serieContextoMedias(velas){
   const e8=ema(closes,8), e16=ema(closes,16);
   const atrArr=atrCalc(velas.map(c=>c.high), velas.map(c=>c.low), closes, 14);
   const escuro=(typeof darkMode!=="undefined") && darkMode;
-  const branco = escuro ? [236,240,245] : [252,253,254];
+  const cinza = escuro ? [74,80,90]   : [206,212,220];
+  const branco= escuro ? [236,240,245] : [252,253,254];
   const out=new Array(n).fill(null);
   for(let i=0;i<n;i++){
     if(i<4 || e8[i]==null || e16[i]==null || atrArr[i]==null || !atrArr[i]) continue;
-    const slope=(e16[i]-e16[i-3])/(atrArr[i]*3);
+    const atr = atrArr[i];
+    const slope=(e16[i]-e16[i-3])/(atr*3);
     const forca=Math.abs(slope);
-    const alta = e8[i]>e16[i] && slope>0.05;
-    const baixa= e8[i]<e16[i] && slope<-0.05;
-    const tendencia = alta||baixa;
-    const transp = tendencia ? Math.max(45, 92 - forca*110) : 96;
-    // 96 -> 0 (parado), 45 -> 1 (tendência cheia)
-    const t = Math.max(0, Math.min(1, (96-transp)/51));
-    const alvo = alta?CTX_VERDE : baixa?CTX_VERMELHO : CTX_NEUTRO;
-    // no parado a vela esfria até o branco; a cor volta com a força
-    const f = Math.pow(t, 0.7);
-    const base = tendencia ? branco : branco;
+    // O LADO VEM DAS MÉDIAS: EMA8 acima da EMA16 é alta, abaixo é baixa.
+    // É isso que faz a vela se comportar como as médias.
+    const dist = Math.abs(e8[i]-e16[i]) / atr;         // separação das médias em ATR
+    const lado = e8[i] > e16[i] ? 1 : -1;
+    // A FORÇA VEM DA INCLINAÇÃO (Pine): transparência 92 na deriva, 45 na
+    // tendência cheia.
+    const transp = Math.max(45, 92 - forca*110);
+    const t = Math.max(0, Math.min(1, (92-transp)/47));
+    // No cruzamento (médias coladas) a vela esfria até o branco; assim que as
+    // médias se separam ela assume a cor do lado, e ganha corpo com a inclinação.
+    const separacao = Math.max(0, Math.min(1, dist/0.45));
+    const f = (0.28 + 0.72*Math.pow(t,0.75)) * Math.pow(separacao,0.55);
+    const alvo = lado>0 ? CTX_VERDE : CTX_VERMELHO;
+    const base = cinza.map((v,k)=> Math.round(v + (branco[k]-v)*(1-separacao)));
     const c = base.map((v,k)=> Math.round(v + (alvo[k]-v)*f));
-    out[i]={ cor:"rgb("+c[0]+","+c[1]+","+c[2]+")", alta, baixa, tendencia, forca:+forca.toFixed(3), transp, t:+t.toFixed(3) };
+    out[i]={ cor:"rgb("+c[0]+","+c[1]+","+c[2]+")", alta:lado>0, baixa:lado<0,
+      tendencia:forca>0.05, forca:+forca.toFixed(3), transp:Math.round(transp), t:+t.toFixed(3), sep:+separacao.toFixed(2) };
   }
   return out;
 }
