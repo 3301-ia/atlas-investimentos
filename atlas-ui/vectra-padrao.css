@@ -323,3 +323,40 @@ body.vx #vx-head .vx-hline > .vx-inst, #vx-head .vx-hline > .vx-inst{ flex-shrin
   body.vx #vx-head .vx-toolbtn span, #vx-head .vx-toolbtn span{ display: none !important }
   body.vx #vx-head .vx-toolbtn, #vx-head .vx-toolbtn{ width: 30px !important; padding: 0 !important; justify-content: center !important }
 }
+
+/* =====================================================================
+   9 · O CORTE VERTICAL (medido no painel no ar)
+   A faixa de ativos estava travada em 46 px de altura com o cartão de 89 px
+   dentro, então cada cartão nascia cortado no meio. O contexto e o estado
+   sofriam do mesmo mal (43 px para 49, 26 px para 39). Nada de altura fixa:
+   a caixa cresce com o conteúdo.
+   ===================================================================== */
+body #vx-assets-linha, #vx-assets-linha{
+  height: auto !important; min-height: 0 !important; max-height: none !important;
+  overflow: visible !important; align-items: stretch !important;
+}
+body #vx-assets, #vx-assets{
+  height: auto !important; max-height: none !important; overflow: visible !important;
+}
+body #vx-contexto, #vx-contexto{
+  height: auto !important; max-height: none !important; overflow: visible !important;
+}
+body #vx-ctx-estado, #vx-ctx-estado{
+  height: auto !important; min-height: 0 !important; max-height: none !important;
+  overflow: visible !important;
+}
+body #vx-kpis, #vx-kpis{ height: auto !important; max-height: none !important }
+body #vx-kpis .kpi, #vx-kpis .kpi{
+  overflow: visible !important;
+  padding: 7px 12px 8px !important;
+  gap: 3px !important;
+}
+body #vx-kpis .kpi u, #vx-kpis .kpi u{ font-size: 8px !important; line-height: 1.1 !important }
+body #vx-kpis .kpi b, #vx-kpis .kpi b{ font-size: 15px !important; line-height: 1.08 !important }
+body #vx-kpis .kpi small, #vx-kpis .kpi small{ font-size: 8.5px !important; line-height: 1.15 !important }
+
+/* O fio dourado embaixo da faixa vinha dos chips de classe (.cp.active) e do
+   botão de trailing (ts-btn). O padrão é cinza neutro com um único vermelho
+   de ação. */
+.cp.active, .cp:focus-visible{ border-color: rgba(255,255,255,.28) !important; color: #e9edf2 !important; background: rgba(255,255,255,.07) !important }
+.ts-btn{ border-color: rgba(255,255,255,.12) !important; color: #cfd6de !important }
