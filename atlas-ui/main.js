@@ -1097,6 +1097,25 @@ function setAllChartsLogicalRange(range){
   }
 }
 
+// Depois de qualquer troca de ativo, tempo ou carga nova, a escala de preco
+// volta ao automatico e o grafico se reenquadra no preco atual. Sem isso a
+// troca para ETH herdava a faixa de preco do BTC e o grafico abria "quebrado".
+function reenquadraPreco(){
+  if(!chart || !candleSeries) return;
+  try{
+    chart.priceScale('right').applyOptions({ autoScale:true });
+    chart.applyOptions({ rightPriceScale:{ autoScale:true, scaleMargins:{top:0.06,bottom:0.12} } });
+  }catch(e){}
+  requestAnimationFrame(()=>{
+    try{
+      if(candles && candles.length){
+        const ultimo = candles[candles.length-1].time;
+        chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, candles.length-90), to: candles.length+5 });
+      }
+    }catch(e){}
+  });
+}
+
 function fitAllChartsContent(){
   if (candles && candles.length < 75) {
     fitRecentCandles(75);
@@ -1217,14 +1236,14 @@ function setupChart(){
     width:ce.clientWidth,height:ce.clientHeight,
     // transparente pra bolha de tras aparecer; quem pinta o fundo agora e o
     // .chart-wrap, no CSS
-    layout:{background:{color:'transparent'},textColor:'#6e7683',fontFamily:'IBM Plex Sans'},
-    grid:{vertLines:{color:'#f0f1f3'},horzLines:{color:'#f0f1f3'}},
-    rightPriceScale:{borderColor:'#e3e6ea',minimumWidth:getMinPriceScaleWidth(),scaleMargins:{top:0.08,bottom:0.22}},
-    timeScale:{borderColor:'#e3e6ea',timeVisible:true,secondsVisible:false,
+    layout:{background:{color:'transparent'},textColor:'#8b93a3',fontFamily:'IBM Plex Sans'},
+    grid:{vertLines:{color:'#1b2028'},horzLines:{color:'#1b2028'}},
+    rightPriceScale:{borderColor:'#262b35',minimumWidth:getMinPriceScaleWidth(),scaleMargins:{top:0.06,bottom:0.12}},
+    timeScale:{borderColor:'#262b35',timeVisible:true,secondsVisible:false,
       rightOffset:5,barSpacing:8,rightBarStaysOnScroll:false,shiftVisibleRangeOnNewBar:false,
       lockVisibleTimeRangeOnResize:true},
     crosshair:{mode:LightweightCharts.CrosshairMode.Normal,
-      vertLine:{labelBackgroundColor:'#1a1d23'},horzLine:{labelBackgroundColor:'#1a1d23'}},
+      vertLine:{labelBackgroundColor:'#2a2e39'},horzLine:{labelBackgroundColor:'#2a2e39'}},
     handleScroll:{mouseWheel:true,pressedMouseMove:true,horzTouchDrag:true,vertTouchDrag:true},
     handleScale:{mouseWheel:true,pinch:true,axisPressedMouseMove:true},
     kineticScroll:{mouse:true,touch:true},
@@ -1434,7 +1453,7 @@ function setupChart(){
   const se=document.getElementById('stoch-chart');
   stochChart=LightweightCharts.createChart(se,{
     layout:{background:{color:'#fbfbfc'},textColor:'#6e7683',fontFamily:'IBM Plex Sans'},
-    grid:{vertLines:{color:'#f0f1f3'},horzLines:{color:'#f0f1f3'}},
+    grid:{vertLines:{color:'#1b2028'},horzLines:{color:'#1b2028'}},
     rightPriceScale:{
       borderColor:'#e3e6ea',
       minimumWidth:getMinPriceScaleWidth(),
@@ -14042,6 +14061,8 @@ function renderChart(forceFit = false){
     needsFullFit = false;
     chartHasRendered = true;
   }
+  // a escala de preco e sempre a do ativo que esta na tela agora
+  reenquadraPreco();
   syncPriceScaleWidths();
   updateHistInfo();
 
@@ -16179,10 +16200,10 @@ async function openMultiCharts(){
       width:el.clientWidth,height:el.clientHeight,
       // transparente pra bolha de tras aparecer; o fundo fica no proprio
       // container do mini-grafico
-      layout:{background:{color:'transparent'},textColor:'#6e7683',fontFamily:'IBM Plex Sans'},
+      layout:{background:{color:'transparent'},textColor:'#8b93a3',fontFamily:'IBM Plex Sans'},
       grid:{vertLines:{color:'#f5f6f7'},horzLines:{color:'#f5f6f7'}},
       rightPriceScale:{borderColor:'#e3e6ea'},
-      timeScale:{borderColor:'#e3e6ea',timeVisible:true,secondsVisible:false,rightOffset:3},
+      timeScale:{borderColor:'#262b35',timeVisible:true,secondsVisible:false,rightOffset:3},
       handleScroll:{mouseWheel:true,pressedMouseMove:true},
       handleScale:{mouseWheel:true,pinch:true},
     });
