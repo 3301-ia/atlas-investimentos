@@ -1,0 +1,37 @@
+/* VECTRA · camada de elegância
+   Princípio: menos caixa, mais ar. Um acento só (azul para ação, ouro só na
+   marca), separação por fio de 1 px em vez de moldura, e uma escala de tipo
+   curta: 9 rótulo, 10 texto, 11 dado, 13 número, 20 preço. */
+:root{--vx-fio:#242935;--vx-ar:#131722;--vx-sup:#171b25;--vx-txt:#dfe3ea;--vx-dim:#7c8496;--vx-ac:#4b7bff}
+body{color:var(--vx-txt)!important;letter-spacing:.002em}
+/* nada de cartão com moldura dupla: fio único, canto de 4 */
+.vx-card,.vx-a-card,#tv-chart-indicators-legend,#stoch-matrix-hud,.sp-sec{
+  border:1px solid var(--vx-fio)!important;border-radius:4px!important;
+  box-shadow:none!important;background:var(--vx-sup)!important}
+.vx-card:hover,.vx-a-card:hover{border-color:#333a49!important;background:#1a1f2a!important}
+/* cabeçalho: fio único, sem sombra, respiro de 12 */
+#vx-head{box-shadow:none!important;background:var(--vx-sup)!important;border-bottom:1px solid var(--vx-fio)!important}
+#vx-kpis{background:var(--vx-sup)!important;border-bottom:1px solid var(--vx-fio)!important}
+#vx-kpis .kpi{border-right:1px solid var(--vx-fio)!important;padding:5px 14px!important}
+#vx-kpis .kpi u{color:var(--vx-dim)!important;letter-spacing:.16em!important;font-weight:500!important}
+#vx-kpis .kpi b{color:var(--vx-txt)!important;font-weight:600!important;letter-spacing:-.01em}
+/* rótulos pequenos e espaçados; texto sem peso alto */
+.vx-assets .vx-a-nome,.vx-assets .vx-a-simbolo,.vx-contexto .vx-ctx-rot,
+[class*="-lbl"],[class*="-rot"]{letter-spacing:.14em!important;font-weight:500!important;color:var(--vx-dim)!important}
+.vx-assets .vx-a-preco{letter-spacing:-.02em!important}
+/* trilho: ícone discreto, ativo com fio vertical, sem pílula */
+body.vx .side-nav{background:var(--vx-ar)!important;border-right:1px solid var(--vx-fio)!important}
+.side-nav .nav-item{border-radius:4px!important}
+.side-nav .nav-item:hover{background:#1a1f2a!important}
+.side-nav .nav-item.active,.side-nav .nav-item.on{background:transparent!important;box-shadow:inset 2px 0 0 var(--vx-ac)!important}
+.side-nav .nav-item.active .vx-ico{color:var(--vx-ac)!important;filter:none!important}
+/* barra de desenho: sem sombra, fio único */
+#drawing-toolbar{background:rgba(23,27,37,.94)!important;border:1px solid var(--vx-fio)!important;
+  box-shadow:none!important;border-radius:4px!important}
+#drawing-toolbar .tool-btn.active{background:rgba(75,123,255,.14)!important;color:#9db4ff!important}
+/* preço grande: número, não cartaz */
+#big-price{font-weight:500!important;letter-spacing:-.02em!important;font-size:19px!important}
+/* rolagem fina, sem barra grossa */
+*::-webkit-scrollbar{width:8px;height:8px}
+*::-webkit-scrollbar-thumb{background:#2b3140;border-radius:8px}
+*::-webkit-scrollbar-track{background:transparent}
