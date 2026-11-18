@@ -463,3 +463,101 @@ body.vx #vx-head .vx-brand > div, #vx-head .vx-brand > div{
   display: flex !important; flex-direction: column !important;
   gap: 2px !important; height: 26px !important; justify-content: center !important;
 }
+
+/* =====================================================================
+   11 · A BARRA LATERAL ESQUERDA
+   Medido no painel: trilho de 62 px com botões de 56x56, rótulo de 10,5 px
+   quebrando em duas linhas ("Ω%Prob", "ΩOmega"), um buraco de 56 px logo
+   abaixo do Início e a caixa de ferramentas flutuando solta em duas colunas
+   por cima do gráfico. Aqui o trilho vira uma coluna de linhas de 46 px,
+   ícone de 18 px, rótulo de 8,5 px em uma linha só, fio de 1 px separando os
+   grupos e o vermelho único marcando o item ativo.
+   ===================================================================== */
+body.vx .side-nav, .side-nav{
+  width: 64px !important; min-width: 64px !important; max-width: 64px !important;
+  background: #0b0d11 !important;
+  border-right: 1px solid rgba(255,255,255,.07) !important;
+  padding: 6px 0 8px !important;
+  box-sizing: border-box !important;
+}
+body.vx .side-nav .side-nav-top, .side-nav .side-nav-top{
+  display: flex !important; flex-direction: column !important;
+  gap: 2px !important; padding: 0 4px !important;
+  overflow-y: auto !important; overflow-x: hidden !important;
+  scrollbar-width: none !important;
+}
+body.vx .side-nav .side-nav-top::-webkit-scrollbar, .side-nav .side-nav-top::-webkit-scrollbar{ width: 0 !important; display: none !important }
+body.vx .side-nav .side-nav-top > div:empty, .side-nav .side-nav-top > div:empty{ display: none !important }
+
+body.vx .side-nav .nav-item, .side-nav .nav-item{
+  position: relative !important;
+  width: 56px !important; min-width: 56px !important;
+  height: 46px !important; min-height: 46px !important; max-height: 46px !important;
+  margin: 0 !important; padding: 5px 0 4px !important;
+  border: 0 !important; border-radius: 4px !important;
+  background: transparent !important;
+  display: flex !important; flex-direction: column !important;
+  align-items: center !important; justify-content: center !important;
+  gap: 3px !important;
+  color: #8b929c !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+}
+body.vx .side-nav .nav-item .vx-ico, .side-nav .nav-item .vx-ico{
+  width: 18px !important; height: 18px !important; flex: 0 0 18px !important;
+  stroke-width: 1.5 !important;
+}
+body.vx .side-nav .nav-item .vx-nav-lbl, .side-nav .nav-item .vx-nav-lbl{
+  font-size: 8.5px !important; line-height: 9px !important;
+  letter-spacing: .03em !important;
+  text-transform: uppercase !important;
+  white-space: nowrap !important;
+  max-width: 52px !important;
+  overflow: hidden !important; text-overflow: clip !important;
+  display: block !important;
+}
+body.vx .side-nav .nav-item:hover, .side-nav .nav-item:hover{
+  background: rgba(255,255,255,.04) !important; color: #cfd6de !important;
+}
+body.vx .side-nav .nav-item.active, .side-nav .nav-item.active{
+  background: rgba(255,255,255,.06) !important; color: #eef1f5 !important;
+}
+body.vx .side-nav .nav-item.active::before, .side-nav .nav-item.active::before{
+  content: "" !important; position: absolute !important;
+  left: 0 !important; top: 9px !important; bottom: 9px !important;
+  width: 2px !important; border-radius: 2px !important;
+  background: #e5484d !important;
+}
+/* fio de separação entre os grupos, sem buraco no meio */
+body.vx .side-nav .nav-item + .nav-item[data-vx-grupo], .side-nav .nav-item + .nav-item[data-vx-grupo]{
+  margin-top: 8px !important;
+}
+body.vx .side-nav > button, .side-nav > button{
+  width: 56px !important; height: 40px !important; margin: 4px auto 0 !important;
+  border: 1px solid rgba(255,255,255,.08) !important; border-radius: 4px !important;
+  background: transparent !important; color: #9aa1ab !important;
+  font-size: 9px !important; letter-spacing: .04em !important;
+}
+
+/* Caixa de ferramentas: uma coluna só, encostada no trilho, sem flutuar solta
+   no meio do gráfico. */
+body.vx #drawing-toolbar, #drawing-toolbar{
+  width: 34px !important; min-width: 34px !important;
+  padding: 4px !important; box-sizing: border-box !important;
+  border: 1px solid rgba(255,255,255,.08) !important;
+  border-radius: 4px !important;
+  background: #0e1116 !important;
+  display: flex !important; flex-direction: column !important;
+  flex-wrap: nowrap !important;
+  gap: 2px !important;
+  top: 50% !important; transform: translateY(-50%) !important;
+}
+body.vx #drawing-toolbar > *, #drawing-toolbar > *{
+  width: 26px !important; min-width: 26px !important;
+  height: 26px !important; min-height: 26px !important;
+  margin: 0 auto !important;
+  font-size: 12px !important; line-height: 1 !important;
+  border: 0 !important; border-radius: 3px !important;
+  background: transparent !important; color: #b7bec8 !important;
+}
+body.vx #drawing-toolbar > *:hover, #drawing-toolbar > *:hover{ background: rgba(255,255,255,.07) !important; color: #eef1f5 !important }
