@@ -296,3 +296,15 @@ body.vx #vx-head .vx-toolbtn, #vx-head .vx-toolbtn{ padding: 0 7px !important; f
   body.vx #vx-head .vx-toolbtn span, #vx-head .vx-toolbtn span{ display: none !important }
   body.vx #vx-head .vx-toolbtn, #vx-head .vx-toolbtn{ width: 30px !important; padding: 0 !important; justify-content: center !important }
 }
+
+/* Último ajuste do cabeçalho: com a faixa em largura fixa, os botões de tema
+   e alerta saíam da tela em 1920 e "Tela cheia"/"Ferramentas" em 1366. A
+   faixa agora cede espaço quando precisa (o seletor de classe rola dentro de
+   si) e o resto do cabeçalho nunca é empurrado para fora. */
+body.vx #vx-head .vx-hline > .vx-inst, #vx-head .vx-hline > .vx-inst{
+  flex: 0 1 auto !important;
+  min-width: 300px !important;
+  max-width: 460px !important;
+}
+body.vx #vx-head .vx-hline > *, #vx-head .vx-hline > *{ flex-shrink: 0 !important }
+body.vx #vx-head .vx-hline > .vx-inst, #vx-head .vx-hline > .vx-inst{ flex-shrink: 1 !important }
