@@ -889,12 +889,12 @@
 
   function relogio() {
     var precoEl = document.getElementById('vx-preco');
-    if (precoEl && estado.preco) precoEl.textContent = n(estado.preco, 2);
+    if (precoEl && estado.preco) precoEl.textContent = (window.VXnum ? VXnum.preco(estado.preco) : n(estado.preco, 2));
     var varEl = document.getElementById('vx-var');
     if (varEl) {
       if (estado.var24 == null) { varEl.textContent = '--'; varEl.className = ''; }
       else {
-        varEl.textContent = (estado.var24 >= 0 ? '+' : '') + num(estado.var24) + '% 24h';
+        varEl.textContent = (window.VXnum ? VXnum.pct(estado.var24) : (estado.var24 >= 0 ? '+' : '') + num(estado.var24) + '%') + ' 24h';
         varEl.className = estado.var24 >= 0 ? 'up' : 'dn';
       }
     }

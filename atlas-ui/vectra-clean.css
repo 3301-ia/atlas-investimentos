@@ -1,0 +1,74 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   VECTRA · camada final de acabamento
+   Carregada por último: manda no que veio antes, sem reescrever módulo.
+   Paleta inspirada na Deriv: quase preto, cinzas neutros, branco e um único
+   vermelho de ação. Sem brilho, sem dourado, sem gradiente colorido.
+   ───────────────────────────────────────────────────────────────────────── */
+:root{
+  --vx-bg0:#0b0d0f; --vx-bg1:#101214; --vx-bg2:#141719; --vx-bg3:#191d20;
+  --vx-fio:#23272b; --vx-fio2:#2b3035;
+  --vx-txt:#f1f3f5; --vx-dim:#8b9299; --vx-texto:#e6e9ec; --vx-texto-fraco:#868d95;
+  --vx-ac:#ff444f; --vx-gold:#e8ebee;
+  --vx-alta:#0fb27c; --vx-baixa:#ff444f;
+  --vx-num:'JetBrains Mono',ui-monospace,monospace;
+  --vx-r:4px;
+  /* uma escala só: nada abaixo de 9px, nada solto entre degraus */
+  --t-9:9px; --t-10:10px; --t-11:11px; --t-12:12px; --t-13:13px; --t-18:18px;
+}
+body,body.vx{background:var(--vx-bg0);color:var(--vx-txt);
+  font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+
+/* ── escala tipográfica ──────────────────────────────────────────────── */
+body.vx h1,body.vx h2,body.vx h3{font-size:var(--t-13);font-weight:600;letter-spacing:.02em}
+body.vx .sp-sec,body.vx .vx-sec,body.vx .vx-card h3,body.vx .vx-a-card h3{
+  font-size:var(--t-9)!important;font-weight:600!important;letter-spacing:.14em!important;
+  text-transform:uppercase;color:var(--vx-dim)!important}
+body.vx .sp-sec-val,body.vx .vx-sec-val{font-size:var(--t-9)!important;color:var(--vx-dim)!important}
+body.vx label,body.vx .vx-lbl,body.vx small{font-size:var(--t-10)!important}
+body.vx td,body.vx .vx-row,body.vx .dom-row{font-size:var(--t-11)}
+body.vx b,body.vx strong{font-weight:600}
+
+/* ── números que não pulam: largura fixa e sempre duas casas ─────────── */
+#vx-preco{font:600 26px/1 var(--vx-num)!important;letter-spacing:-.02em!important;
+  display:inline-block;min-width:196px;text-align:right;color:var(--vx-txt)!important}
+#vx-var{display:inline-block;min-width:112px;text-align:right;font:500 11px var(--vx-num)!important}
+#vx-preco,#vx-var,.vx-a-preco,.vx-a-var,.dom-row b,.dom-row i,.mcap-total-val,
+.kpi b,.vx-kpi b,td.num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+
+/* dominância: colunas travadas, a virada compra/venda não empurra nada */
+.dom-list{display:flex;flex-direction:column;gap:2px}
+.dom-row,.dom-list>div{display:grid!important;grid-template-columns:56px 1fr 64px;align-items:center;gap:8px;
+  font-variant-numeric:tabular-nums}
+.dom-row .dom-nome,.dom-list .dom-nome{font-size:var(--t-10);letter-spacing:.06em;color:var(--vx-dim)}
+.dom-row .dom-val,.dom-list .dom-val{font-size:var(--t-11);text-align:right;min-width:64px;color:var(--vx-txt)}
+
+/* mesa de ativos: mesma largura para todo cartão, sem dançar */
+.vx-a-card{min-width:0}
+.vx-a-preco{display:inline-block;min-width:104px;text-align:right}
+.vx-a-var{display:inline-block;min-width:74px;text-align:right}
+
+/* ── fios e superfícies: um só tom, sem sombra ───────────────────────── */
+#vx-head,.vx-card,.vx-a-card,#vx-kpis .kpi,.sp-sec,.side-nav,.vx-dock,#vx-dock{
+  border-color:var(--vx-fio)!important;box-shadow:none!important;background:var(--vx-bg1)}
+#vx-head{background:var(--vx-bg1)!important}
+.side-nav{border-right:1px solid var(--vx-fio)!important}
+.vx-card,.vx-a-card{border-radius:var(--vx-r)!important}
+
+/* acento único: vermelho da ação, verde só para alta de preço */
+.vx-toolbtn[aria-expanded="true"],.nav-item.active,.nav-item.on{
+  color:#fff!important;border-color:var(--vx-fio2)!important;background:var(--vx-bg3)!important}
+.nav-item.active .nav-icon{color:var(--vx-ac)!important;filter:none!important}
+#vx-head .vx-toolbtn:hover{border-color:var(--vx-fio2)!important;color:#fff!important}
+
+/* ── Ω PROB: saiu do tamanho de postal ───────────────────────────────── */
+#omega-prob-overlay .op-card,#omega-overlay .om-card{
+  width:min(1080px,94vw)!important;max-height:92vh!important;padding:0!important;
+  border:1px solid var(--vx-fio)!important;border-radius:6px!important;background:var(--vx-bg1)!important}
+#omega-prob-overlay canvas,#omega-overlay canvas{width:100%!important;height:auto!important}
+#omega-prob-overlay .op-linha,#omega-overlay .om-linha{font-size:var(--t-11)!important}
+
+/* barra de rolagem discreta em tudo que rola */
+*::-webkit-scrollbar{width:6px;height:6px}
+*::-webkit-scrollbar-thumb{background:var(--vx-fio2);border-radius:6px}
+*::-webkit-scrollbar-track{background:transparent}

@@ -52,6 +52,7 @@
       try { localStorage.setItem('vxDockRecolhido', r ? '1' : '0'); } catch (e) {}
     });
     if (ehCelular()) dock.classList.add('recolhido');
+    else { dock.classList.add('recolhido'); var bt = dock.querySelector('#vx-dock-toggle'); if (bt) { bt.textContent = '\u27e8'; bt.title = 'abrir o painel'; } }
     try { if (localStorage.getItem('vxDockRecolhido') === '1' && !ehCelular()) { dock.classList.add('recolhido'); dock.querySelector('#vx-dock-toggle').textContent = '⟨'; } } catch (e) {}
 
     montarPainelMercado();
@@ -141,7 +142,7 @@
     var m = lerMercado();
     var el = function (id) { return document.getElementById(id); };
     if (m && m.preco) {
-      if (el('vx-preco')) el('vx-preco').textContent = '$' + fmt(m.preco);
+      if (el('vx-preco')) el('vx-preco').textContent = (window.VXnum ? VXnum.preco(m.preco) : '$' + fmt(m.preco));
       if (el('vx-simbolo')) el('vx-simbolo').textContent = (m.simbolo || '') + (m.tf ? ' · ' + m.tf : '');
       if (el('vx-fonte')) el('vx-fonte').textContent = m.fonte || '';
       if (el('vx-gatilho')) {
