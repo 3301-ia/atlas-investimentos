@@ -22,9 +22,10 @@
   var ultimoBom = null;
   var ultimoBomEm = 0;
   var timer = null;
+  var btnLinhas = null;
 
   var VERDE = '#2ECC8F', VERMELHO = '#E2564D';
-  var NUVEM_ALTA = 'rgba(46,204,143,0.11)', NUVEM_BAIXA = 'rgba(226,86,77,0.11)';
+  var NUVEM_ALTA = 'rgba(46,204,143,0.15)', NUVEM_BAIXA = 'rgba(226,86,77,0.15)';
   var ROSA = 'rgba(217,180,91,0.65)', CINZA = 'rgba(139,148,158,0.35)', CIANO = 'rgba(90,180,205,0.55)';
 
   function texto(v, casas) {
@@ -353,14 +354,17 @@
 
     var acoes = document.createElement('div');
     acoes.style.cssText = 'display:flex;gap:8px;padding:0 10px 10px';
-    acoes.appendChild(botao('LINHAS', function () {
+    btnLinhas = botao('LINHAS · OFF', function () {
       ligado = !ligado;
       salvarEstado();
       if (!ligado) { apagarSeries(); }
       ultimaContagem = -1;
       ultimaAssinatura = '';
+      pintarBotaoLinhas();
       avaliar(true);
-    }));
+    });
+    acoes.appendChild(btnLinhas);
+    pintarBotaoLinhas();
     acoes.appendChild(botao('LIVRO', function () { celulas(); }));
     card.appendChild(acoes);
 
@@ -388,6 +392,13 @@
     console.log('[imperial] ' + linhas.join(' | '));
   }
 
+  function pintarBotaoLinhas() {
+    if (!btnLinhas) return;
+    btnLinhas.textContent = 'LINHAS · ' + (ligado ? 'ON' : 'OFF');
+    btnLinhas.style.borderColor = ligado ? '#2ECC8F' : '';
+    btnLinhas.style.color = ligado ? '#2ECC8F' : '';
+  }
+
   function lerEstado() {
     try { return JSON.parse(localStorage.getItem(CHAVE) || '{}') || {}; } catch (e) { return {}; }
   }
@@ -398,7 +409,9 @@
   function abrir() {
     montar();
     card.style.display = 'block';
-    ligado = lerEstado().ligado === true;
+    var guardado = lerEstado();
+    ligado = guardado.ligado !== false; // padrao: ligado; so fica oculto se o usuario desligou
+    pintarBotaoLinhas();
     avaliar(true);
     if (!timer) timer = setInterval(function () { avaliar(false); }, 2000);
   }
