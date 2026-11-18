@@ -371,3 +371,39 @@ body.vx #drawing-toolbar, #drawing-toolbar{
   max-height: 100% !important;
 }
 body.vx #drawing-toolbar::-webkit-scrollbar, #drawing-toolbar::-webkit-scrollbar{ width: 0 !important; display: none !important }
+
+/* =====================================================================
+   10 · O DESLOCAMENTO DE PIXEL NO CABEÇALHO
+   Medido no painel no ar: o bloco do preço começava em y=12,36 com altura
+   33,27 (fonte 26 px com entrelinha 33,28), e o "-2,74% 24h" caía com o
+   centro em 34,5 enquanto o "AO VIVO" ficava em 29 — 5,5 px fora da linha.
+   Tudo aqui passa a ter altura inteira, entrelinha inteira e o mesmo centro.
+   ===================================================================== */
+body.vx #vx-head, #vx-head{ -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility }
+body.vx #vx-head .vx-hline, #vx-head .vx-hline{
+  height: 58px !important; min-height: 58px !important;
+  align-items: center !important;
+}
+body.vx #vx-head .vx-hline > *, #vx-head .vx-hline > *{ align-self: center !important }
+
+body.vx #vx-head .vx-price, #vx-head .vx-price{
+  display: flex !important; flex-direction: column !important;
+  justify-content: center !important; align-items: flex-start !important;
+  gap: 1px !important; height: 34px !important; padding: 0 !important;
+}
+body.vx #vx-preco, #vx-preco{
+  font-size: 26px !important; line-height: 26px !important; height: 26px !important;
+  display: block !important;
+}
+body.vx #vx-var, #vx-var{
+  font-size: 11px !important; line-height: 12px !important; height: 12px !important;
+  display: block !important; margin: 0 !important;
+}
+body.vx #vx-live, #vx-live{
+  height: 22px !important; min-height: 22px !important; max-height: 22px !important;
+  padding: 0 8px !important; box-sizing: border-box !important;
+  display: inline-flex !important; align-items: center !important; gap: 5px !important;
+  font-size: 10px !important; line-height: 10px !important; border-radius: 3px !important;
+}
+body.vx #vx-live-txt, #vx-live-txt{ font-size: 10px !important; line-height: 10px !important; height: 10px !important }
+body.vx #vx-live i, #vx-live i{ width: 6px !important; height: 6px !important; flex: 0 0 6px !important; border-radius: 50% !important }
