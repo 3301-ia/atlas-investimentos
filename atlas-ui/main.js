@@ -1251,18 +1251,18 @@ function setupChart(){
   ['mousedown','wheel','touchstart'].forEach(evt => {
     ce.addEventListener(evt, () => setInteractingChart(chart), { passive: true });
   });
-  candleSeries=chart.addCandlestickSeries({upColor:'#089981',downColor:'#f23645',borderUpColor:'#089981',borderDownColor:'#f23645',wickUpColor:'#089981',wickDownColor:'#f23645'});
+  candleSeries=chart.addCandlestickSeries({upColor:'#26a69a',downColor:'#ef5350',borderVisible:false,wickUpColor:'#26a69a',wickDownColor:'#ef5350',priceLineWidth:1,priceLineStyle:2});
   const maCfg={priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,visible:defaultMAsVisible};
   // Medias moveis de volta ao grafico principal. O Rainbow (regressao log)
   // e a MA Ribbon (89 D1/W1/1M/3M) continuam de fora — esses ficam isolados
   // nas abas proprias "🌈 Rainbow" e "📐 Macro", por pedido anterior.
-  maS.ema8=chart.addLineSeries({color:C.ema8,lineWidth:2,...maCfg});
-  maS.ema16=chart.addLineSeries({color:C.ema16,lineWidth:2,...maCfg});
-  maS.ema55=chart.addLineSeries({color:C.ema55,lineWidth:2,...maCfg});
+  maS.ema8=chart.addLineSeries({color:C.ema8,lineWidth:1,...maCfg});
+  maS.ema16=chart.addLineSeries({color:C.ema16,lineWidth:1,...maCfg});
+  maS.ema55=chart.addLineSeries({color:C.ema55,lineWidth:1,...maCfg});
   maS.ema98=chart.addLineSeries({color:C.ema98,lineWidth:1,...maCfg});
-  maS.ema200=chart.addLineSeries({color:C.ema200,lineWidth:2,...maCfg});
-  maS.ma56=chart.addLineSeries({color:C.ma56,lineWidth:2,...maCfg});
-  maS.ma89=chart.addLineSeries({color:C.ma89,lineWidth:2,...maCfg});
+  maS.ema200=chart.addLineSeries({color:C.ema200,lineWidth:1,...maCfg});
+  maS.ma56=chart.addLineSeries({color:C.ma56,lineWidth:1,...maCfg});
+  maS.ma89=chart.addLineSeries({color:C.ma89,lineWidth:1,...maCfg});
 
   // VECTRA NEON RAINBOW — 9 faixas dinâmicas para leitura solo (KAMA 100 + DEMA 21 + Envelopes)
   const nrCfg={priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,visible:false};

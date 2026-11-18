@@ -63,3 +63,27 @@ body .side-nav{flex:0 0 52px!important}
     flex-basis:52px!important; padding:6px 4px!important;
   }
 }
+/* ── refinamento: nada espremido, nada grosso ───────────────────── */
+body .side-nav{width:62px!important;min-width:62px!important;max-width:62px!important;flex:0 0 62px!important;padding:8px 4px!important}
+body .side-nav .vx-nav-lbl, body .side-nav .nav-lbl, body .side-nav .nav-item span{
+  font-size:6.8px!important;font-weight:500!important;letter-spacing:.02em!important;
+  line-height:1.15!important;white-space:nowrap!important;opacity:.72!important;
+  text-transform:uppercase!important;overflow:visible!important;max-width:none!important}
+body .side-nav .nav-item{min-height:44px!important;gap:3px!important;padding:5px 0!important}
+body .side-nav .vx-ico, body .side-nav .nav-icon svg{width:17px!important;height:17px!important}
+/* tipografia mais leve: peso alto é o que dá o aspecto "grosso" */
+#vx-head .vx-brand b{font-weight:600!important}
+#vx-kpis .kpi b{font-weight:500!important}
+#big-price{font-weight:500!important;letter-spacing:-.01em!important}
+#big-sym{font-weight:600!important}
+body, body *{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility}
+/* hairlines de 1 px reais, sem borda dupla */
+#vx-head, #vx-kpis, .chart-wrap, .side-nav{border-width:1px!important}
+/* HUD do canto não encosta no preço */
+#chart-price-overlay{top:6px!important;left:56px!important}
+@media (min-width:761px){
+  body.vx .side-nav, body.vx .layout > .side-nav{
+    width:62px!important;min-width:62px!important;max-width:62px!important;
+    flex:0 0 62px!important;flex-basis:62px!important;padding:8px 4px!important;
+  }
+}
