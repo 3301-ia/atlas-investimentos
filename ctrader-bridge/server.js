@@ -151,7 +151,25 @@ const server = http.createServer(async (req, res) => {
     } catch (e) { return j({ ok: false, erro: String(e.message || e) }, 502); }
   }
 
-  return j({ ok: true, rotas: ['/saude', '/entrar', '/ctrader-callback', '/velas', '/spot'] });
+  if (url.pathname === '/contas') {
+    // descobre o ctidTraderAccountId a partir do token do OAuth
+    const token = url.searchParams.get('token') || process.env.CTRADER_ACCESS_TOKEN || '';
+    try {
+      const sock = await conectar();
+      const esperar = leitor(sock);
+      const p1 = esperar(T.APP_AUTH_RES);
+      enviar(sock, T.APP_AUTH_REQ, { clientId: CLIENT_ID, clientSecret: CLIENT_SECRET });
+      await p1;
+      const p2 = esperar(T.GET_ACCOUNTS_RES);
+      enviar(sock, T.GET_ACCOUNTS_REQ, { accessToken: token });
+      const r = await p2;
+      sock.destroy();
+      const contas = (r.ctidTraderAccount || []).map((c) => ({ conta: c.ctidTraderAccountId, demo: c.isLive === false, broker: c.brokerNameId || null }));
+      return j({ ok: true, contas });
+    } catch (e) { return j({ ok: false, erro: String(e.message || e) }, 502); }
+  }
+
+  return j({ ok: true, rotas: ['/saude', '/entrar', '/ctrader-callback', '/contas', '/velas', '/spot'] });
 });
 
 const PORTA_HTTP = Number(process.env.PORT || 8080);
