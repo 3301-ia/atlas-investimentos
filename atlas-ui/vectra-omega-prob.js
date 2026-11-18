@@ -183,9 +183,9 @@
     if (!nav || document.getElementById('nav-omega-prob')) return;
     const it = document.createElement('div');
     it.className = 'nav-item'; it.id = 'nav-omega-prob'; it.title = 'Ω-Score: modelo de probabilidade do retorno de 12 meses';
-    it.innerHTML = '<span class="nav-icon">Ω</span><span class="nav-lbl">Prob</span>';
+    it.innerHTML = '<span class="nav-icon">Ω%</span><span class="nav-lbl">Prob</span>';
     it.onclick = abrir;
-    nav.appendChild(it);
+    try{nav.insertBefore(it, nav.children[2] || null)}catch(e){nav.appendChild(it)}
   }
   window.VectraOmegaProb = { abrir };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', botao); else botao();

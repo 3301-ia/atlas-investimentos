@@ -22,6 +22,17 @@
   }
 
   async function velasDiarias(simbolo) {
+    const base = simbolo.replace('USDT', '');
+    // Kraken como segunda fonte: mesma vela diária, sem chave
+    try {
+      const par = base === 'BTC' ? 'XBTUSD' : base + 'USD';
+      const r = await fetch(`https://api.kraken.com/0/public/OHLC?pair=${par}&interval=1440`);
+      const j = await r.json();
+      const k = Object.keys(j.result || {}).find((x) => x !== 'last');
+      if (k) {
+        return j.result[k].map((c) => ({ time: Number(c[0]), open: +c[1], high: +c[2], low: +c[3], close: +c[4] }));
+      }
+    } catch (e) { /* cai para a Coinbase */ }
     const par = simbolo.replace('USDT', '-USD');
     const r = await fetch(`https://api.exchange.coinbase.com/products/${par}/candles?granularity=86400&limit=300`, { headers: { 'User-Agent': 'vectra' } });
     if (!r.ok) throw new Error('fonte ' + r.status);
@@ -86,7 +97,7 @@
       <div style="display:flex;align-items:center;gap:14px;padding:12px 16px;border-bottom:1px solid #242935">
         <b style="font-size:12px;letter-spacing:.18em">Ω-SCORE · VECTRA</b>
         <span id="om-sym" style="font-size:11px;color:#7c8496">--</span>
-        <span id="om-valor" style="font-size:20px;font-weight:600">--</span>
+        <span id="om-valor" style="font-size:20px;font-weight:600;color:#7c8496">carregando</span>
         <span id="om-faixa" style="font-size:10px;letter-spacing:.16em;padding:3px 8px;border-radius:3px;border:1px solid #242935">--</span>
         <span style="margin-left:auto;font-size:10px;color:#7c8496">alongamento 50/200 · RSI 14 · queda da máxima · volatilidade 30d</span>
         <button id="om-fechar" style="background:transparent;border:1px solid #242935;color:#dfe3ea;border-radius:4px;padding:5px 10px;cursor:pointer;font-size:10px">Fechar</button>
@@ -184,7 +195,7 @@
     const item = el('div', null, '<span class="nav-icon">Ω</span><span class="nav-lbl">Omega</span>');
     item.className = 'nav-item'; item.id = 'nav-omega'; item.title = 'Ω-Score: termômetro de calor do mercado';
     item.onclick = abrir;
-    nav.appendChild(item);
+    try{nav.insertBefore(item, nav.children[2] || null)}catch(e){nav.appendChild(item)}
   }
 
   window.VectraOmega = { abrir };

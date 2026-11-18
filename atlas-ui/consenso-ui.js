@@ -214,7 +214,7 @@
     item.innerHTML = '<span class="nav-icon">\u25c8</span><span class="nav-lbl">Consenso</span>';
     item.addEventListener('click', alternar);
     var irmao = document.getElementById('nav-imperial') || document.getElementById('nav-vigia');
-    pai.parentNode.insertBefore(item, irmao && irmao.nextSibling ? irmao.nextSibling : (pai.parentNode.children[2] || null));
+    try{pai.parentNode.insertBefore(item, irmao && irmao.nextSibling ? irmao.nextSibling : (pai.parentNode.children[2] || null));}catch(err){pai.parentNode.appendChild(item);}
     return true;
   }
 

@@ -35,3 +35,33 @@ body.vx .side-nav{background:var(--vx-ar)!important;border-right:1px solid var(-
 *::-webkit-scrollbar{width:8px;height:8px}
 *::-webkit-scrollbar-thumb{background:#2b3140;border-radius:8px}
 *::-webkit-scrollbar-track{background:transparent}
+/* barra lateral com rolagem própria: nada some embaixo */
+.side-nav{overflow-y:auto!important;overflow-x:hidden!important;scrollbar-width:thin;scrollbar-color:#2b3140 transparent;display:flex;flex-direction:column}
+.side-nav::-webkit-scrollbar{width:4px}
+.side-nav::-webkit-scrollbar-thumb{background:#2b3140;border-radius:4px}
+.side-nav .nav-item{flex:0 0 auto}
+.side-nav-top{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;gap:1px}
+/* respiro maior no gráfico e fios mais discretos */
+#chart{border-top:1px solid #1e232e!important}
+/* no celular a barra lateral também rola: nenhum item fica inalcançável */
+@media (max-width:768px){
+  .side-nav{overflow-y:auto!important;overflow-x:hidden!important}
+  .side-nav::-webkit-scrollbar{width:0}
+  .side-nav .nav-item{min-height:38px}
+}
+/* celular: a faixa de ícones rola na horizontal, nada fica cortado */
+@media (max-width:768px){
+  body.vx .side-nav{overflow-x:auto!important;overflow-y:hidden!important}
+  body.vx .side-nav-top{overflow-x:auto!important;overflow-y:hidden!important;flex-direction:row!important;max-width:none!important;gap:2px!important}
+  body.vx .side-nav-top::-webkit-scrollbar{height:0}
+  body.vx .side-nav .nav-item{min-height:44px}
+}
+/* números alinhados em coluna: o que mais faz parecer terminal financeiro */
+body,.vx-card,.vx-a-card,#vx-kpis,#big-price,.kpi b,.vx-a-preco{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+/* ícone do menu sem cara de emoji: monocromático, discreto, acento só no ativo */
+.side-nav .nav-icon{filter:grayscale(1) brightness(1.5);opacity:.72;transition:opacity .15s}
+.side-nav .nav-item:hover .nav-icon{opacity:.95}
+.side-nav .nav-item.active .nav-icon,.side-nav .nav-item.on .nav-icon{filter:none;opacity:1;color:#9db4ff}
+/* fios iguais em todo canto e nenhuma sombra perdida */
+.vx-card,.vx-a-card,#vx-kpis .kpi,#vx-head,.sp-sec{border-color:#242935!important}
+*{box-shadow:none}
