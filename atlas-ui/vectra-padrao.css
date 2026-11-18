@@ -16,13 +16,25 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-#chart-price-overlay{
+/* especificidade: as folhas antigas usam body.vx + id com !important, então
+   a regra nova precisa do mesmo peso para vencer de verdade */
+body.vx #chart-price-overlay, #chart-price-overlay{
   top: 34px !important;
   left: 56px !important;
   z-index: 13 !important;
   pointer-events: none;
 }
-#chart-price-overlay *{ pointer-events: auto; }
+body.vx #chart-price-overlay *, #chart-price-overlay *{ pointer-events: auto; }
+
+/* 1b · item "mais" do trilho não pode nascer fora da tela (x negativo) */
+body.vx .side-nav #nav-mais, .side-nav #nav-mais{
+  min-width: 56px !important;
+  max-width: 56px !important;
+  width: 56px !important;
+  font-size: 9px !important;
+  line-height: 1.05 !important;
+  text-align: center !important;
+}
 
 /* 2 · A barra de ativos não empurra nada para fora: se não couber, ela rola
       dentro de si mesma. */
@@ -97,8 +109,10 @@ body.vx .vx-a-preco, body.vx .vx-a-var, body.vx .vx-a-num-preco{
   .side-nav .nav-icon{ font-size: 16px !important; line-height: 1 !important }
 
   /* o HUD desce um degrau no celular, para não encostar na legenda */
-  #chart-price-overlay{ top: 30px !important; left: 10px !important }
-  #tv-chart-indicators-legend{ max-width: calc(100% - 90px) !important; font-size: 9px !important }
+  body.vx #chart-price-overlay, #chart-price-overlay{ top: 32px !important; left: 10px !important }
+  body.vx #tv-chart-indicators-legend, #tv-chart-indicators-legend{
+    max-width: calc(100% - 90px) !important; font-size: 9px !important; top: 6px !important; left: 10px !important;
+  }
 
   /* nenhuma barra de topo pode criar rolagem lateral */
   .app-shell{ overflow-x: hidden !important }
