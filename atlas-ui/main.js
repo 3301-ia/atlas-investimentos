@@ -16405,7 +16405,7 @@ async function openMultiCharts(){
     // escondia a cor dela, do mesmo jeito que acontecia no grafico principal
     bcv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0;';
     el.style.background = 'var(--bg1)';
-    el.insertBefore(bcv, el.firstChild);
+    try{ el.prepend(bcv); }catch(e){ el.appendChild(bcv); }
     const bctx = bcv.getContext('2d');
 
     // A CAMADA VAI NO INVOLUCRO, nao nas telas. A lib usa z-index proprio
@@ -22718,7 +22718,7 @@ function goldAddAlertLog(sym,tf,val,cond,isExtreme){
     <span style="color:${cls==='os'?'var(--red)':'var(--green)'};">${cond} ${val.toFixed(1)}</span>
   </div><div style="color:var(--t3);font-size:9px;margin-top:2px;">${timeStr}${isExtreme?' · EXTREMO':''}</div>`;
   if(box.children[0]&&box.children[0].textContent.includes('Sem alertas'))box.innerHTML='';
-  box.insertBefore(item,box.firstChild);
+  try{ box.prepend(item); }catch(e){ box.appendChild(item); }
   while(box.children.length>50)box.removeChild(box.lastChild);
 }
 function goldClearAlertLog(){

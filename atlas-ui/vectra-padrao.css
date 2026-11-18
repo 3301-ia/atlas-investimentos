@@ -118,3 +118,16 @@ body.vx .vx-a-preco, body.vx .vx-a-var, body.vx .vx-a-num-preco{
   .app-shell{ overflow-x: hidden !important }
   .cat-bar, .topbar, header{ max-width: 100% !important; overflow-x: auto !important }
 }
+
+/* 5 · PC: os itens do trilho mediam 64 px numa coluna de 62 e nasciam 1 a 2 px
+      fora da borda esquerda. Agora cabem exatamente. */
+@media (min-width: 761px){
+  body.vx .side-nav .nav-item, body.vx .side-nav #btn-robo, body.vx .side-nav #nav-mais,
+  .side-nav .nav-item, .side-nav #btn-robo, .side-nav #nav-mais{
+    min-width: 56px !important;
+    max-width: 56px !important;
+    width: 56px !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+}
