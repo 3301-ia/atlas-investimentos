@@ -248,8 +248,14 @@ function renderPhiRibbonSegments(candlesArr,phiArrs,alignmentPerBar){
       phiSegmentSeries[p]=[];
     });
     const n=alignmentPerBar.length;
-    let segStart=0;
-    for(let i=1;i<=n;i++){
+    // O feixe criava uma serie nova a CADA troca de alinhamento, em cada uma
+    // das 10 medias. Com 3.900 velas isso virava milhares de series por
+    // recalculo e 2,6 s de tela travada. O desenho caro fica na janela
+    // recente; o resto do historico aparece com as velas, sem o feixe.
+    const FEIXE_JANELA = 900;
+    const inicio = Math.max(0, n - FEIXE_JANELA);
+    let segStart=inicio;
+    for(let i=inicio+1;i<=n;i++){
       if(i===n || alignmentPerBar[i]!==alignmentPerBar[segStart]){
         const segEnd=i-1;
         const alignment=alignmentPerBar[segStart];
@@ -14238,7 +14244,7 @@ async function loadFullHistory(){
 // desenho, o painel vai puxando lotes de 1.000 em segundo plano até 5.000
 // velas (o botão 🕰 Tudo continua levando até o teto de 20.000). O zoom atual
 // é preservado em cada lote, então nada pula na tela.
-const AUTO_HIST_ALVO = 5000; // equilibrio: historico util sem travar o painel
+const AUTO_HIST_ALVO = 20000; // o teto: o desenho caro agora e limitado por janela
 let histFundoSeq = 0;
 
 // Busca um lote de velas ANTERIORES a `base` em varias fontes. Devolve:
