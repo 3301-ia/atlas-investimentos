@@ -14176,6 +14176,7 @@ function updateHistInfo(){
   const oldest=new Date(candles[0].time*1000);
   const dd=String(oldest.getDate()).padStart(2,'0'),mm=String(oldest.getMonth()+1).padStart(2,'0'),yy=oldest.getFullYear();
   el.textContent=`${candles.length} velas · desde ${dd}/${mm}/${yy}`;
+  window.__vxVelas = candles.length;   // a contagem real, sem depender de função exposta
 }
 
 // Retorna true se conseguiu buscar (e prepender) mais um lote de velas antigas.
@@ -14374,6 +14375,9 @@ async function puxarLotesAntigos(quantos){
 
 async function carregarHistoricoFundo(){
   if(loadingFullHistory || loadingMoreHistory) return;
+  // Trava de segurança: no teto, uma nova rodada só faria 280 pedidos para
+  // depois cortar tudo no slice do HIST_CAP. Era isso que congelava a tela.
+  if(candles.length >= AUTO_HIST_ALVO || noMoreHistory) return;
   const meu = ++histFundoSeq, seq = loadSeq;
   // Uma passada so: busca ate 20 lotes (20 mil velas) SEM redesenhar no meio,
   // e desenha uma vez no fim. Redesenhar a serie inteira a cada lote era o que
@@ -21023,8 +21027,8 @@ async function loadAll(){
     let voltas = 0;
     window.__vxVigiaHist = setInterval(()=>{
       voltas++;
-      const st = (typeof vxEstado === 'function') ? vxEstado() : null;
-      const curto = !st || st.velas < AUTO_HIST_ALVO;
+      const qtd = Number(window.__vxVelas || 0);
+      const curto = qtd > 0 && qtd < AUTO_HIST_ALVO;
       if(voltas > 40 || !curto || document.hidden){ clearInterval(window.__vxVigiaHist); window.__vxVigiaHist = null; return; }
       try{ carregarHistoricoFundo(); }catch(e){}
     }, 12000);
