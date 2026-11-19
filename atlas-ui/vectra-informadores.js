@@ -11,44 +11,44 @@
   window.__vxInformadores = true;
 
   const APP = '6a02bf87bbdfc0e29f88b64a';
-  const URL_LISTA = 'https://app.base44.com/api/apps/' + APP + '/functions/vectraWebhook';
+  const URL_LISTA = 'https://base44.app/api/apps/' + APP + '/functions/vectraWebhook';
   const CHAVE_ESTADO = 'vx_informadores_aberto';
 
   const css = document.createElement('style');
   css.textContent = `
-  #vx-inf{position:fixed;right:12px;bottom:44px;z-index:9000;width:306px;
+  #vx-dock-inf{position:fixed;right:12px;bottom:44px;z-index:9000;width:306px;
     background:#0b0d11;border:1px solid rgba(255,255,255,.09);border-radius:4px;
     font:11px/1.35 Inter,system-ui,-apple-system,sans-serif;color:#cfd6de;
     box-shadow:0 6px 22px rgba(0,0,0,.45);overflow:hidden}
-  #vx-inf *{box-sizing:border-box}
-  #vx-inf .vx-inf-top{display:flex;align-items:center;gap:6px;height:28px;padding:0 8px;
+  #vx-dock-inf *{box-sizing:border-box}
+  #vx-dock-inf .vx-inf-top{display:flex;align-items:center;gap:6px;height:28px;padding:0 8px;
     border-bottom:1px solid rgba(255,255,255,.07);cursor:pointer;user-select:none}
-  #vx-inf .vx-inf-nome{font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:#9aa1ab;flex:1}
-  #vx-inf .vx-inf-n{font:9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:#6f7782}
-  #vx-inf .vx-inf-luz{width:5px;height:5px;border-radius:50%;background:#3a4049}
-  #vx-inf .vx-inf-luz.viva{background:#089981}
-  #vx-inf .vx-inf-corpo{max-height:196px;overflow-y:auto;scrollbar-width:thin}
-  #vx-inf.recolhido .vx-inf-corpo{display:none}
-  #vx-inf .vx-inf-linha{display:grid;grid-template-columns:34px 1fr auto;gap:6px;
+  #vx-dock-inf .vx-inf-nome{font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:#9aa1ab;flex:1}
+  #vx-dock-inf .vx-inf-n{font:9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:#6f7782}
+  #vx-dock-inf .vx-inf-luz{width:5px;height:5px;border-radius:50%;background:#3a4049}
+  #vx-dock-inf .vx-inf-luz.viva{background:#089981}
+  #vx-dock-inf .vx-inf-corpo{max-height:196px;overflow-y:auto;scrollbar-width:thin}
+  #vx-dock-inf.recolhido .vx-inf-corpo{display:none}
+  #vx-dock-inf .vx-inf-linha{display:grid;grid-template-columns:34px 1fr auto;gap:6px;
     align-items:baseline;padding:5px 8px;border-bottom:1px solid rgba(255,255,255,.045)}
-  #vx-inf .vx-inf-linha:last-child{border-bottom:0}
-  #vx-inf .vx-inf-h{font:9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:#6f7782}
-  #vx-inf .vx-inf-q{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px}
-  #vx-inf .vx-inf-f{font-size:8px;letter-spacing:.06em;text-transform:uppercase;color:#6f7782}
-  #vx-inf .vx-inf-ativo{font:10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:#e7ebf0}
-  #vx-inf .vx-inf-preco{font:10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:#9aa1ab;
+  #vx-dock-inf .vx-inf-linha:last-child{border-bottom:0}
+  #vx-dock-inf .vx-inf-h{font:9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:#6f7782}
+  #vx-dock-inf .vx-inf-q{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px}
+  #vx-dock-inf .vx-inf-f{font-size:8px;letter-spacing:.06em;text-transform:uppercase;color:#6f7782}
+  #vx-dock-inf .vx-inf-ativo{font:10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:#e7ebf0}
+  #vx-dock-inf .vx-inf-preco{font:10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:#9aa1ab;
     font-variant-numeric:tabular-nums;white-space:nowrap}
-  #vx-inf .vx-inf-compra{color:#089981}
-  #vx-inf .vx-inf-venda{color:#f23645}
-  #vx-inf .vx-inf-vazio{padding:10px 8px;font-size:9.5px;color:#6f7782}
+  #vx-dock-inf .vx-inf-compra{color:#089981}
+  #vx-dock-inf .vx-inf-venda{color:#f23645}
+  #vx-dock-inf .vx-inf-vazio{padding:10px 8px;font-size:9.5px;color:#6f7782}
   @media (max-width:820px){
-    #vx-inf{width:calc(100vw - 24px);right:12px;bottom:52px}
-    #vx-inf .vx-inf-corpo{max-height:132px}
+    #vx-dock-inf{width:calc(100vw - 24px);right:12px;bottom:52px}
+    #vx-dock-inf .vx-inf-corpo{max-height:132px}
   }`;
   document.head.appendChild(css);
 
   const card = document.createElement('div');
-  card.id = 'vx-inf';
+  card.id = 'vx-dock-inf';
   card.innerHTML =
     '<div class="vx-inf-top">' +
       '<span class="vx-inf-luz"></span>' +
