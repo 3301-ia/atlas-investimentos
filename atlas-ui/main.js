@@ -14252,69 +14252,95 @@ let histFundoSeq = 0;
 //   []     -> a fonte respondeu e nao tem mais nada antes disso (fim da serie)
 //   null   -> ninguem respondeu (rede, CORS, rate limit) — NAO e fim da serie
 async function loteAntigo(sym, tf, base){
+  // A REGRA: só é fim de série quando TODAS as fontes alcançáveis responderam
+  // vazio. Antes, a primeira fonte que devolvia 200 com lista vazia (ou com a
+  // página toda filtrada) encerrava o histórico — era por isso que o gráfico
+  // parava em 3.900 velas mesmo com Bybit, OKX e Coinbase cheias.
   const sig = safeTimeoutSignal(9000);
   const antes = base*1000 - 1;
   const base_ = toCryptoBase(sym);
+  let vazioConfirmado = false;
 
-  // 1) Binance futuros
-  try{
+  const colher = async (busca)=>{
+    try{
+      const arr = await busca();
+      if(!Array.isArray(arr)) return null;
+      const bons = arr.filter(c=>c && c.time < base);
+      if(bons.length){ vazioConfirmado = false; return bons; }
+      vazioConfirmado = true;   // essa fonte respondeu, mas sem nada antes
+      return null;
+    }catch(e){ return null; }
+  };
+
+  const bnc = (k)=>({time:Math.floor(k[0]/1000),open:+k[1],high:+k[2],low:+k[3],close:+k[4],volume:+k[5],
+    compra:+k[10]||0, venda:Math.max(0,(+k[7]||0)-(+k[10]||0))});
+
+  // 1) Binance futuros (traz compra/venda por vela)
+  let arr = await colher(async ()=>{
     const r = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${sym}&interval=${tf}&limit=1000&endTime=${antes}`, sig?{signal:sig}:{});
-    if(r.ok){
-      const d = await r.json();
-      if(Array.isArray(d)) return d.length ? d.map(k=>({time:Math.floor(k[0]/1000),open:+k[1],high:+k[2],low:+k[3],close:+k[4],volume:+k[5],
-        compra:+k[10]||0, venda:Math.max(0,(+k[7]||0)-(+k[10]||0))})).filter(c=>c.time<base) : [];
-    }
-  }catch(e){}
-  // 2) Binance spot (mesmo formato, host diferente)
-  try{
+    if(!r.ok) return null;
+    const d = await r.json();
+    return Array.isArray(d) ? d.map(bnc) : null;
+  });
+  if(arr) return arr;
+
+  // 2) Binance spot
+  arr = await colher(async ()=>{
     const r = await fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${tf}&limit=1000&endTime=${antes}`, sig?{signal:sig}:{});
-    if(r.ok){
-      const d = await r.json();
-      if(Array.isArray(d)) return d.length ? d.map(k=>({time:Math.floor(k[0]/1000),open:+k[1],high:+k[2],low:+k[3],close:+k[4],volume:+k[5],
-        compra:+k[10]||0, venda:Math.max(0,(+k[7]||0)-(+k[10]||0))})).filter(c=>c.time<base) : [];
-    }
-  }catch(e){}
-  // 3) Bybit (pagina por `end`)
+    if(!r.ok) return null;
+    const d = await r.json();
+    return Array.isArray(d) ? d.map(bnc) : null;
+  });
+  if(arr) return arr;
+
+  // 3) Bybit
   const byTf = {'1m':'1','3m':'3','5m':'5','15m':'15','30m':'30','1h':'60','4h':'240','6h':'360','12h':'720','1d':'D','1w':'W'}[tf];
   if(byTf){
-    try{
+    arr = await colher(async ()=>{
       const r = await fetch(`https://api.bybit.com/v5/market/kline?category=spot&symbol=${sym}&interval=${byTf}&limit=1000&end=${antes}`, sig?{signal:sig}:{});
-      if(r.ok){
-        const d = await r.json();
-        const list = d && d.result && d.result.list;
-        if(Array.isArray(list)) return list.map(k=>({time:Math.floor(+k[0]/1000),open:+k[1],high:+k[2],low:+k[3],close:+k[4],volume:+k[5]}))
-          .filter(c=>c.time<base).sort((a,b)=>a.time-b.time);
-      }
-    }catch(e){}
+      if(!r.ok) return null;
+      const d = await r.json();
+      const list = d && d.result && d.result.list;
+      if(!Array.isArray(list)) return null;
+      return list.map(k=>({time:Math.floor(+k[0]/1000),open:+k[1],high:+k[2],low:+k[3],close:+k[4],volume:+k[5]}))
+        .sort((a,b)=>a.time-b.time);
+    });
+    if(arr) return arr;
   }
-  // 4) OKX (pagina por `after`, 300 por chamada)
+
+  // 4) OKX
   const okTf = {'1m':'1m','5m':'5m','15m':'15m','30m':'30m','1h':'1H','4h':'4H','6h':'6H','12h':'12H','1d':'1D','1w':'1W'}[tf];
   if(okTf){
-    try{
+    arr = await colher(async ()=>{
       const r = await fetch(`https://www.okx.com/api/v5/market/history-candles?instId=${base_}-USDT&bar=${okTf}&after=${antes}&limit=300`, sig?{signal:sig}:{});
-      if(r.ok){
-        const d = await r.json();
-        const list = d && d.data;
-        if(Array.isArray(list)) return list.map(k=>({time:Math.floor(+k[0]/1000),open:+k[1],high:+k[2],low:+k[3],close:+k[4],volume:+k[5]}))
-          .filter(c=>c.time<base).sort((a,b)=>a.time-b.time);
-      }
-    }catch(e){}
+      if(!r.ok) return null;
+      const d = await r.json();
+      const list = d && d.data;
+      if(!Array.isArray(list)) return null;
+      return list.map(k=>({time:Math.floor(+k[0]/1000),open:+k[1],high:+k[2],low:+k[3],close:+k[4],volume:+k[5]}))
+        .sort((a,b)=>a.time-b.time);
+    });
+    if(arr) return arr;
   }
-  // 5) Coinbase (janela start/end, 300 por chamada)
+
+  // 5) Coinbase
   const cbG = {'1m':60,'5m':300,'15m':900,'1h':3600,'6h':21600,'1d':86400}[tf];
   if(cbG){
-    try{
+    arr = await colher(async ()=>{
       const start = new Date(antes - 300*cbG*1000).toISOString();
       const end = new Date(antes).toISOString();
       const r = await fetch(`https://api.exchange.coinbase.com/products/${base_}-USD/candles?granularity=${cbG}&start=${start}&end=${end}`, sig?{signal:sig}:{});
-      if(r.ok){
-        const d = await r.json();
-        if(Array.isArray(d)) return d.map(k=>({time:Math.floor(k[0]),low:+k[1],high:+k[2],open:+k[3],close:+k[4],volume:+k[5]}))
-          .filter(c=>c.time<base).sort((a,b)=>a.time-b.time);
-      }
-    }catch(e){}
+      if(!r.ok) return null;
+      const d = await r.json();
+      if(!Array.isArray(d)) return null;
+      return d.map(k=>({time:Math.floor(k[0]),low:+k[1],high:+k[2],open:+k[3],close:+k[4],volume:+k[5]}))
+        .sort((a,b)=>a.time-b.time);
+    });
+    if(arr) return arr;
   }
-  return null;
+
+  // Ninguém trouxe vela. Só é fim de série se alguma fonte respondeu vazia.
+  return vazioConfirmado ? [] : null;
 }
 
 // Puxa varios lotes antigos ANTES de redesenhar. Redesenhar 20 vezes a serie
