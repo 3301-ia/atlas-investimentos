@@ -20981,7 +20981,10 @@ async function loadAll(){
 
   // historico: primeiro o grafico aparece com 1.000 velas, depois os lotes
   // antigos entram por baixo sem mexer no zoom
-  setTimeout(()=>{ if(mySeq===loadSeq){ try{ carregarHistoricoFundo(); }catch(e){} } }, 1500);
+  const agendaHist = ()=>{ if(mySeq===loadSeq){ try{ carregarHistoricoFundo(); }catch(e){} } };
+  // tempo ocioso: o historico entra quando a tela ja esta pintada e sem clique
+  if(typeof requestIdleCallback === 'function') requestIdleCallback(agendaHist, {timeout:5000});
+  else setTimeout(agendaHist, 1500);
 
   // MTF, Micro e Stoch Matrix carregam em segundo plano sem travar a tela
   Promise.all([fetchMTF(), fetchMicro(), fetchMTFStochMatrix(mySym)]).then(()=>{
