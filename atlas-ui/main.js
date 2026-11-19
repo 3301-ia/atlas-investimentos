@@ -14336,26 +14336,24 @@ async function puxarLotesAntigos(quantos){
   if(visRange && chart){
     try{ chart.timeScale().setVisibleLogicalRange({from:visRange.from+novos.length, to:visRange.to+novos.length}); }catch(e){}
   }
+  try{ updateHistInfo(); }catch(e){}
   return novos.length;
 }
 
 async function carregarHistoricoFundo(){
   if(loadingFullHistory || loadingMoreHistory) return;
   const meu = ++histFundoSeq, seq = loadSeq;
-  let rodadas = 0, falhas = 0;
-  while(seq === loadSeq && meu === histFundoSeq && !noMoreHistory && candles.length < AUTO_HIST_ALVO && rodadas < 8){
-    const add = await puxarLotesAntigos(5);   // 5.000 velas por rodada
-    if(!add){
-      falhas++;
-      if(falhas >= 3) break;                  // tres tentativas sem vela: desiste
-      await new Promise(r=>setTimeout(r,1500));
-      continue;
-    }
-    falhas = 0;
-    await new Promise(r=>setTimeout(r,220));
-    rodadas++;
+  // Uma passada so: busca ate 20 lotes (20 mil velas) SEM redesenhar no meio,
+  // e desenha uma vez no fim. Redesenhar a serie inteira a cada lote era o que
+  // fazia o historico levar minutos pra entrar.
+  let tentativas = 0;
+  while(seq === loadSeq && meu === histFundoSeq && !noMoreHistory && candles.length < AUTO_HIST_ALVO && tentativas < 3){
+    const add = await puxarLotesAntigos(20);
+    if(add > 0) break;
+    tentativas++;
+    await new Promise(r=>setTimeout(r,1200));
   }
-  try{ if(typeof noMoreHistory!=='undefined' && noMoreHistory===false) {} }catch(e){}
+  try{ updateHistInfo(); }catch(e){}
 }
 window.carregarHistoricoFundo = carregarHistoricoFundo;
 window.puxarLotesAntigos = puxarLotesAntigos;
