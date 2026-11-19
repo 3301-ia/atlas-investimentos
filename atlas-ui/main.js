@@ -14346,12 +14346,13 @@ async function carregarHistoricoFundo(){
   // Uma passada so: busca ate 20 lotes (20 mil velas) SEM redesenhar no meio,
   // e desenha uma vez no fim. Redesenhar a serie inteira a cada lote era o que
   // fazia o historico levar minutos pra entrar.
-  let tentativas = 0;
-  while(seq === loadSeq && meu === histFundoSeq && !noMoreHistory && candles.length < AUTO_HIST_ALVO && tentativas < 3){
+  let falhas = 0, voltas = 0;
+  while(seq === loadSeq && meu === histFundoSeq && !noMoreHistory && candles.length < AUTO_HIST_ALVO && voltas < 14){
     const add = await puxarLotesAntigos(20);
-    if(add > 0) break;
-    tentativas++;
-    await new Promise(r=>setTimeout(r,1200));
+    if(add > 0){ falhas = 0; voltas++; await new Promise(r=>setTimeout(r,320)); continue; }
+    falhas++;
+    if(falhas >= 3) break;          // tres passadas sem nenhuma vela: desiste
+    await new Promise(r=>setTimeout(r,1600));
   }
   try{ updateHistInfo(); }catch(e){}
 }
