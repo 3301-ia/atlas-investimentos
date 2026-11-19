@@ -6,6 +6,13 @@
 <link rel="shortcut icon" href="./favicon-vectra.png">
 <link rel="apple-touch-icon" href="./favicon-vectra-180.png">
 <meta name="theme-color" content="#070C15">
+<style id="vx-shell-escuro">
+  /* O fundo escuro entra ANTES de qualquer folha de estilo e antes do JS.
+     Sem isso o navegador pinta a tela de branco enquanto o painel monta. */
+  html{background:#0b0d11 !important;color-scheme:dark}
+  body{background:#0b0d11 !important}
+  #vx-app,#app,.vx-work,#chart,#chart-wrap{background:#0b0d11}
+</style>
 
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>VECTRA · Global Data Intelligence</title>
