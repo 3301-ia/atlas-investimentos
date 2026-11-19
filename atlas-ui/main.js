@@ -21013,10 +21013,22 @@ async function loadAll(){
 
   // historico: primeiro o grafico aparece com 1.000 velas, depois os lotes
   // antigos entram por baixo sem mexer no zoom
+  // O histórico entra sozinho, e insiste: o navegador só executa o tempo
+  // ocioso quando quer, e um pedido perdido deixava a série parada em 3.900.
+  // Agora há um vigia que retoma enquanto faltar vela e houver fonte.
   const agendaHist = ()=>{ if(mySeq===loadSeq){ try{ carregarHistoricoFundo(); }catch(e){} } };
-  // tempo ocioso: o historico entra quando a tela ja esta pintada e sem clique
   if(typeof requestIdleCallback === 'function') requestIdleCallback(agendaHist, {timeout:5000});
-  else setTimeout(agendaHist, 1500);
+  setTimeout(agendaHist, 3500);
+  if(!window.__vxVigiaHist){
+    let voltas = 0;
+    window.__vxVigiaHist = setInterval(()=>{
+      voltas++;
+      const st = (typeof vxEstado === 'function') ? vxEstado() : null;
+      const curto = !st || st.velas < AUTO_HIST_ALVO;
+      if(voltas > 40 || !curto || document.hidden){ clearInterval(window.__vxVigiaHist); window.__vxVigiaHist = null; return; }
+      try{ carregarHistoricoFundo(); }catch(e){}
+    }, 12000);
+  }
 
   // MTF, Micro e Stoch Matrix carregam em segundo plano sem travar a tela
   Promise.all([fetchMTF(), fetchMicro(), fetchMTFStochMatrix(mySym)]).then(()=>{
