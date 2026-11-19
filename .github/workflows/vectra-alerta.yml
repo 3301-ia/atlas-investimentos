@@ -1,0 +1,43 @@
+name: VECTRA alerta
+
+# Roda de graça no GitHub Actions (repositório público = minutos ilimitados, custo zero).
+# Só usa a API pública da corretora e o Telegram. Não chama Base44 nem Render.
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vectra-alerta
+  cancel-in-progress: false
+
+jobs:
+  alerta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Ler o mercado e avisar no Telegram
+        run: node tools/vectra-alerta.mjs
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+      - name: Guardar o estado para não repetir o aviso
+        run: |
+          if [ -n "$(git status --porcelain tools/vectra-estado.json)" ]; then
+            git config user.name "vectra-bot"
+            git config user.email "vectra-bot@users.noreply.github.com"
+            git add tools/vectra-estado.json
+            git commit -m "estado do alerta VECTRA [skip ci]"
+            git push
+          fi
