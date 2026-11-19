@@ -21633,7 +21633,7 @@ function label(txt,x,y,color,align){
   dCtx.font='600 10px IBM Plex Sans, sans-serif';
   dCtx.textAlign = align||'left';
   const w = dCtx.measureText(txt).width;
-  dCtx.globalAlpha=.8; dCtx.fillStyle=(typeof theme==='function'?theme().fibLabelBg:'#ffffff');
+  dCtx.globalAlpha=.8; dCtx.fillStyle=(typeof theme==='function'?theme().fibLabelBg:'#0b0d11');
   dCtx.fillRect(align==='right'?x-w-4:x-2, y-9, w+6, 12);
   dCtx.globalAlpha=1; dCtx.fillStyle=color;
   dCtx.fillText(txt,x,y);
