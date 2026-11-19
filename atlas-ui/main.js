@@ -14238,7 +14238,7 @@ async function loadFullHistory(){
 // desenho, o painel vai puxando lotes de 1.000 em segundo plano até 5.000
 // velas (o botão 🕰 Tudo continua levando até o teto de 20.000). O zoom atual
 // é preservado em cada lote, então nada pula na tela.
-const AUTO_HIST_ALVO = 20000; // o teto de HIST_CAP
+const AUTO_HIST_ALVO = 5000; // equilibrio: historico util sem travar o painel
 let histFundoSeq = 0;
 
 // Busca um lote de velas ANTERIORES a `base` em varias fontes. Devolve:
@@ -14347,8 +14347,8 @@ async function carregarHistoricoFundo(){
   // e desenha uma vez no fim. Redesenhar a serie inteira a cada lote era o que
   // fazia o historico levar minutos pra entrar.
   let falhas = 0, voltas = 0;
-  while(seq === loadSeq && meu === histFundoSeq && !noMoreHistory && candles.length < AUTO_HIST_ALVO && voltas < 14){
-    const add = await puxarLotesAntigos(20);
+  while(seq === loadSeq && meu === histFundoSeq && !noMoreHistory && candles.length < AUTO_HIST_ALVO && voltas < 2){
+    const add = await puxarLotesAntigos(6);
     if(add > 0){ falhas = 0; voltas++; await new Promise(r=>setTimeout(r,320)); continue; }
     falhas++;
     if(falhas >= 3) break;          // tres passadas sem nenhuma vela: desiste
