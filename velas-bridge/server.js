@@ -214,6 +214,104 @@ function pacote(velas) {
   };
 }
 
+// ── tradutor: o que a Binance responde e o navegador nao pode pedir ──────
+// As rotas de open interest, funding, long/short, livro e preco da Binance nao
+// mandam cabecalho de CORS, entao o navegador descarta a resposta e o painel
+// fica vazio. Aqui o servidor pede a OKX, que entrega os mesmos numeros, e
+// devolve no formato da Binance. O painel nao precisa saber de nada disso.
+const OKX = 'https://www.okx.com/api/v5';
+
+async function okxGet(caminho, diag) {
+  const d = await buscar(OKX + caminho, 'okx', diag || []);
+  return d && d.data ? d.data : null;
+}
+
+function instDe(sym) {
+  const base = String(sym || 'BTCUSDT').replace('USDT', '');
+  return { spot: base + '-USDT', swap: base + '-USDT-SWAP', base };
+}
+
+async function traduzBinance(caminho, q, diag) {
+  const sym = q.get('symbol') || 'BTCUSDT';
+  const { spot, swap, base } = instDe(sym);
+  const agora = Date.now();
+
+  if (caminho.startsWith('/fapi/v1/klines')) {
+    const tf = q.get('interval') || '15m';
+    const limite = Math.min(Number(q.get('limit') || 500), 1500);
+    const r = await serie(sym, tf, limite, null);
+    return r.velas.map((v) => [v[0] * 1000, String(v[1]), String(v[2]), String(v[3]), String(v[4]), String(v[5]), v[0] * 1000 + 1, '0', 0, '0', '0', '0']);
+  }
+
+  if (caminho.startsWith('/fapi/v1/premiumIndex')) {
+    const d = await okxGet(`/public/funding-rate?instId=${swap}`, diag);
+    const x = d && d[0];
+    if (!x) return null;
+    return {
+      symbol: sym,
+      markPrice: x.markPrice || null,
+      indexPrice: null,
+      lastFundingRate: x.fundingRate || '0',
+      nextFundingTime: Number(x.fundingTime || 0),
+      time: agora,
+    };
+  }
+
+  if (caminho.startsWith('/fapi/v1/openInterest')) {
+    const d = await okxGet(`/public/open-interest?instId=${swap}`, diag);
+    const x = d && d[0];
+    if (!x) return null;
+    return { symbol: sym, openInterest: x.oiCcy || x.oi || '0', time: Number(x.ts || agora) };
+  }
+
+  if (caminho.startsWith('/futures/data/openInterestHist')) {
+    const d = await okxGet(`/rubik/stat/contracts/open-interest-volume?ccy=${base}&period=1H`, diag);
+    if (!Array.isArray(d)) return null;
+    const limite = Math.min(Number(q.get('limit') || 25), 100);
+    return d.slice(-limite).map((x) => ({
+      symbol: sym,
+      sumOpenInterest: x[1] || '0',
+      sumOpenInterestValue: x[2] || '0',
+      timestamp: Number(x[0] || agora),
+    }));
+  }
+
+  if (caminho.startsWith('/futures/data/globalLongShortAccountRatio')) {
+    const d = await okxGet(`/rubik/stat/contracts/long-short-account-ratio?ccy=${base}&period=1H`, diag);
+    if (!Array.isArray(d) || !d.length) return null;
+    const x = d[d.length - 1];
+    const razao = Number(x[1] || 1);
+    const longo = razao / (1 + razao);
+    return [{
+      symbol: sym,
+      longShortRatio: String(razao),
+      longAccount: String(longo.toFixed(4)),
+      shortAccount: String((1 - longo).toFixed(4)),
+      timestamp: Number(x[0] || agora),
+    }];
+  }
+
+  if (caminho.startsWith('/fapi/v1/depth')) {
+    const lim = Math.min(Number(q.get('limit') || 20), 400);
+    const d = await okxGet(`/market/books?instId=${spot}&sz=${lim}`, diag);
+    if (!d || !d[0]) return null;
+    return {
+      lastUpdateId: agora,
+      bids: (d[0].bids || []).map((x) => [x[0], x[1]]),
+      asks: (d[0].asks || []).map((x) => [x[0], x[1]]),
+    };
+  }
+
+  if (caminho.startsWith('/fapi/v1/ticker/price')) {
+    const d = await okxGet(`/market/ticker?instId=${spot}`, diag);
+    const x = d && d[0];
+    if (!x) return null;
+    return { symbol: sym, price: x.last, time: Number(x.ts || agora) };
+  }
+
+  return null;
+}
+
 function responder(res, codigo, corpo) {
   const txt = JSON.stringify(corpo);
   res.writeHead(codigo, {
@@ -251,6 +349,19 @@ const servidor = http.createServer(async (req, res) => {
     const corpo = { ok: !!preco, sym, preco, em: Date.now() };
     if (preco) cache.set(chave, { em: Date.now(), corpo });
     responder(res, preco ? 200 : 502, corpo);
+    return;
+  }
+
+  if (rota === '/binance') {
+    const caminho = String(url.searchParams.get('p') || '');
+    const chave = 'bn|' + caminho + '|' + url.search;
+    const g = cache.get(chave);
+    if (g && Date.now() - g.em < 15000) { responder(res, 200, { ...g.corpo, cache: true }); return; }
+    const diag = [];
+    const corpo = await traduzBinance(caminho, url.searchParams, diag);
+    if (corpo == null) { responder(res, 502, { ok: false, erro: 'sem dado na fonte', diagnostico: diag.slice(-3) }); return; }
+    cache.set(chave, { em: Date.now(), corpo });
+    responder(res, 200, corpo);
     return;
   }
 

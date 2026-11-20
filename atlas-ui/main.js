@@ -6,7 +6,26 @@
   if(typeof window === 'undefined' || !window.fetch) return;
   const original = window.fetch;
   if(original.__vxFetchGuard) return;
+  // A Binance nao manda CORS nas rotas de open interest, funding, long/short,
+  // livro e preco: o navegador descarta a resposta e o painel fica vazio.
+  // Aqui essas chamadas sao redirecionadas para a nossa ponte, que busca na
+  // OKX e devolve no mesmo formato. Nenhuma outra linha do app muda.
+  let baseBinance = 'https://vectra-velas.onrender.com/binance';
+  try{
+    const u = localStorage.getItem('vx_velas_url');
+    if(u) baseBinance = u.replace(/\/velas.*$/, '/binance');
+  }catch(e){}
+
   const guardado = function(recurso, opcoes){
+    try{
+      if(typeof recurso === 'string'){
+        const m = /^https:\/\/fapi\.binance\.com(\/[^?]*)(\?.*)?$/.exec(recurso);
+        if(m){
+          const extra = m[2] ? m[2].slice(1) : '';
+          recurso = baseBinance + '?p=' + encodeURIComponent(m[1]) + (extra ? '&' + extra : '');
+        }
+      }
+    }catch(e){}
     const o = Object.assign({}, opcoes || {});
     if(!o.signal && typeof AbortSignal !== 'undefined' && AbortSignal.timeout){
       try{ o.signal = AbortSignal.timeout(15000); }catch(e){}
