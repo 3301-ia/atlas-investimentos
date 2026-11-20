@@ -14391,6 +14391,24 @@ async function puxarLotesAntigos(quantos){
   const sym=currentSym, tf=currentTF;
   if(!candles.length) return 0;
   let base = candles[0].time;
+
+  // sobra da ponte: entra em bloco, sem requisicao nova
+  if (vxBuffer && vxBuffer.sym === sym && vxBuffer.tf === tf) {
+    const sobra = vxBuffer.velas.filter(function(c){ return c.time < base; });
+    vxBuffer = null;
+    if (sobra.length) {
+      const visRange = chart ? chart.timeScale().getVisibleLogicalRange() : null;
+      candles = normalizaVelas(sobra.concat(candles));
+      if (candles.length > HIST_CAP) candles = candles.slice(-HIST_CAP);
+      try { semeiaFluxoDoHistorico(); } catch(e) {}
+      try { applySeriesData(); } catch(e) {}
+      if (visRange && chart) {
+        try { chart.timeScale().setVisibleLogicalRange({ from: visRange.from + sobra.length, to: visRange.to + sobra.length }); } catch(e) {}
+      }
+      try { updateHistInfo(); } catch(e) {}
+      return sobra.length;
+    }
+  }
   const novos = [];
   for(let k=0;k<quantos;k++){
     const arr = await loteAntigo(sym, tf, base);
@@ -14852,6 +14870,8 @@ function livroVelas(sym, seg) {
 // que pagina, remove repeticao, ordena e guarda em cache. Sem a ponte, o codigo
 // cai nas corretoras exatamente como antes. Para trocar o endereco sem mexer no
 // codigo: localStorage.setItem('vx_velas_url','http://localhost:8787/velas')
+let vxBuffer = null;   // sobra da ponte, consumida pelo historico em blocos
+
 const VX_VELAS_URL = (()=>{
   try{ return localStorage.getItem('vx_velas_url') || 'https://vectra-velas.onrender.com/velas'; }
   catch(e){ return 'https://vectra-velas.onrender.com/velas'; }
@@ -14962,7 +14982,10 @@ async function fetchCandles(sym,tf,limit=500){
             try {
               localStorage.setItem(chaveCache, JSON.stringify({ em: Date.now(), v: parsed.slice(-4000) }));
             } catch(e) { /* sem espaco: segue sem cache */ }
-            return parsed;
+            // o que veio a mais fica guardado para o historico entrar em blocos,
+            // sem nova requisicao e sem pintar tudo de uma vez
+            try { vxBuffer = { sym: sym, tf: fetchTf, velas: parsed }; } catch(e) {}
+            return parsed.slice(-Math.max(realLimit, 400));
           }
         }
       }
@@ -21063,6 +21086,11 @@ async function changeTF(tf){
   await loadAll();
 }
 async function loadAll(){
+  // acorda a ponte em segundo plano: quando ele trocar de tempo, ela ja esta
+  // de pe e a troca nao espera a partida a frio do Render
+  try{
+    fetch(VX_VELAS_URL.replace(/\/velas.*$/, '/saude'), { cache: 'no-store' }).catch(function(){});
+  }catch(e){}
   // o loadAll tambem roda quando a aba volta do segundo plano depois de um
   // salto de varias velas; sem zerar, o primeiro tick depois disso dispararia
   // todo o caminho que o preco andou enquanto ninguem olhava
