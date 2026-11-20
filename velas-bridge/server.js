@@ -144,6 +144,76 @@ async function serie(sym, tf, alvo, antes) {
   return { velas, fonte, pedidos, diag: diag.slice(-5) };
 }
 
+// ── indicadores calculados AQUI, não no navegador ─────────────────────────
+function ema(v, n) {
+  const k = 2 / (n + 1);
+  const out = new Array(v.length);
+  out[0] = v[0];
+  for (let i = 1; i < v.length; i++) out[i] = v[i] * k + out[i - 1] * (1 - k);
+  return out;
+}
+
+function sma(v, n) {
+  const out = new Array(v.length).fill(null);
+  let soma = 0;
+  for (let i = 0; i < v.length; i++) {
+    soma += v[i];
+    if (i >= n) soma -= v[i - n];
+    if (i >= n - 1) out[i] = soma / n;
+  }
+  return out;
+}
+
+function rsi(v, n = 14) {
+  const out = new Array(v.length).fill(null);
+  if (v.length < n + 1) return out;
+  let g = 0, l = 0;
+  for (let i = 1; i <= n; i++) {
+    const d = v[i] - v[i - 1];
+    if (d > 0) g += d; else l -= d;
+  }
+  g /= n; l /= n;
+  out[n] = l === 0 ? 100 : 100 - 100 / (1 + g / l);
+  for (let i = n + 1; i < v.length; i++) {
+    const d = v[i] - v[i - 1];
+    g = (g * (n - 1) + (d > 0 ? d : 0)) / n;
+    l = (l * (n - 1) + (-d > 0 ? -d : 0)) / n;
+    out[i] = l === 0 ? 100 : 100 - 100 / (1 + g / l);
+  }
+  return out;
+}
+
+function atr(velas, n = 14) {
+  const out = new Array(velas.length).fill(null);
+  let soma = 0;
+  for (let i = 1; i < velas.length; i++) {
+    const h = velas[i][2], lo = velas[i][3], pc = velas[i - 1][4];
+    const tr = Math.max(h - lo, Math.abs(h - pc), Math.abs(lo - pc));
+    if (i <= n) { soma += tr; if (i === n) out[i] = soma / n; }
+    else {
+      const anterior = out[i - 1] != null ? out[i - 1] : soma / n;
+      out[i] = (anterior * (n - 1) + tr) / n;
+    }
+  }
+  return out;
+}
+
+function pacote(velas) {
+  const closes = velas.map((v) => v[4]);
+  const arred = (arr) => arr.map((x) => (x == null ? null : Math.round(x * 100) / 100));
+  return {
+    ema8: arred(ema(closes, 8)),
+    ema16: arred(ema(closes, 16)),
+    ema55: arred(ema(closes, 55)),
+    ema98: arred(ema(closes, 98)),
+    ema200: arred(ema(closes, 200)),
+    ma56: arred(sma(closes, 56)),
+    ma89: arred(sma(closes, 89)),
+    rsi14: arred(rsi(closes, 14)),
+    atr14: arred(atr(velas, 14)),
+  };
+}
+
 function responder(res, codigo, corpo) {
   const txt = JSON.stringify(corpo);
   res.writeHead(codigo, {
@@ -184,11 +254,13 @@ const servidor = http.createServer(async (req, res) => {
     return;
   }
 
-  if (rota !== '/velas') { responder(res, 404, { ok: false, erro: 'rota desconhecida' }); return; }
+  const querPacote = rota === '/pacote';
+
+  if (rota !== '/velas' && !querPacote) { responder(res, 404, { ok: false, erro: 'rota desconhecida' }); return; }
 
   const alvo = Math.min(Number(url.searchParams.get('alvo') || 4000), TETO);
   const antes = Number(url.searchParams.get('antes') || 0) || null;
-  const chave = `${sym}|${tf}|${alvo}|${antes || 0}`;
+  const chave = `${sym}|${tf}|${alvo}|${antes || 0}` + (rota === '/pacote' ? '|p' : '');
 
   const guardado = cache.get(chave);
   if (guardado && Date.now() - guardado.em < CACHE_MS) {
@@ -210,7 +282,8 @@ const servidor = http.createServer(async (req, res) => {
       diagnostico: r.diag,
       velas: r.velas,
     };
-    if (r.velas.length) cache.set(chave, { em: Date.now(), corpo });
+    if (querPacote && r.velas.length) corpo.indicadores = pacote(r.velas);
+    if (r.velas.length) cache.set(chave + (querPacote ? '|p' : ''), { em: Date.now(), corpo });
     responder(res, r.velas.length ? 200 : 502, corpo);
   } catch (e) {
     responder(res, 500, { ok: false, erro: String(e && e.message || e) });

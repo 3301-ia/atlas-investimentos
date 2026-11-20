@@ -14084,8 +14084,19 @@ function applySeriesData(){
 
     volS.setData(candles.map(c=>({time:c.time,value:c.volume,color:c.close>=c.open?'rgba(0,230,118,.15)':'rgba(244,67,54,.15)'})));
     try{if(volS)volS.applyOptions({visible:volumeVisible});}catch(e){}
-    const e8=ema(closes,8),e16=ema(closes,16),e55=ema(closes,55),e98=ema(closes,98),e200=ema(closes,200);
-    const m56=sma(closes,56),m89=sma(closes,89);
+    // Indicadores prontos do servidor quando a serie bate exatamente (mesmo
+    // ativo, mesmo tempo, mesmo tamanho e mesma ultima vela). Se a vela ao vivo
+    // acrescentou uma barra, cai no calculo local so daquela diferenca.
+    const pronto = (vxInd && vxInd.sym === currentSym && vxInd.tf === currentTF
+                    && vxInd.n === candles.length
+                    && vxInd.ultimo === candles[candles.length-1].time) ? vxInd.ind : null;
+    const e8  = pronto ? pronto.ema8   : ema(closes,8);
+    const e16 = pronto ? pronto.ema16  : ema(closes,16);
+    const e55 = pronto ? pronto.ema55  : ema(closes,55);
+    const e98 = pronto ? pronto.ema98  : ema(closes,98);
+    const e200= pronto ? pronto.ema200 : ema(closes,200);
+    const m56 = pronto ? pronto.ma56   : sma(closes,56);
+    const m89 = pronto ? pronto.ma89   : sma(closes,89);
     const map=(arr)=>candles.map((c,i)=>({time:c.time,value:arr[i]})).filter(d=>d.value!=null);
     maS.ema8.setData(map(e8));maS.ema16.setData(map(e16));maS.ema55.setData(map(e55));
     maS.ema98.setData(map(e98));maS.ema200.setData(map(e200));maS.ma56.setData(map(m56));maS.ma89.setData(map(m89));
@@ -14876,6 +14887,12 @@ function livroVelas(sym, seg) {
 // cai nas corretoras exatamente como antes. Para trocar o endereco sem mexer no
 // codigo: localStorage.setItem('vx_velas_url','http://localhost:8787/velas')
 let vxBuffer = null;   // sobra da ponte, consumida pelo historico em blocos
+let vxInd = null;      // indicadores que vieram prontos do servidor
+
+const VX_PACOTE_URL = (()=>{
+  try{ return (localStorage.getItem('vx_velas_url') || 'https://vectra-velas.onrender.com/velas').replace(/\/velas.*$/, '/pacote'); }
+  catch(e){ return 'https://vectra-velas.onrender.com/pacote'; }
+})();
 
 const VX_VELAS_URL = (()=>{
   try{ return localStorage.getItem('vx_velas_url') || 'https://vectra-velas.onrender.com/velas'; }
@@ -14974,7 +14991,7 @@ async function fetchCandles(sym,tf,limit=500){
   if (VX_VELAS_URL && aggFactor === 1) {
     try {
       const sep = VX_VELAS_URL.indexOf('?') >= 0 ? '&' : '?';
-      const u = VX_VELAS_URL + sep + 'sym=' + encodeURIComponent(sym) + '&tf=' + encodeURIComponent(fetchTf) + '&alvo=' + Math.max(realLimit, 4000);
+      const u = VX_PACOTE_URL + sep + 'sym=' + encodeURIComponent(sym) + '&tf=' + encodeURIComponent(fetchTf) + '&alvo=' + Math.max(realLimit, 4000);
       const sig = safeTimeoutSignal(9000);
       const r = await fetch(u, sig ? { signal: sig } : {});
       if (r.ok) {
@@ -14987,6 +15004,12 @@ async function fetchCandles(sym,tf,limit=500){
             try {
               localStorage.setItem(chaveCache, JSON.stringify({ em: Date.now(), v: parsed.slice(-4000) }));
             } catch(e) { /* sem espaco: segue sem cache */ }
+            // indicadores prontos do servidor: o navegador so desenha
+            try {
+              if (j.indicadores) {
+                vxInd = { sym: sym, tf: fetchTf, n: parsed.length, ultimo: parsed[parsed.length-1].time, ind: j.indicadores };
+              }
+            } catch(e) { vxInd = null; }
             // o que veio a mais fica guardado para o historico entrar em blocos,
             // sem nova requisicao e sem pintar tudo de uma vez
             try { vxBuffer = { sym: sym, tf: fetchTf, velas: parsed }; } catch(e) {}
