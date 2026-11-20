@@ -70,7 +70,7 @@ services:
     name: vectra-velas
     runtime: node
     rootDir: velas-bridge
-    buildCommand: echo "sem build"
+    buildCommand: npm install --omit=dev
     startCommand: node server.js
     plan: free
     healthCheckPath: /saude
