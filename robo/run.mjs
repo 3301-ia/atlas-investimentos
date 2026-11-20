@@ -1,20 +1,10 @@
-// Robô do Atlas em modo papel, rodando no GitHub Actions.
+// Robô do Atlas em modo papel, rodando com a Escada de Travas em Terços de R.
 //
-// Roda fora da Base44 de propósito: não consome crédito de integração nenhum.
-// Usa o MESMO núcleo puro do painel (atlas-ui/core), então a assinatura
-// SHA-256 daqui é verificável lá, arquivo por arquivo.
-//
-// Três temporadas rodam no mesmo passo: 1H, 15M e 5M. Cada uma tem seu
-// próprio estado e seu próprio histórico.
-//
-// A cada execução:
-//   1. baixa velas fechadas (OKX e, em fallback, Coinbase);
-//   2. roda o trailing Chandelier com ATR 14, multiplicador 2,5 e janela 22;
-//   3. se existe ordem aberta, confere stop, alvo e virada de lado, e fecha;
-//   4. se não existe, abre com tamanho vindo do risco em % do equity, somente
-//      quando o lado VIROU e o stop tem folga mínima (o replay mostrou que
-//      reentrar no mesmo lado com stop apertado é onde o spread mata);
-//   5. grava o estado e o histórico de cada temporada.
+// Baseado no relatório técnico VECTRA:
+// - Níveis em terços de R: 0.33, 0.67, 1.00, 1.33, 1.67
+// - Fator da trava: 0.60 do lote principal
+// - Alvo da trava: +0.5R | Corte da trava: -0.5R
+// - Alvo principal: 2.0R | Stop principal: 1.0 ATR
 
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { trailingStop, TRAILING_VERSION } from '../atlas-ui/core/trailing.js';
@@ -26,26 +16,23 @@ const ATIVO = process.env.ATLAS_ATIVO || 'BTC-USDT';
 const EQUITY = Number(process.env.ATLAS_EQUITY || 130);
 const RISCO_PCT = Number(process.env.ATLAS_RISCO_PCT || 2);
 const ALVO_R = Number(process.env.ATLAS_ALVO_R || 2);
-const DIST_MIN_PCT = Number(process.env.ATLAS_DIST_MIN || 1);   // folga mínima do stop em % do preço
-const NUCLEO = `trailing ${TRAILING_VERSION} + risco ${RISCO_VERSION}`;
+const DIST_MIN_PCT = Number(process.env.ATLAS_DIST_MIN || 1);
+const NUCLEO = `escada-travas 1.0 + trailing ${TRAILING_VERSION} + risco ${RISCO_VERSION}`;
 
 const PASTA = 'observador/historico';
 const PUBLICADO = 'atlas-ui/observador/historico';
 
-// temporadas: sufixo do arquivo, código de barra para cada fonte
-// `mult` e `folga` são calibrados por temporada com backtest, não por gosto.
-// 15M: mult 1,5 foi a melhor combinação testada (6 operações, -2,14R) contra
-// mult 2,5 (3 operações, -2,63R) em 8 dias de 15M. A folga de 1% fica.
 export const TEMPORADAS = [
   { barra: '1H', sufixo: '', okx: '1H', coinbase: 3600, mult: 2.5, folga: 1 },
   { barra: '15M', sufixo: '_15m', okx: '15m', coinbase: 900, mult: 1.5, folga: 1, micro: true },
   { barra: '5M', sufixo: '_5m', okx: '5m', coinbase: 300, mult: 2.5, folga: 1, micro: true }
 ];
 
+const NIVEIS_TRAVA = [0.333, 0.667, 1.000, 1.333, 1.670];
+const FATOR_TRAVA = 0.60;
+const ALVO_TRAVA_R = 0.5;
+const CORTE_TRAVA_R = 0.5;
 
-// Confluência do micro: a camada de cima (15M e 1H) vota a favor ou contra.
-// Sem nenhum voto a favor o sinal do micro era ruído: nos 1000 candles de 5m
-// medidos, 0 votos deu -0.48% e 21% de acerto, contra +0.54% e 75% com 1+.
 async function votosDaCamadaAcima(barra, lado) {
   const mapa = { '15M': [{ b: '15m', nome: '15m' }, { b: '1H', nome: '1H' }],
                  '5M':  [{ b: '15m', nome: '15m' }, { b: '1H', nome: '1H' }] };
@@ -61,7 +48,7 @@ async function votosDaCamadaAcima(barra, lado) {
       if (r[i] == null || l[i] == null) continue;
       const ladoAcima = r[i] > l[i] ? 'alta' : 'baixa';
       (ladoAcima === lado ? votos : contra).push('EMA ' + f.nome);
-    } catch (e) { /* sem voto quando a fonte falha: não bloqueia o robô */ }
+    } catch (e) { }
   }
   return { votos, contra, forca: votos.length };
 }
@@ -99,8 +86,6 @@ async function velas(t) {
   catch (e) { return await coinbase(ATIVO, t.coinbase); }
 }
 
-// o núcleo lê open/high/low/close; a API entrega em outra ordem, então aqui
-// tudo passa pelo mesmo formato e nunca mais some candle por nome errado
 function velinha(time, o, h, l, c) {
   return { time: +time, open: +o, high: +h, low: +l, close: +c, o: +o, h: +h, l: +l, c: +c };
 }
@@ -121,17 +106,41 @@ export async function rodarRobo(temporada = TEMPORADAS[0]) {
 
   const est = plano.estado;
   const agora = new Date().toISOString();
-  const estado = ler(f.estado, { aberta: null, atualizado_em: null, versao: 2, ultimo_lado: null });
+  const estado = ler(f.estado, { aberta: null, atualizado_em: null, versao: 3, ultimo_lado: null });
   const historico = ler(f.historico, { fechadas: [] });
   const acoes = [];
 
-  const fechar = (o, preco_saida, motivo) => {
+  const fecharPrincipal = (o, preco_saida, motivo) => {
     const sinal = o.lado === 'compra' ? 1 : -1;
     const dist = Math.abs(o.entrada - o.stop);
     const r = ((preco_saida - o.entrada) * sinal) / dist;
-    const usd = (preco_saida - o.entrada) * sinal * o.tamanho;
-    const fechada = { ...o, estado: 'fechada', preco_saida: r2(preco_saida), motivo_fechamento: motivo,
-      resultado_r: Math.round(r * 1000) / 1000, resultado_usd: r2(usd), fechada_em: agora };
+    
+    let resultadoTravasUsd = 0;
+    if (o.travas && Array.isArray(o.travas)) {
+      for (const trav of o.travas) {
+        if (trav.estado === 'aberta') {
+          const sinalTrav = trav.lado === 'compra' ? 1 : -1;
+          trav.preco_saida = r2(preco_saida);
+          trav.resultado_usd = r2((preco_saida - trav.entrada) * sinalTrav * trav.tamanho);
+          trav.estado = 'fechada_com_principal';
+        }
+        resultadoTravasUsd += (trav.resultado_usd || 0);
+      }
+    }
+
+    const usdPrincipal = (preco_saida - o.entrada) * sinal * o.tamanho;
+    const usdTotal = usdPrincipal + resultadoTravasUsd;
+    const rTotal = r + (resultadoTravasUsd / (dist * o.tamanho));
+
+    const fechada = { 
+      ...o, 
+      estado: 'fechada', 
+      preco_saida: r2(preco_saida), 
+      motivo_fechamento: motivo,
+      resultado_r: Math.round(rTotal * 1000) / 1000, 
+      resultado_usd: r2(usdTotal), 
+      fechada_em: agora 
+    };
     historico.fechadas.unshift(fechada);
     historico.fechadas = historico.fechadas.slice(0, 300);
     acoes.push({ tipo: 'fechou', motivo, resultado_r: fechada.resultado_r, resultado_usd: fechada.resultado_usd });
@@ -142,12 +151,64 @@ export async function rodarRobo(temporada = TEMPORADAS[0]) {
   if (estado.aberta) {
     const o = estado.aberta;
     const sinal = o.lado === 'compra' ? 1 : -1;
+    const dist = Math.abs(o.entrada - o.stop);
+
+    if (!o.travas) o.travas = [];
+    for (let i = 0; i < NIVEIS_TRAVA.length; i++) {
+      const nivelR = NIVEIS_TRAVA[i];
+      const precoAlvoTrava = o.lado === 'compra' ? o.entrada + (nivelR * dist) : o.entrada - (nivelR * dist);
+      
+      const jaExiste = o.travas.some(tr => tr.nivel === i);
+      const atingiuNivel = sinal > 0 ? preco >= precoAlvoTrava : preco <= precoAlvoTrava;
+
+      if (!jaExiste && atingiuNivel) {
+        const ladoTrava = o.lado === 'compra' ? 'venda' : 'compra';
+        const entradaTrava = r2(precoAlvoTrava);
+        const tamanhoTrava = r2(o.tamanho * FATOR_TRAVA);
+        const distR = dist;
+        const alvoTrava = ladoTrava === 'compra' ? r2(entradaTrava + ALVO_TRAVA_R * distR) : r2(entradaTrava - ALVO_TRAVA_R * distR);
+        const corteTrava = ladoTrava === 'compra' ? r2(entradaTrava - CORTE_TRAVA_R * distR) : r2(entradaTrava + CORTE_TRAVA_R * distR);
+
+        o.travas.push({
+          nivel: i,
+          lado: ladoTrava,
+          entrada: entradaTrava,
+          tamanho: tamanhoTrava,
+          alvo: alvoTrava,
+          corte: corteTrava,
+          estado: 'aberta'
+        });
+        acoes.push({ tipo: 'trava_abriu', nivel: i + 1, lado: ladoTrava, entrada: entradaTrava });
+      }
+    }
+
+    for (const trav of o.travas) {
+      if (trav.estado === 'aberta') {
+        const sinalTrav = trav.lado === 'compra' ? 1 : -1;
+        const bateuAlvoTrav = sinalTrav > 0 ? preco >= trav.alvo : preco <= trav.alvo;
+        const bateuCorteTrav = sinalTrav > 0 ? preco <= trav.corte : preco >= trav.corte;
+
+        if (bateuAlvoTrav) {
+          trav.estado = 'alvo';
+          trav.preco_saida = trav.alvo;
+          trav.resultado_usd = r2((trav.alvo - trav.entrada) * sinalTrav * trav.tamanho);
+          acoes.push({ tipo: 'trava_alvo', nivel: trav.nivel + 1, resultado_usd: trav.resultado_usd });
+        } else if (bateuCorteTrav) {
+          trav.estado = 'corte';
+          trav.preco_saida = trav.corte;
+          trav.resultado_usd = r2((trav.corte - trav.entrada) * sinalTrav * trav.tamanho);
+          acoes.push({ tipo: 'trava_corte', nivel: trav.nivel + 1, resultado_usd: trav.resultado_usd });
+        }
+      }
+    }
+
     const bateuStop = sinal > 0 ? preco <= o.stop : preco >= o.stop;
     const bateuAlvo = sinal > 0 ? preco >= o.alvo : preco <= o.alvo;
     const virou = est.lado !== (o.lado === 'compra' ? 'alta' : 'baixa');
-    if (bateuStop) { fechar(o, o.stop, 'stop'); estado.aberta = null; }
-    else if (bateuAlvo) { fechar(o, o.alvo, 'alvo'); estado.aberta = null; }
-    else if (virou) { fechar(o, preco, 'virada de lado'); estado.aberta = null; }
+
+    if (bateuStop) { fecharPrincipal(o, o.stop, 'stop'); estado.aberta = null; }
+    else if (bateuAlvo) { fecharPrincipal(o, o.alvo, 'alvo'); estado.aberta = null; }
+    else if (virou) { fecharPrincipal(o, preco, 'virada de lado'); estado.aberta = null; }
     else { estado.aberta.preco_mercado = r2(preco); }
   }
 
@@ -174,13 +235,30 @@ export async function rodarRobo(temporada = TEMPORADAS[0]) {
         acoes.push({ tipo: 'bloqueado', motivo: (dim && dim.motivos || []).join('; ') || 'dimensionamento recusado' });
       } else {
         const alvo = lado === 'compra' ? r2(entrada + ALVO_R * dist) : r2(entrada - ALVO_R * dist);
-        const sinal = await assinarSinal({ core: NUCLEO, rules: 'chandelier', params: { atr: 14, mult: 2.5, janela: 22, alvo_r: ALVO_R, dist_min_pct: DIST_MIN_PCT },
+        const sinal = await assinarSinal({ core: NUCLEO, rules: 'chandelier+escada', params: { atr: 14, mult: 2.5, janela: 22, alvo_r: ALVO_R, dist_min_pct: DIST_MIN_PCT, escada: 'tercos_0.6' },
           ativo: ATIVO, t: fechadas[fechadas.length - 1].time, lado, entrada, stop: stop0, alvo });
-        estado.aberta = { ativo: ATIVO, timeframe: t.barra, lado, entrada, stop: stop0, alvo,
-          tamanho: dim.tamanho, risco_usd: r2(dim.riscoUSD),
-          risco_pct: RISCO_PCT, equity: EQUITY, motivo: `abertura na virada: lado ${est.lado}, stop com ${folga.toFixed(2)}% de folga`,
-          nucleo_versao: NUCLEO, hash: sinal.hash, payload_assinado: JSON.stringify(sinal.payload),
-          estado: 'aberta', preco_mercado: entrada, aberta_em: agora, modo: 'papel' };
+        
+        estado.aberta = { 
+          ativo: ATIVO, 
+          timeframe: t.barra, 
+          lado, 
+          entrada, 
+          stop: stop0, 
+          alvo,
+          tamanho: dim.tamanho, 
+          risco_usd: r2(dim.riscoUSD),
+          risco_pct: RISCO_PCT, 
+          equity: EQUITY, 
+          motivo: `abertura na virada com escada de travas (fator 0.6)`,
+          nucleo_versao: NUCLEO, 
+          hash: sinal.hash, 
+          payload_assinado: JSON.stringify(sinal.payload),
+          estado: 'aberta', 
+          preco_mercado: entrada, 
+          aberta_em: agora, 
+          modo: 'papel',
+          travas: [] 
+        };
         acoes.push({ tipo: 'abriu', lado, entrada, stop: stop0, alvo, tamanho: estado.aberta.tamanho });
       }
     }
@@ -190,7 +268,7 @@ export async function rodarRobo(temporada = TEMPORADAS[0]) {
   estado.atualizado_em = agora;
   estado.preco = r2(preco);
   estado.timeframe = t.barra;
-  estado.filtros = { alvo_r: ALVO_R, dist_min_pct: temporada.folga ?? DIST_MIN_PCT, mult: temporada.mult || 2.5, so_na_virada: true };
+  estado.filtros = { alvo_r: ALVO_R, dist_min_pct: temporada.folga ?? DIST_MIN_PCT, mult: temporada.mult || 2.5, escada: 'tercos_0.6' };
   estado.estrutura = { lado: est.lado, stop: r2(est.stop), viradas: est.viradas, distancia: r2(est.distancia),
     folga_pct: r2(est.distancia / preco * 100) };
   writeFileSync(f.estado, JSON.stringify(estado, null, 1));
@@ -203,7 +281,6 @@ export async function rodarRobo(temporada = TEMPORADAS[0]) {
     resultado_r: Math.round(somaR * 100) / 100, resultado_usd: Math.round(somaUsd * 100) / 100, atualizado_em: agora };
   writeFileSync(f.historico, JSON.stringify(historico, null, 1));
 
-  // cópia na pasta que o site publica (o repositório é privado)
   try {
     writeFileSync(`${PUBLICADO}/robopapel_estado${t.sufixo}.json`, JSON.stringify(estado, null, 1));
     writeFileSync(`${PUBLICADO}/robopapel_historico${t.sufixo}.json`, JSON.stringify(historico, null, 1));
@@ -223,7 +300,6 @@ export async function rodarTodas() {
   return saidas;
 }
 
-// roda sozinho quando chamado direto na linha de comando
 if (process.argv[1] && /robo[\\/]run\.mjs$/.test(process.argv[1])) {
   rodarTodas().catch(e => { console.error('falhou:', e.message); process.exit(1); });
 }
