@@ -338,6 +338,49 @@ async function traduzBinance(caminho, q, diag) {
   return null;
 }
 
+// ── receptor de alerta externo (webhook) ─────────────────────────────────
+// O informador externo manda um POST com o que ele quiser: alerta do TRDR,
+// do TradingView, texto solto. Guardamos os ultimos 200 e entregamos em
+// GET /alertas. Nada de polling: o alerta chega quando a condicao bate.
+const alertas = [];
+
+function lerCorpo(req) {
+  return new Promise((resolve) => {
+    let bruto = '';
+    let tamanho = 0;
+    req.on('data', (c) => {
+      tamanho += c.length;
+      if (tamanho > 200000) { req.destroy(); resolve(null); return; }
+      bruto += c;
+    });
+    req.on('end', () => resolve(bruto));
+    req.on('error', () => resolve(null));
+  });
+}
+
+function normalizaAlerta(corpo, bruto) {
+  let d = corpo;
+  if (typeof bruto === 'string' && bruto && bruto.trim().startsWith('{')) {
+    try { d = JSON.parse(bruto); } catch (e) { d = null; }
+  }
+  if (!d || typeof d !== 'object') d = { texto: String(bruto || '').slice(0, 500) };
+  const pega = (chaves) => {
+    for (const k of chaves) {
+      if (d[k] != null && d[k] !== '') return d[k];
+    }
+    return null;
+  };
+  return {
+    em: Date.now(),
+    ativo: String(pega(['sym', 'symbol', 'ticker', 'pair', 'ativo']) || '').toUpperCase() || null,
+    preco: Number(pega(['price', 'preco', 'close', 'last', 'valor']) || 0) || null,
+    lado: String(pega(['side', 'lado', 'direction', 'sinal']) || '').toLowerCase() || null,
+    condicao: pega(['condition', 'condicao', 'alert', 'mensagem', 'message', 'texto']) || null,
+    tempo: pega(['time', 'timestamp', 'data']) || null,
+    bruto: d,
+  };
+}
+
 function responder(res, codigo, corpo) {
   const txt = JSON.stringify(corpo);
   res.writeHead(codigo, {
@@ -375,6 +418,23 @@ const servidor = http.createServer(async (req, res) => {
     const corpo = { ok: !!preco, sym, preco, em: Date.now() };
     if (preco) cache.set(chave, { em: Date.now(), corpo });
     responder(res, preco ? 200 : 502, corpo);
+    return;
+  }
+
+  if (rota === '/alertas' && req.method === 'GET') {
+    responder(res, 200, { ok: true, total: alertas.length, alertas: alertas.slice(-50).reverse() });
+    return;
+  }
+
+  if (rota === '/alerta' || rota === '/webhook') {
+    const bruto = await lerCorpo(req);
+    let corpo = null;
+    try { corpo = JSON.parse(bruto); } catch (e) { corpo = null; }
+    const a = normalizaAlerta(corpo, bruto);
+    alertas.push(a);
+    if (alertas.length > 200) alertas.shift();
+    console.log('alerta recebido:', JSON.stringify(a).slice(0, 300));
+    responder(res, 200, { ok: true, recebido: a });
     return;
   }
 
