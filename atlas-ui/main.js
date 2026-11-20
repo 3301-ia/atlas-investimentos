@@ -14284,6 +14284,24 @@ async function loteAntigo(sym, tf, base){
   const base_ = toCryptoBase(sym);
   let vazioConfirmado = false;
 
+  // historico mais antigo: a ponte entrega o bloco anterior sem tocar na corretora
+  if (VX_VELAS_URL) {
+    try {
+      const sep = VX_VELAS_URL.indexOf('?') >= 0 ? '&' : '?';
+      const u = VX_VELAS_URL + sep + 'sym=' + encodeURIComponent(sym) + '&tf=' + encodeURIComponent(tf) + '&alvo=2000&antes=' + base;
+      const r = await fetch(u, { signal: safeTimeoutSignal(9000) });
+      if (r.ok) {
+        const j = await r.json();
+        if (j && j.ok && Array.isArray(j.velas) && j.velas.length) {
+          const bloco = j.velas
+            .map(function(v){ return { time:v[0], open:v[1], high:v[2], low:v[3], close:v[4], volume:v[5] }; })
+            .filter(function(c){ return c.time < base; });
+          if (bloco.length) return bloco;
+        }
+      }
+    } catch(e) { /* cai nas corretoras */ }
+  }
+
   const colher = async (busca)=>{
     try{
       const arr = await busca();
@@ -14827,6 +14845,18 @@ function livroVelas(sym, seg) {
   return Array.from(mapa.values()).sort(function (a, b) { return a.time - b.time; });
 }
 
+// PONTE PROPRIA DE VELAS
+// O navegador nao deve falar direto com a corretora: cada fonte limita o pedido
+// pelo IP do visitante, e duas abas pedindo ao mesmo tempo devolvem lote vazio.
+// Com a ponte no ar, ele pede a serie pronta ao nosso servidor (velas-bridge),
+// que pagina, remove repeticao, ordena e guarda em cache. Sem a ponte, o codigo
+// cai nas corretoras exatamente como antes. Para trocar o endereco sem mexer no
+// codigo: localStorage.setItem('vx_velas_url','http://localhost:8787/velas')
+const VX_VELAS_URL = (()=>{
+  try{ return localStorage.getItem('vx_velas_url') || 'https://vectra-velas.onrender.com/velas'; }
+  catch(e){ return 'https://vectra-velas.onrender.com/velas'; }
+})();
+
 async function fetchCandles(sym,tf,limit=500){
   // Cambio e segundos nao existem nas fontes de cripto: quem entrega e a Deriv,
   // pelo socket do proprio navegador (o IP do dono; a Deriv recusa datacenter).
@@ -14901,6 +14931,27 @@ async function fetchCandles(sym,tf,limit=500){
       }
     } catch(e) { /* segue para as fontes normais */ }
   }
+  // ponte propria primeiro: uma requisicao entrega a serie inteira, ja limpa
+  if (VX_VELAS_URL && aggFactor === 1) {
+    try {
+      const sep = VX_VELAS_URL.indexOf('?') >= 0 ? '&' : '?';
+      const u = VX_VELAS_URL + sep + 'sym=' + encodeURIComponent(sym) + '&tf=' + encodeURIComponent(fetchTf) + '&alvo=' + Math.max(realLimit, 4000);
+      const sig = safeTimeoutSignal(9000);
+      const r = await fetch(u, sig ? { signal: sig } : {});
+      if (r.ok) {
+        const j = await r.json();
+        if (j && j.ok && Array.isArray(j.velas) && j.velas.length) {
+          const parsed = saneaVelas(j.velas.map(function(v){ return { time:v[0], open:v[1], high:v[2], low:v[3], close:v[4], volume:v[5] }; }));
+          if (parsed.length > 20) {
+            lastDataSource = 'ponte';
+            updateDataSourceBadge('ponte', true);
+            return parsed;
+          }
+        }
+      }
+    } catch(e) { /* sem ponte agora: segue para as corretoras */ }
+  }
+
   const timeoutMs = isMobile ? 7500 : 4500;
 
   // a fonte que respondeu por ultimo vira a primeira da fila

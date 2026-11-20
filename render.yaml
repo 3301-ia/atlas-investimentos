@@ -63,3 +63,14 @@ services:
         sync: false
       - key: CTRADER_REDIRECT
         sync: false
+
+  # Ponte de velas: o navegador pede a serie pronta aqui em vez de falar com a
+  # corretora. Sem dependencia, sem build. Plano free.
+  - type: web
+    name: vectra-velas
+    runtime: node
+    rootDir: velas-bridge
+    buildCommand: echo "sem build"
+    startCommand: node server.js
+    plan: free
+    healthCheckPath: /saude
