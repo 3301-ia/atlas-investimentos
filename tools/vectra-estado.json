@@ -1,5 +1,7 @@
 {
-  "alertados": {},
+  "alertados": {
+    "15m": 1795162500
+  },
   "niveis": {
     "stop": true
   }
