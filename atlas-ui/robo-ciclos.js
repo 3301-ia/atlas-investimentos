@@ -103,7 +103,7 @@
     ctx.pos = null;
   }
 
-  function passo() {
+  function passo(mudo) {
     var ctx = S.teste;
     if (!ctx) return false;
     if (ctx.i >= S.velas.length - 1) { parar(); return false; }
@@ -152,7 +152,7 @@
         }
       });
     }
-    pintarTeste();
+    if (!mudo) pintarTeste();
     return true;
   }
 
@@ -312,6 +312,65 @@
     if (!S.teste) { preparar().then(function () { avancar(k); }); return; }
     for (var i = 0; i < (k || 1); i++) { if (!passo()) break; }
   }
+  /* ── modo ao vivo: o robo acompanha a vela que esta formando ─────── */
+  var CHAVE = 'vx.robo.vivo.v1';
+  function lerPref() { try { return JSON.parse(localStorage.getItem(CHAVE) || '{}'); } catch (e) { return {}; } }
+  function gravarPref(o) { try { localStorage.setItem(CHAVE, JSON.stringify(o)); } catch (e) {} }
+  function chaveInicio() { return CFG.ativo + '|' + CFG.tf; }
+
+  function inicioDoTeste(v) {
+    var p = lerPref(), ts = p[chaveInicio()];
+    if (!ts) {
+      ts = v[Math.max(20, v.length - 1200)].time;
+      p[chaveInicio()] = ts; gravarPref(p);
+    }
+    for (var i = 0; i < v.length; i++) if (v[i].time >= ts) return Math.max(20, i);
+    return Math.max(20, v.length - 1200);
+  }
+
+  async function vivoRodar() {
+    if (!S.vivo) return;
+    try {
+      el.vivoLinha.textContent = 'lendo a série...';
+      var v = await carregarVelas();
+      if (!Array.isArray(v) || v.length < 80) throw new Error('serie curta');
+      S.velas = v; S.ind = indicadores(v);
+      S.teste = novoTeste(inicioDoTeste(v));
+      S.silencioso = true;
+      var guarda = 0;
+      while (S.teste.i < v.length - 1 && guarda++ < 6000) passo(true);
+      S.silencioso = false;
+      pintarTeste();
+      var ult = v[v.length - 1], ctx = S.teste;
+      var aberto = 0;
+      if (ctx.pos) {
+        aberto = (ult.close - ctx.pos.entrada) * ctx.pos.lado * ctx.pos.tamanho;
+        ctx.pos.travas.forEach(function (t) { if (t.estado === 'aberta') aberto += (t.preco - ult.close) * (-ctx.pos.lado) * t.tamanho; });
+      }
+      el.vivoLinha.innerHTML = '<b>● AO VIVO</b> · vela ' + hhmm(ult.time) + ' · ' + n(ult.close, 1) +
+        ' · ciclos ' + ctx.ciclos.length + ' · acumulado <span class="' + ((ctx.equity + aberto) >= 0 ? 'rc-pos' : 'rc-neg') + '">' + usd(ctx.equity + aberto) + '</span>' +
+        ' · atualizado ' + hhmm(Math.floor(Date.now() / 1000));
+    } catch (e) {
+      el.vivoLinha.textContent = 'sem leitura agora, tento de novo em 20s';
+    }
+  }
+
+  function vivoLigar() {
+    S.vivo = true;
+    el.vivo.classList.add('on'); el.vivo.textContent = '● ao vivo';
+    if (S.timer) parar();
+    vivoRodar();
+    S.vivoTimer = setInterval(vivoRodar, 20000);
+  }
+  function vivoDesligar() {
+    S.vivo = false;
+    if (S.vivoTimer) clearInterval(S.vivoTimer);
+    S.vivoTimer = null;
+    el.vivo.classList.remove('on'); el.vivo.textContent = '● ao vivo';
+    el.vivoLinha.textContent = 'modo ao vivo desligado';
+  }
+  function alternarVivo() { if (S.vivo) vivoDesligar(); else vivoLigar(); }
+
   function reiniciar() {
     parar();
     if (!S.velas.length) { preparar(); return; }
@@ -350,6 +409,8 @@
       '.rc-pill{display:inline-block;padding:1px 6px;border-radius:99px;font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}',
       '.rc-pill.alvo{background:#eaf6ef;color:' + C.verde + '}', '.rc-pill.corte{background:#fdecec;color:' + C.vermelho + '}',
       '.rc-pill.aberta{background:#fff4e0;color:#8a6200}', '.rc-pill.encerrada{background:#f0f0f2;color:' + C.fraco + '}',
+      '.rc-vivo-linha{font-size:10px;color:' + C.fraco + ';margin:0 0 8px;font-variant-numeric:tabular-nums}',
+      '.rc-vivo-linha b{color:' + C.vermelho + ';letter-spacing:.5px}',
       '.rc-aviso{font-size:9.5px;color:' + C.fraco + ';line-height:1.45;margin-top:7px}'
     ].join('\n');
     document.head.appendChild(s);
@@ -370,7 +431,9 @@
       ' <button type="button" class="rc-btn" id="rc-prox">+1 vela</button>',
       ' <button type="button" class="rc-btn" id="rc-ciclo">+1 ciclo</button>',
       ' <button type="button" class="rc-btn" id="rc-reset">reiniciar</button>',
+      ' <button type="button" class="rc-btn" id="rc-vivo">● ao vivo</button>',
       '</div>',
+      '<div class="rc-vivo-linha" id="rc-vivo-linha">modo ao vivo desligado</div>',
       '<div class="rc-grid">',
       ' <div class="rc-bloco"><h4>Operação em papel · vela por vela</h4><div class="rc-graf" id="rc-graf"></div></div>',
       ' <div class="rc-bloco"><h4>Conta do teste</h4><div class="rc-kv" id="rc-estado"></div>',
@@ -387,6 +450,8 @@
     el.rodar = card.querySelector('#rc-rodar'); el.play = card.querySelector('#rc-play');
     el.prox = card.querySelector('#rc-prox'); el.ciclo = card.querySelector('#rc-ciclo');
     el.reset = card.querySelector('#rc-reset');
+    el.vivo = card.querySelector('#rc-vivo');
+    el.vivoLinha = card.querySelector('#rc-vivo-linha');
     el.graf = card.querySelector('#rc-graf'); el.estado = card.querySelector('#rc-estado');
     el.disparo = card.querySelector('#rc-disparo'); el.livro = card.querySelector('#rc-livro');
     el.aviso = card.querySelector('#rc-aviso');
@@ -396,6 +461,7 @@
     el.prox.addEventListener('click', function () { avancar(1); });
     el.ciclo.addEventListener('click', function () { avancar(40); });
     el.reset.addEventListener('click', reiniciar);
+    el.vivo.addEventListener('click', alternarVivo);
     el.ms.addEventListener('change', function () { S.ms = Number(el.ms.value); if (S.timer) { parar(); tocar(); } });
     el.ativo.addEventListener('change', function () { CFG.ativo = el.ativo.value; reiniciar(); });
     el.tf.addEventListener('change', function () { CFG.tf = el.tf.value; reiniciar(); });
