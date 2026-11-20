@@ -1,3 +1,22 @@
+// ── REDE DE SEGURANCA DE REDE ───────────────────────────────────────────
+// Nenhum fetch deste app pode ficar pendurado: se a corretora aceitar a
+// conexao e nao responder, a promessa nunca resolve e a funcao que espera
+// trava a pintura. Aqui todo fetch sem sinal proprio ganha 15 s de teto.
+(function(){
+  if(typeof window === 'undefined' || !window.fetch) return;
+  const original = window.fetch;
+  if(original.__vxFetchGuard) return;
+  const guardado = function(recurso, opcoes){
+    const o = Object.assign({}, opcoes || {});
+    if(!o.signal && typeof AbortSignal !== 'undefined' && AbortSignal.timeout){
+      try{ o.signal = AbortSignal.timeout(15000); }catch(e){}
+    }
+    return original.call(this, recurso, o);
+  };
+  guardado.__vxFetchGuard = true;
+  window.fetch = guardado;
+})();
+
 
 // Polyfill universal de AbortSignal.timeout e helper seguro para redes móveis / Android
 if (typeof AbortSignal !== 'undefined' && !AbortSignal.timeout) {
@@ -15028,7 +15047,10 @@ async function fetchCandles(sym,tf,limit=500){
   const fila = fonteBoa
     ? DATA_SOURCES.filter(function(x){return x.name===fonteBoa;}).concat(DATA_SOURCES.filter(function(x){return x.name!==fonteBoa;}))
     : DATA_SOURCES;
-  for(const src of fila){
+  // Com a ponte no ar a fila quase nunca e usada. Quando e, tentar as cinco
+  // fontes em serie com 4,5 s cada podia segurar a tela por 25 s. Duas e o
+  // resgate leve de 200 velas bastam: o resto e espera que o usuario sente.
+  for(const src of fila.slice(0, 2)){
     try{
       const url = src.build ? src.build(sym,fetchTf,realLimit) : null;
       if(!url)continue;
