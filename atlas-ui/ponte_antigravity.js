@@ -157,7 +157,24 @@
   // CONEXAO
   // ---------------------------------------------------------------
 
+  // O motor (o processo local que alimenta esta ponte) nao existe quando o
+  // painel roda num site estatico: o wss://host/ws responde 404 e a ponte
+  // ficava reconectando de 3 em 3 segundos para sempre, gastando rede e
+  // enchendo o console de erro. So tenta quando o motor esta declarado.
+  function motorDisponivel() {
+    try {
+      if (localStorage.getItem("vx_motor_ws")) return true;
+      return /^(localhost|127\.0\.0\.1)$/.test(location.hostname || "");
+    } catch (e) { return false; }
+  }
+
   function conectar() {
+    if (!motorDisponivel()) {
+      conectado = false;
+      estado.fonte = "sem motor";
+      try { render(); } catch (e) {}
+      return;
+    }
     var url = getUrlMotor();
     try { ws = new WebSocket(url); } catch (e) { idxHost++; agendarReconexao(); return; }
 
