@@ -14048,7 +14048,29 @@ function pintaExhaustionBands(ctx) {
   }
 }
 
+// GUARDA DE CONSISTENCIA: qualquer vela repetida no array desalinha o eixo do
+// tempo no lightweight-charts — o grafico desloca, duas velas viram uma e a
+// serie parece "somar". A fonte pode repetir (lote antigo sobreposto, troca de
+// ativo no meio do pedido, socket reconectando). Aqui a serie e higienizada
+// antes de desenhar: um registro por tempo, em ordem crescente.
+function normalizaVelas(arr){
+  if(!Array.isArray(arr) || arr.length < 2) return arr || [];
+  let ordenado = true, unico = true;
+  const vistos = new Set();
+  for(let i=0;i<arr.length;i++){
+    const c = arr[i];
+    if(!c || !Number.isFinite(c.time)){ unico = false; continue; }
+    if(i && c.time <= arr[i-1].time) ordenado = false;
+    if(vistos.has(c.time)) unico = false; else vistos.add(c.time);
+  }
+  if(ordenado && unico) return arr;          // caminho normal: nao copia nada
+  const mapa = new Map();
+  for(const c of arr){ if(c && Number.isFinite(c.time)) mapa.set(c.time, c); }
+  return [...mapa.values()].sort((a,b)=>a.time-b.time);
+}
+
 function applySeriesData(){
+  candles = normalizaVelas(candles);
   const savedRange = (chart && typeof chartHasRendered !== 'undefined' && chartHasRendered && !needsFullFit) ? chart.timeScale().getVisibleLogicalRange() : null;
   const wasSyncing = isSyncingTimeScales;
   isSyncingTimeScales = true;
@@ -14198,7 +14220,7 @@ async function fetchOlderBatch(){
     if(!older.length){noMoreHistory=true;return false;}
 
     const addedCount=older.length;
-    candles=[...older,...candles];
+    candles=normalizaVelas([...older,...candles]);
     if(candles.length>HIST_CAP)candles=candles.slice(-HIST_CAP); // corta as mais ANTIGAS, mantem as recentes/ao vivo
     semeiaFluxoDoHistorico(); // as velas que acabaram de chegar tambem tem bolha
 
@@ -14245,7 +14267,7 @@ async function loadFullHistory(){
 // desenho, o painel vai puxando lotes de 1.000 em segundo plano até 5.000
 // velas (o botão 🕰 Tudo continua levando até o teto de 20.000). O zoom atual
 // é preservado em cada lote, então nada pula na tela.
-const AUTO_HIST_ALVO = 20000; // o teto: o desenho caro agora e limitado por janela
+const AUTO_HIST_ALVO = 4000; // abertura leve: 4 mil velas entram em segundos; o resto vem ao arrastar
 let histFundoSeq = 0;
 
 // Busca um lote de velas ANTERIORES a `base` em varias fontes. Devolve:
@@ -14362,7 +14384,7 @@ async function puxarLotesAntigos(quantos){
   }
   if(!novos.length) return 0;
   const visRange = chart ? chart.timeScale().getVisibleLogicalRange() : null;
-  candles = [...novos, ...candles];
+  candles = normalizaVelas([...novos, ...candles]);
   if(candles.length>HIST_CAP) candles = candles.slice(-HIST_CAP);
   try{ semeiaFluxoDoHistorico(); }catch(e){}
   try{ applySeriesData(); }catch(e){}
