@@ -15226,7 +15226,17 @@ function forceChartTick(price, ts_ms){
   pendingTick={price,ts:ts_ms};
   if(tickScheduled)return;
   tickScheduled=true;
-  requestAnimationFrame(()=>{tickScheduled=false;const t=pendingTick;pendingTick=null;if(t)applyTick(t.price,t.ts);});
+  requestAnimationFrame(()=>{
+    tickScheduled=false;
+    const t=pendingTick;
+    pendingTick=null;
+    if(!t) return;
+    // O preco da tela acompanha o MESMO quadro do grafico. Antes cada mensagem
+    // do socket (dezenas por segundo) escrevia preco, cor e titulo no DOM, o que
+    // forca recalculo de layout o tempo todo: era o travamento.
+    try{ updatePriceUI(t.price); }catch(e){}
+    applyTick(t.price,t.ts);
+  });
 }
 
 // ══════════════════════════════════════════════════════
@@ -15923,8 +15933,7 @@ function openWS(){
           }
         }catch(e){}
         try{ livroTick(p, d.T||Date.now()); }catch(e){}
-        updatePriceUI(p);
-        forceChartTick(p,d.T||Date.now()); // coalescido por frame
+        forceChartTick(p,d.T||Date.now()); // coalescido por frame: preco e grafico juntos
         return;
       }
 
