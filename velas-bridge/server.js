@@ -33,6 +33,8 @@ const TF_CB = { '1m': 60, '5m': 300, '15m': 900, '1h': 3600, '6h': 21600, '1d': 
 
 function normalizaSimbolo(s) {
   let x = String(s || 'BTCUSDT').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  // ouro tokenizado: o painel pede XAUUSDT, as fontes negociam XAUT
+  if (x === 'XAUUSDT' || x === 'XAUUSD') x = 'XAUTUSDT';
   if (x.includes('USDT')) return x.slice(0, x.indexOf('USDT')) + 'USDT';
   if (x.endsWith('USD')) return x.slice(0, -3) + 'USDT';
   return x + 'USDT';
@@ -105,11 +107,29 @@ async function coinbase(sym, tf, fimSeg, diag) {
     .sort((a, b) => a[0] - b[0]);
 }
 
+// Kraken: ouro e prata (XAU, XAG) e o par de dolar nao existem nas corretoras
+// de cripto. O navegador nao pode pedir direto porque o Kraken nao manda CORS,
+// entao o metal vem por aqui.
+async function kraken(sym, tf, fimSeg, diag) {
+  const iv = { '1m': 1, '5m': 5, '15m': 15, '30m': 30, '1h': 60, '4h': 240, '1d': 1440 }[tf];
+  if (!iv) return null;
+  const par = sym.replace('USDT', 'USD');
+  const d = await buscar(`https://api.kraken.com/0/public/OHLC?pair=${par}&interval=${iv}`, 'kraken', diag);
+  const res = d && d.result;
+  if (!res) return null;
+  const chave = Object.keys(res).filter((k) => k !== 'last')[0];
+  if (!chave || !Array.isArray(res[chave])) return null;
+  return res[chave]
+    .map((k) => [Number(k[0]), Number(k[1]), Number(k[2]), Number(k[3]), Number(k[4]), Number(k[6])])
+    .sort((a, b) => a[0] - b[0]);
+}
+
 const FONTES = [
   { nome: 'kucoin', fn: kucoin },
   { nome: 'okx', fn: okx },
   { nome: 'bybit', fn: bybit },
   { nome: 'coinbase', fn: coinbase },
+  { nome: 'kraken', fn: kraken },
 ];
 
 async function serie(sym, tf, alvo, antes) {
