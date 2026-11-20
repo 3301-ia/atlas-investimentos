@@ -205,21 +205,49 @@
 
   /* ── leitura e ciclo ao vivo ───────────────────────────────────── */
   function norm(l) {
-    return (l || []).map(function (c) {
-      if (Array.isArray(c)) return { time: Number(c[0]), open: Number(c[1]), close: Number(c[2]), high: Number(c[3]), low: Number(c[4]) };
-      return { time: Number(c.time), open: Number(c.open), close: Number(c.close), high: Number(c.high), low: Number(c.low) };
-    }).filter(function (c) { return isFinite(c.time) && isFinite(c.close) && c.high >= c.low; });
+    var out = [], vistos = {};
+    (l || []).forEach(function (c) {
+      var o = Array.isArray(c)
+        ? { time: Number(c[0]), open: Number(c[1]), close: Number(c[2]), high: Number(c[3]), low: Number(c[4]) }
+        : { time: Number(c.time), open: Number(c.open), close: Number(c.close), high: Number(c.high), low: Number(c.low) };
+      if (o.time > 1e11) o.time = Math.floor(o.time / 1000);
+      if (!isFinite(o.time) || !isFinite(o.close) || o.high < o.low) return;
+      if (vistos[o.time]) return;
+      vistos[o.time] = 1; out.push(o);
+    });
+    out.sort(function (a, b) { return a.time - b.time; });
+    return out;
   }
+  function serieDoPainel() {
+    try {
+      if (typeof candles !== 'undefined' && Array.isArray(candles) && candles.length > 80) {
+        if (typeof currentSym !== 'undefined' && currentSym) CFG.ativo = currentSym;
+        if (typeof currentTF !== 'undefined' && currentTF) CFG.tf = currentTF;
+        return norm(candles);
+      }
+    } catch (e) {}
+    return null;
+  }
+
   async function carregar() {
+    // 1) a serie do proprio grafico: mesma fonte e mesma abertura de vela, sem deslocamento
+    var p = serieDoPainel();
+    if (p && p.length > 80) return p;
     try {
       if (typeof window.fetchCandles === 'function') {
         var v = await window.fetchCandles(CFG.ativo, CFG.tf, 1500);
         if (Array.isArray(v) && v.length > 80) return norm(v);
       }
     } catch (e) {}
-    var r = await fetch(PONTE + '/velas?sym=' + encodeURIComponent(CFG.ativo) + '&tf=' + encodeURIComponent(CFG.tf) + '&alvo=1500', { cache: 'no-store' });
-    var d = await r.json();
-    return norm(d.velas || []);
+    try {
+      var r = await fetch(PONTE + '/velas?sym=' + encodeURIComponent(CFG.ativo) + '&tf=' + encodeURIComponent(CFG.tf) + '&alvo=1500', { cache: 'no-store' });
+      var d = await r.json();
+      if (d && d.velas && d.velas.length > 80) return norm(d.velas);
+    } catch (e) {}
+    // espelho: so segura a tela quando o principal nao responde
+    var r2 = await fetch(PONTE + '/pacote?sym=' + encodeURIComponent(CFG.ativo) + '&tf=' + encodeURIComponent(CFG.tf) + '&alvo=1500', { cache: 'no-store' });
+    var d2 = await r2.json();
+    return norm(d2.velas || []);
   }
   function pref() { try { return JSON.parse(localStorage.getItem(CHAVE) || '{}'); } catch (e) { return {}; } }
   function inicio(v) {
