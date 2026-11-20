@@ -15073,7 +15073,7 @@ async function fetchCandles(sym,tf,limit=500){
             // o que veio a mais fica guardado para o historico entrar em blocos,
             // sem nova requisicao e sem pintar tudo de uma vez
             try { vxBuffer = { sym: sym, tf: fetchTf, velas: parsed }; } catch(e) {}
-            return parsed.slice(-Math.min(Math.max(realLimit, 400), 800));
+            return parsed.slice(-(VX_LEVE ? 600 : Math.min(Math.max(realLimit, 400), 800)));
           }
         }
       }
@@ -21185,6 +21185,17 @@ async function changeTF(tf){
   if(multiViewOpen){closeMultiCharts();openMultiCharts();}
   await loadAll();
 }
+// MODO LEVE (?leve=1 ou localStorage vx_leve=1): para maquina fraca.
+// Mantem o grafico e os indicadores, mas corta o volume: 600 velas, sem
+// historico em segundo plano e sem as telas que entram depois.
+const VX_LEVE = (()=>{
+  try{
+    if(localStorage.getItem('vx_leve') === '1') return true;
+    return /(\?|&)leve=1/.test(location.search || '');
+  }catch(e){ return false; }
+})();
+window.vxModoLeve = VX_LEVE;
+
 async function loadAll(){
   // acorda a ponte em segundo plano: quando ele trocar de tempo, ela ja esta
   // de pe e a troca nao espera a partida a frio do Render
@@ -21238,10 +21249,10 @@ async function loadAll(){
   // O histórico entra sozinho, e insiste: o navegador só executa o tempo
   // ocioso quando quer, e um pedido perdido deixava a série parada em 3.900.
   // Agora há um vigia que retoma enquanto faltar vela e houver fonte.
-  const agendaHist = ()=>{ if(mySeq===loadSeq){ try{ carregarHistoricoFundo(); }catch(e){} } };
+  const agendaHist = ()=>{ if(VX_LEVE) return; if(mySeq===loadSeq){ try{ carregarHistoricoFundo(); }catch(e){} } };
   if(typeof requestIdleCallback === 'function') requestIdleCallback(agendaHist, {timeout:5000});
   setTimeout(agendaHist, 3500);
-  if(!window.__vxVigiaHist){
+  if(!window.__vxVigiaHist && !VX_LEVE){
     let voltas = 0;
     window.__vxVigiaHist = setInterval(()=>{
       voltas++;
@@ -21254,9 +21265,10 @@ async function loadAll(){
 
   // MTF, Micro e Stoch Matrix carregam em segundo plano sem travar a tela
   Promise.all([fetchMTF(), fetchMicro(), fetchMTFStochMatrix(mySym)]).then(()=>{
-    if(mySeq!==loadSeq) return;
-    filaLeve('mtf', function(){ try{ updateMTFPanel(calcMTF()); }catch(e){} });
-    filaLeve('micro', function(){ try{ updateMicroPanel(calcMicro()); }catch(e){} });
+    if(mySeq===loadSeq){
+      try{ updateMTFPanel(calcMTF()); }catch(e){}
+      try{ updateMicroPanel(calcMicro()); }catch(e){}
+    }
   });
 }
 
