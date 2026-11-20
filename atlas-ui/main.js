@@ -14297,7 +14297,7 @@ async function loadFullHistory(){
 // desenho, o painel vai puxando lotes de 1.000 em segundo plano até 5.000
 // velas (o botão 🕰 Tudo continua levando até o teto de 20.000). O zoom atual
 // é preservado em cada lote, então nada pula na tela.
-const AUTO_HIST_ALVO = 4000; // abertura leve: 4 mil velas entram em segundos; o resto vem ao arrastar
+const AUTO_HIST_ALVO = 1500; // abertura leve: 1.500 velas pintam na hora; o resto vem ao arrastar
 let histFundoSeq = 0;
 
 // Busca um lote de velas ANTERIORES a `base` em varias fontes. Devolve:
@@ -14476,12 +14476,15 @@ async function carregarHistoricoFundo(){
   // e desenha uma vez no fim. Redesenhar a serie inteira a cada lote era o que
   // fazia o historico levar minutos pra entrar.
   let falhas = 0, voltas = 0;
-  while(seq === loadSeq && meu === histFundoSeq && !noMoreHistory && candles.length < AUTO_HIST_ALVO && voltas < 2){
-    const add = await puxarLotesAntigos(6);
-    if(add > 0){ falhas = 0; voltas++; await new Promise(r=>setTimeout(r,320)); continue; }
+  // Um bloco por vez, com respiro entre eles: cada bloco pinta a serie inteira
+  // de novo, entao emendar blocos sem pausa saturava a linha principal.
+  while(seq === loadSeq && meu === histFundoSeq && !noMoreHistory && candles.length < AUTO_HIST_ALVO && voltas < 3){
+    if(document.hidden) break;
+    const add = await puxarLotesAntigos(1);
+    if(add > 0){ falhas = 0; voltas++; await new Promise(r=>setTimeout(r,600)); continue; }
     falhas++;
-    if(falhas >= 3) break;          // tres passadas sem nenhuma vela: desiste
-    await new Promise(r=>setTimeout(r,1600));
+    if(falhas >= 2) break;
+    await new Promise(r=>setTimeout(r,1500));
   }
   try{ updateHistInfo(); }catch(e){}
 }
@@ -15032,7 +15035,7 @@ async function fetchCandles(sym,tf,limit=500){
             // o que veio a mais fica guardado para o historico entrar em blocos,
             // sem nova requisicao e sem pintar tudo de uma vez
             try { vxBuffer = { sym: sym, tf: fetchTf, velas: parsed }; } catch(e) {}
-            return parsed.slice(-Math.max(realLimit, 400));
+            return parsed.slice(-Math.min(Math.max(realLimit, 400), 800));
           }
         }
       }
