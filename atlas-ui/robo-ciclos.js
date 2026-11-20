@@ -1,15 +1,15 @@
-// VECTRA · Robô de ciclos com escada de travas
+// VECTRA · Robô de ciclos: modo de teste (operação em papel)
 //
-// Aba nova do painel: o robô roda o fluxo de giro sobre a série real de velas e
-// mostra, ciclo por ciclo, o livro de ordens (principal + travas da escada), o
-// ponto exato de cada disparo e o gráfico desenhado igual ao que o motor fez.
+// A aba roda o motor de verdade, vela por vela, como se estivesse operando:
+// abre a posição, coloca as travas da escada, mostra o livro de ordens vivo,
+// marca cada giro no gráfico e acumula o resultado do dia.
 //
-// Regras (validadas no relatório técnico de 20/11/2026):
-//   entrada   cruzamento EMA8 x EMA16 confirmado por RSI (>55 compra, <45 venda)
-//   stop      1,0 ATR
-//   alvo      2,0 R
-//   escada    travas em 1/3, 2/3, 3/3, 4/3 e 5/3 de R, fator 0,60
-//   trava     alvo +0,5 R e corte -0,5 R
+// Regras do motor (relatório técnico de 20/11/2026):
+//   entrada  cruzamento EMA8 x EMA16 com RSI (>55 compra, <45 venda)
+//   stop     1,0 ATR
+//   alvo     2,0 R
+//   escada   travas em 1/3, 2/3, 3/3, 4/3 e 5/3 de R, fator 0,60
+//   trava    alvo +0,5 R, corte -0,5 R
 (function () {
   'use strict';
   if (document.getElementById('robo-ciclos-card')) return;
@@ -19,228 +19,338 @@
     catch (e) { return 'https://vectra-velas.onrender.com'; }
   })();
 
-  var CFG = {
-    ativo: 'BTCUSDT',
-    tf: '15m',
-    lote: 0.01,
-    fator: 0.6,
-    niveis: [1 / 3, 2 / 3, 1, 4 / 3, 5 / 3],
-    alvo: 2,
-    stop: 1,
-    corte: 0.5,
-    alvoTrava: 0.5
-  };
+  var CFG = { ativo: 'BTCUSDT', tf: '15m', lote: 0.01, fator: 0.6, alvo: 2, stop: 1, corte: 0.5, alvoTrava: 0.5,
+              niveis: [1 / 3, 2 / 3, 1, 4 / 3, 5 / 3] };
 
-  var estado = {
-    velas: [],
-    ciclos: [],
-    indice: -1,          // ciclo em exibição
-    tocando: false,
-    timer: null,
-    chart: null,
-    series: null,
-    linhas: [],
-    marcadores: []
+  var S = {
+    velas: [], ind: null, motor: null,
+    chart: null, serie: null, linhas: [], marcadores: [],
+    teste: null, timer: null, ms: 220, indice: 0
   };
-
   var el = {};
-  var cores = { tinta: '#1c1c1e', fraco: '#8a8f98', linha: '#e4e4e6', vermelho: '#c8102e', verde: '#1f7a4d', ouro: '#c8a000', fundo: '#ffffff' };
+  var C = { tinta: '#1c1c1e', fraco: '#8a8f98', linha: '#e4e4e6', vermelho: '#c8102e', verde: '#1f7a4d', ouro: '#c8a000' };
 
-  /* ── utilidades ─────────────────────────────────────────────────── */
-  function n(v, casas) {
-    var x = Number(v);
-    if (!isFinite(x)) return '--';
-    return x.toLocaleString('pt-BR', { minimumFractionDigits: casas == null ? 2 : casas, maximumFractionDigits: casas == null ? 2 : casas });
-  }
+  function n(v, c) { var x = Number(v); if (!isFinite(x)) return '--'; return x.toLocaleString('pt-BR', { minimumFractionDigits: c == null ? 2 : c, maximumFractionDigits: c == null ? 2 : c }); }
   function usd(v) { return (v >= 0 ? '+' : '') + n(v, 2); }
-  function hhmm(seg) {
-    var d = new Date(seg * 1000);
-    return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
-  }
-  function dia(seg) {
-    var d = new Date(seg * 1000);
-    return ('0' + d.getDate()).slice(-2) + '/' + ('0' + (d.getMonth() + 1)).slice(-2) + ' ' + hhmm(seg);
-  }
-  function segundosTf(tf) {
-    var m = { '1m': 60, '3m': 180, '5m': 300, '15m': 900, '1h': 3600, '4h': 14400 };
-    return m[tf] || 900;
-  }
+  function hhmm(t) { var d = new Date(t * 1000); return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
+  function diahora(t) { var d = new Date(t * 1000); return ('0' + d.getDate()).slice(-2) + '/' + ('0' + (d.getMonth() + 1)).slice(-2) + ' ' + hhmm(t); }
+  function segTf(tf) { return ({ '1m': 60, '3m': 180, '5m': 300, '15m': 900, '1h': 3600, '4h': 14400 })[tf] || 900; }
 
-  /* ── motor ──────────────────────────────────────────────────────── */
-  function ema(src, p) {
-    var k = 2 / (p + 1), out = [], s = null;
-    for (var i = 0; i < src.length; i++) { s = s === null ? src[i] : src[i] * k + s * (1 - k); out.push(s); }
-    return out;
-  }
+  /* ── indicadores ─────────────────────────────────────────────────── */
+  function ema(src, p) { var k = 2 / (p + 1), o = [], s = null; for (var i = 0; i < src.length; i++) { s = s === null ? src[i] : src[i] * k + s * (1 - k); o.push(s); } return o; }
   function rsiCalc(src, p) {
-    var out = new Array(src.length).fill(50), g = 0, l = 0;
+    var o = new Array(src.length).fill(50), g = 0, l = 0;
     for (var i = 1; i < src.length; i++) {
       var d = src[i] - src[i - 1], up = Math.max(d, 0), dn = Math.max(-d, 0);
       if (i === 1) { g = up; l = dn; } else { g = (g * (p - 1) + up) / p; l = (l * (p - 1) + dn) / p; }
-      out[i] = l === 0 ? 100 : 100 - 100 / (1 + g / l);
+      o[i] = l === 0 ? 100 : 100 - 100 / (1 + g / l);
     }
-    return out;
+    return o;
   }
   function atrCalc(v, p) {
-    var tr = [0], out = new Array(v.length).fill(null), s = null;
+    var tr = [0], o = new Array(v.length).fill(null), s = null;
     for (var i = 1; i < v.length; i++) tr[i] = Math.max(v[i].high - v[i].low, Math.abs(v[i].high - v[i - 1].close), Math.abs(v[i].low - v[i - 1].close));
     for (var j = p; j < v.length; j++) {
-      if (s === null) { var soma = 0; for (var k = j - p + 1; k <= j; k++) soma += tr[k]; s = soma / p; }
+      if (s === null) { var q = 0; for (var k = j - p + 1; k <= j; k++) q += tr[k]; s = q / p; }
       else s = (s * (p - 1) + tr[j]) / p;
-      out[j] = s;
+      o[j] = s;
     }
-    return out;
+    return o;
+  }
+  function indicadores(v) {
+    var cl = v.map(function (x) { return x.close; });
+    return { e8: ema(cl, 8), e16: ema(cl, 16), rsi: rsiCalc(cl, 14), atr: atrCalc(v, 14) };
+  }
+  function sinalEm(i) {
+    var m = S.ind;
+    if (i < 1 || m.atr[i] == null) return 0;
+    if (m.e8[i - 1] <= m.e16[i - 1] && m.e8[i] > m.e16[i] && m.rsi[i] > 55) return 1;
+    if (m.e8[i - 1] >= m.e16[i - 1] && m.e8[i] < m.e16[i] && m.rsi[i] < 45) return -1;
+    return 0;
   }
 
-  function rodarMotor(velas, cfg) {
-    var closes = velas.map(function (c) { return c.close; });
-    var e8 = ema(closes, 8), e16 = ema(closes, 16), rsi = rsiCalc(closes, 14), atr = atrCalc(velas, 14);
-    var ciclos = [], i = 1;
-    while (i < velas.length - 1) {
-      if (atr[i] == null) { i++; continue; }
-      var lado = 0;
-      if (e8[i - 1] <= e16[i - 1] && e8[i] > e16[i] && rsi[i] > 55) lado = 1;
-      else if (e8[i - 1] >= e16[i - 1] && e8[i] < e16[i] && rsi[i] < 45) lado = -1;
-      if (!lado) { i++; continue; }
+  /* ── modo de teste: uma vela por passo ───────────────────────────── */
+  function novoTeste(i0) {
+    return { i: i0, pos: null, ciclos: [], equity: 0, aberto: 0, marcadores: [], inicio: i0 };
+  }
 
-      var risco = cfg.stop * atr[i], entrada = closes[i];
-      var stop = entrada - lado * risco, alvoP = entrada + lado * cfg.alvo * risco;
-      var j = i + 1, saida = null, motivo = '', travas = [], usados = {}, pnlT = 0, picoConc = 0;
+  function abrir(ctx, i, lado) {
+    var risco = CFG.stop * S.ind.atr[i];
+    var ent = S.velas[i].close;
+    ctx.pos = {
+      lado: lado, i: i, entrada: ent, risco: risco, tamanho: CFG.lote,
+      stop: ent - lado * risco, alvo: ent + lado * CFG.alvo * risco,
+      travas: [], usados: {}, pnlTravas: 0
+    };
+  }
 
-      while (j < velas.length) {
-        var v = velas[j];
-        if (lado === 1 && v.low <= stop) { saida = Math.min(stop, v.open) ; motivo = 'stop'; break; }
-        if (lado === -1 && v.high >= stop) { saida = Math.max(stop, v.open); motivo = 'stop'; break; }
-        if (lado === 1 && v.high >= alvoP) { saida = alvoP; motivo = 'alvo'; break; }
-        if (lado === -1 && v.low <= alvoP) { saida = alvoP; motivo = 'alvo'; break; }
-
-        for (var k = 0; k < cfg.niveis.length; k++) {
-          if (usados[k]) continue;
-          var nivel = entrada + lado * cfg.niveis[k] * risco;
-          if ((lado === 1 && v.high >= nivel) || (lado === -1 && v.low <= nivel)) {
-            travas.push({
-              nivel: cfg.niveis[k], preco: nivel, lado: -lado,
-              tamanho: cfg.fator * cfg.lote,
-              alvo: nivel - lado * cfg.alvoTrava * risco,
-              corte: nivel + lado * cfg.corte * risco,
-              aberta: i, estado: 'aberta', saida: null, resultado: 0
-            });
-            usados[k] = 1;
-          }
-        }
-        picoConc = Math.max(picoConc, travas.filter(function (t) { return t.estado === 'aberta'; }).length);
-
-        for (var t = 0; t < travas.length; t++) {
-          var tv = travas[t];
-          if (tv.estado !== 'aberta') continue;
-          var fechou = false;
-          if (lado === 1) {
-            if (v.low <= tv.alvo) { tv.resultado = (tv.preco - tv.alvo) * tv.tamanho; tv.estado = 'alvo'; fechou = true; }
-            else if (v.high >= tv.corte) { tv.resultado = (tv.preco - tv.corte) * tv.tamanho; tv.estado = 'corte'; fechou = true; }
-          } else {
-            if (v.high >= tv.alvo) { tv.resultado = (tv.alvo - tv.preco) * tv.tamanho; tv.estado = 'alvo'; fechou = true; }
-            else if (v.low <= tv.corte) { tv.resultado = (tv.corte - tv.preco) * tv.tamanho; tv.estado = 'corte'; fechou = true; }
-          }
-          if (fechou) { tv.saida = j; pnlT += tv.resultado; }
-        }
-        j++;
+  function fechar(ctx, i, preco, motivo) {
+    var p = ctx.pos;
+    p.travas.forEach(function (t) {
+      if (t.estado === 'aberta') {
+        t.resultado = (t.preco - preco) * (-p.lado) * t.tamanho;
+        t.estado = 'encerrada'; t.saida = i; p.pnlTravas += t.resultado;
       }
-      if (saida == null) break;
+    });
+    var principal = (preco - p.entrada) * p.lado * p.tamanho;
+    var total = principal + p.pnlTravas;
+    ctx.ciclos.push({
+      i: p.i, saida: i, lado: p.lado, entrada: p.entrada, precoSaida: preco, motivo: motivo,
+      risco: p.risco, stop: p.stop, alvo: p.alvo, principal: principal, travas: p.pnlTravas,
+      total: total, r: total / (p.risco * p.tamanho), lista: p.travas.slice()
+    });
+    ctx.equity += total;
+    ctx.pos = null;
+  }
 
-      for (var q = 0; q < travas.length; q++) {
-        var ab = travas[q];
-        if (ab.estado === 'aberta') {
-          ab.resultado = (ab.preco - saida) * (-lado) * ab.tamanho;
-          ab.estado = 'encerrada'; ab.saida = j; pnlT += ab.resultado;
+  function passo() {
+    var ctx = S.teste;
+    if (!ctx) return false;
+    if (ctx.i >= S.velas.length - 1) { parar(); return false; }
+    ctx.i++;
+    var i = ctx.i, v = S.velas[i], p = ctx.pos;
+
+    var abriuAgora = false;
+    if (!p) {
+      var s = sinalEm(i);
+      if (s) { abrir(ctx, i, s); abriuAgora = true; }
+    }
+
+    // a posicao nasce no fechamento desta vela: o range dela ja passou, entao
+    // stop, alvo e travas so valem a partir da vela seguinte
+    p = ctx.pos;
+    if (p && !abriuAgora) {
+      var d = p.risco;
+      // stop e alvo primeiro: e a ordem conservadora do relatorio
+      if (p.lado === 1 && v.low <= p.stop) fechar(ctx, i, Math.min(p.stop, v.open), 'stop');
+      else if (p.lado === -1 && v.high >= p.stop) fechar(ctx, i, Math.max(p.stop, v.open), 'stop');
+      else if (p.lado === 1 && v.high >= p.alvo) fechar(ctx, i, p.alvo, 'alvo');
+      else if (p.lado === -1 && v.low <= p.alvo) fechar(ctx, i, p.alvo, 'alvo');
+    }
+
+    p = ctx.pos;
+    if (p && !abriuAgora) {
+      var d2 = p.risco;
+      CFG.niveis.forEach(function (niv, k) {
+        if (p.usados[k]) return;
+        var nivel = p.entrada + p.lado * niv * d2;
+        if ((p.lado === 1 && v.high >= nivel) || (p.lado === -1 && v.low <= nivel)) {
+          p.travas.push({ nivel: niv, preco: nivel, lado: -p.lado, tamanho: CFG.fator * CFG.lote,
+                          alvo: nivel - p.lado * CFG.alvoTrava * d2, corte: nivel + p.lado * CFG.corte * d2,
+                          aberta: i, estado: 'aberta', resultado: 0 });
+          p.usados[k] = 1;
         }
-      }
-
-      var principal = (saida - entrada) * lado * cfg.lote;
-      ciclos.push({
-        entrada: i, saida: j, lado: lado, precoEntrada: entrada, risco: risco,
-        stop: stop, alvo: alvoP, saida: saida, motivo: motivo, travas: travas,
-        resultadoPrincipal: principal, resultadoTravas: pnlT,
-        resultado: principal + pnlT, concorrencia: picoConc,
-        rsi: rsi[i], atr: atr[i], ema8: e8[i], ema16: e16[i],
-        r: (principal + pnlT) / (risco * cfg.lote)
       });
-      i = j + 1;
+      p.travas.forEach(function (t) {
+        if (t.estado !== 'aberta') return;
+        if (p.lado === 1) {
+          if (v.low <= t.alvo) { t.resultado = (t.preco - t.alvo) * t.tamanho; t.estado = 'alvo'; t.saida = i; p.pnlTravas += t.resultado; }
+          else if (v.high >= t.corte) { t.resultado = (t.preco - t.corte) * t.tamanho; t.estado = 'corte'; t.saida = i; p.pnlTravas += t.resultado; }
+        } else {
+          if (v.high >= t.alvo) { t.resultado = (t.alvo - t.preco) * t.tamanho; t.estado = 'alvo'; t.saida = i; p.pnlTravas += t.resultado; }
+          else if (v.low <= t.corte) { t.resultado = (t.corte - t.preco) * t.tamanho; t.estado = 'corte'; t.saida = i; p.pnlTravas += t.resultado; }
+        }
+      });
     }
-    return { ciclos: ciclos, e8: e8, e16: e16, rsi: rsi, atr: atr };
+    pintarTeste();
+    return true;
   }
 
-  /* ── dados ──────────────────────────────────────────────────────── */
-  function normalizar(lista) {
-    if (!Array.isArray(lista) || !lista.length) return [];
-    return lista.map(function (c) {
+  /* ── gráfico ────────────────────────────────────────────────────── */
+  function criarGrafico() {
+    if (S.chart || !window.LightweightCharts) return;
+    S.chart = LightweightCharts.createChart(el.graf, {
+      layout: { background: { color: '#ffffff' }, textColor: '#5c6068', fontSize: 10 },
+      grid: { vertLines: { color: '#f4f4f6' }, horzLines: { color: '#f4f4f6' } },
+      rightPriceScale: { borderColor: C.linha, scaleMargins: { top: 0.14, bottom: 0.14 } },
+      timeScale: { borderColor: C.linha, timeVisible: true, secondsVisible: false },
+      handleScroll: false, handleScale: false
+    });
+    S.serie = S.chart.addCandlestickSeries({ upColor: C.verde, downColor: C.vermelho, borderVisible: false, wickUpColor: C.verde, wickDownColor: C.vermelho });
+  }
+  function limpar() { S.linhas.forEach(function (l) { try { S.serie.removePriceLine(l); } catch (e) {} }); S.linhas = []; }
+  function linha(preco, cor, titulo, tracejado) {
+    try {
+      S.linhas.push(S.serie.createPriceLine({ price: preco, color: cor, lineWidth: 1, lineStyle: tracejado ? 2 : 0, axisLabelVisible: true, title: titulo }));
+    } catch (e) {}
+  }
+
+  function desenhar() {
+    criarGrafico();
+    if (!S.serie) return;
+    var ctx = S.teste;
+    var ate = ctx ? ctx.i : S.velas.length - 1;
+    var de = Math.max(0, ate - 260);
+    S.serie.setData(S.velas.slice(de, ate + 1).map(function (x) { return { time: x.time, open: x.open, high: x.high, low: x.low, close: x.close }; }));
+    limpar();
+    var marcas = [];
+    if (ctx) {
+      ctx.ciclos.forEach(function (c) {
+        if (c.i < de) return;
+        marcas.push({ time: S.velas[c.i].time, position: c.lado === 1 ? 'belowBar' : 'aboveBar', color: C.tinta, shape: c.lado === 1 ? 'arrowUp' : 'arrowDown', text: (c.lado === 1 ? 'C ' : 'V ') + n(c.entrada, 0) });
+        marcas.push({ time: S.velas[c.saida].time, position: 'aboveBar', color: c.total >= 0 ? C.verde : C.vermelho, shape: 'circle', text: c.motivo + ' ' + usd(c.total) });
+        c.lista.forEach(function (t) {
+          if (t.aberta >= de) marcas.push({ time: S.velas[t.aberta].time, position: t.lado === 1 ? 'belowBar' : 'aboveBar', color: C.ouro, shape: 'square', text: Math.round(t.nivel * 100) / 100 + 'R' });
+        });
+      });
+      var p = ctx.pos;
+      if (p) {
+        marcas.push({ time: S.velas[p.i].time, position: p.lado === 1 ? 'belowBar' : 'aboveBar', color: C.vermelho, shape: p.lado === 1 ? 'arrowUp' : 'arrowDown', text: (p.lado === 1 ? 'COMPRA ' : 'VENDA ') + n(p.entrada, 0) });
+        linha(p.entrada, '#5c6068', 'entrada', true);
+        linha(p.stop, C.vermelho, 'stop');
+        linha(p.alvo, C.verde, 'alvo 2R');
+        p.travas.forEach(function (t) { linha(t.preco, C.ouro, Math.round(t.nivel * 100) / 100 + 'R', true); });
+      }
+    }
+    try { S.serie.setMarkers(marcas.sort(function (a, b) { return a.time - b.time; })); } catch (e) {}
+    S.chart.timeScale().fitContent();
+  }
+
+  /* ── painéis ────────────────────────────────────────────────────── */
+  function pintarTeste() {
+    var ctx = S.teste;
+    if (!ctx) { el.estado.innerHTML = '<i>modo de teste parado</i><b>--</b>'; return; }
+    var p = ctx.pos, v = S.velas[ctx.i];
+    var aberto = 0;
+    if (p) {
+      aberto = (v.close - p.entrada) * p.lado * p.tamanho;
+      p.travas.forEach(function (t) { if (t.estado === 'aberta') aberto += (t.preco - v.close) * (-p.lado) * t.tamanho; });
+    }
+    var acertos = ctx.ciclos.filter(function (c) { return c.total > 0; }).length;
+    var cls = function (x) { return x >= 0 ? 'rc-pos' : 'rc-neg'; };
+    el.estado.innerHTML = [
+      ['estado', p ? '<span class="' + (p.lado === 1 ? 'rc-pos' : 'rc-neg') + '">' + (p.lado === 1 ? 'COMPRADO' : 'VENDIDO') + '</span>' : 'fora do mercado'],
+      ['vela', hhmm(v.time) + ' · ' + n(v.close, 1)],
+      ['entrada', p ? n(p.entrada, 1) : '--'],
+      ['stop / alvo', p ? n(p.stop, 1) + ' / ' + n(p.alvo, 1) : '--'],
+      ['travas abertas', p ? String(p.travas.filter(function (t) { return t.estado === 'aberta'; }).length) : '0'],
+      ['resultado aberto', '<span class="' + cls(aberto) + '">' + usd(aberto) + '</span>'],
+      ['ciclos fechados', String(ctx.ciclos.length)],
+      ['acerto', ctx.ciclos.length ? Math.round(acertos / ctx.ciclos.length * 100) + '%' : '--'],
+      ['resultado acumulado', '<span class="' + cls(ctx.equity + aberto) + '">' + usd(ctx.equity + aberto) + '</span>']
+    ].map(function (l) { return '<i>' + l[0] + '</i><b>' + l[1] + '</b>'; }).join('');
+
+    // livro de ordens vivo
+    var linhas = ['<tr><th>ordem</th><th>lado</th><th class="n">preço</th><th class="n">tamanho</th><th>estado</th><th class="n">resultado</th></tr>'];
+    if (p) {
+      linhas.push('<tr class="principal"><td>principal</td><td>' + (p.lado === 1 ? 'compra' : 'venda') + '</td><td class="n">' + n(p.entrada, 1) + '</td><td class="n">' + n(p.tamanho, 2) + '</td><td><span class="rc-pill aberta">aberta</span></td><td class="n ' + cls(aberto) + '">' + usd(aberto) + '</td></tr>');
+      p.travas.forEach(function (t, k) {
+        linhas.push('<tr><td>trava ' + (k + 1) + ' · ' + (Math.round(t.nivel * 100) / 100) + 'R</td><td>' + (t.lado === 1 ? 'compra' : 'venda') + '</td><td class="n">' + n(t.preco, 1) + '</td><td class="n">' + n(t.tamanho, 3) + '</td><td><span class="rc-pill ' + t.estado + '">' + t.estado + '</span></td><td class="n ' + cls(t.resultado) + '">' + usd(t.resultado) + '</td></tr>');
+      });
+    } else {
+      var ult = ctx.ciclos[ctx.ciclos.length - 1];
+      if (ult) {
+        linhas.push('<tr class="principal"><td>último ciclo</td><td>' + (ult.lado === 1 ? 'compra' : 'venda') + '</td><td class="n">' + n(ult.entrada, 1) + '</td><td class="n">' + n(CFG.lote, 2) + '</td><td><span class="rc-pill ' + (ult.motivo === 'alvo' ? 'alvo' : 'corte') + '">' + ult.motivo + '</span></td><td class="n ' + cls(ult.total) + '">' + usd(ult.total) + '</td></tr>');
+        ult.lista.forEach(function (t, k) {
+          linhas.push('<tr><td>trava ' + (k + 1) + ' · ' + (Math.round(t.nivel * 100) / 100) + 'R</td><td>' + (t.lado === 1 ? 'compra' : 'venda') + '</td><td class="n">' + n(t.preco, 1) + '</td><td class="n">' + n(t.tamanho, 3) + '</td><td><span class="rc-pill ' + t.estado + '">' + t.estado + '</span></td><td class="n ' + cls(t.resultado) + '">' + usd(t.resultado) + '</td></tr>');
+        });
+      } else linhas.push('<tr><td colspan="6" style="color:#8a8f98">aguardando o próximo cruzamento</td></tr>');
+    }
+    el.livro.innerHTML = linhas.join('');
+
+    // proximo disparo
+    var i = ctx.i, m = S.ind;
+    if (m && m.atr[i] != null) {
+      var r = m.rsi[i], at = m.atr[i], preco = v.close;
+      el.disparo.innerHTML = [
+        ['cruzamento', m.e8[i] > m.e16[i] ? 'EMA8 acima' : 'EMA8 abaixo'],
+        ['RSI 14', n(r, 1) + (r > 55 ? ' · força de compra' : r < 45 ? ' · força de venda' : ' · sem força')],
+        ['ATR 14', n(at, 1)],
+        ['risco por lote', 'US$ ' + n(at * CFG.lote, 2)],
+        ['se entrar agora', 'stop ' + n(preco - at, 1) + ' · alvo ' + n(preco + 2 * at, 1)]
+      ].map(function (l) { return '<i>' + l[0] + '</i><b>' + l[1] + '</b>'; }).join('');
+    }
+    desenhar();
+  }
+
+  /* ── controles ──────────────────────────────────────────────────── */
+  async function carregarVelas() {
+    try {
+      if (typeof window.fetchCandles === 'function') {
+        var v = await window.fetchCandles(CFG.ativo, CFG.tf, 1500);
+        if (Array.isArray(v) && v.length > 60) return norm(v);
+      }
+    } catch (e) {}
+    var r = await fetch(PONTE + '/velas?sym=' + encodeURIComponent(CFG.ativo) + '&tf=' + encodeURIComponent(CFG.tf) + '&alvo=1500', { cache: 'no-store' });
+    var d = await r.json();
+    return norm(d.velas || []);
+  }
+  function norm(l) {
+    return (l || []).map(function (c) {
       if (Array.isArray(c)) return { time: Number(c[0]), open: Number(c[1]), close: Number(c[2]), high: Number(c[3]), low: Number(c[4]) };
       return { time: Number(c.time), open: Number(c.open), close: Number(c.close), high: Number(c.high), low: Number(c.low) };
     }).filter(function (c) { return isFinite(c.time) && isFinite(c.close) && c.high >= c.low; });
   }
 
-  async function carregarVelas() {
-    // 1) usa o carregador do painel, que já sabe falar com a ponte e as corretoras
+  async function preparar() {
+    el.rodar.textContent = 'lendo...'; el.rodar.disabled = true;
     try {
-      if (typeof window.fetchCandles === 'function') {
-        var v = await window.fetchCandles(CFG.ativo, CFG.tf, 1200);
-        var ok = normalizar(v);
-        if (ok.length > 50) return ok;
-      }
-    } catch (e) {}
-    // 2) direto na ponte
-    var url = PONTE + '/velas?sym=' + encodeURIComponent(CFG.ativo) + '&tf=' + encodeURIComponent(CFG.tf) + '&alvo=1200';
-    var r = await fetch(url, { cache: 'no-store' });
-    var d = await r.json();
-    return normalizar(d.velas || []);
+      S.velas = await carregarVelas();
+      if (S.velas.length < 80) throw new Error('série curta');
+      S.ind = indicadores(S.velas);
+      S.teste = novoTeste(Math.max(20, S.velas.length - 900));
+      pintarTeste();
+      el.aviso.textContent = 'Série real de ' + S.velas.length + ' velas de ' + CFG.tf + ' em ' + CFG.ativo + '. Teste posicionado no início da janela: toque em ▶ para o robô operar vela por vela, como se fosse ao vivo.';
+    } catch (e) {
+      el.aviso.textContent = 'Não consegui ler a série agora. Toque em Rodar de novo em alguns segundos.';
+    } finally { el.rodar.textContent = 'Rodar'; el.rodar.disabled = false; }
+  }
+
+  function tocar() {
+    if (S.timer) { parar(); return; }
+    if (!S.teste) { preparar().then(tocar); return; }
+    el.play.classList.add('on'); el.play.textContent = '❚❚';
+    S.timer = setInterval(function () { if (!passo()) parar(); }, S.ms);
+  }
+  function parar() {
+    if (S.timer) clearInterval(S.timer);
+    S.timer = null;
+    if (el.play) { el.play.classList.remove('on'); el.play.textContent = '▶'; }
+  }
+  function avancar(k) {
+    parar();
+    if (!S.teste) { preparar().then(function () { avancar(k); }); return; }
+    for (var i = 0; i < (k || 1); i++) { if (!passo()) break; }
+  }
+  function reiniciar() {
+    parar();
+    if (!S.velas.length) { preparar(); return; }
+    S.teste = novoTeste(Math.max(20, S.velas.length - 900));
+    pintarTeste();
   }
 
   /* ── interface ──────────────────────────────────────────────────── */
   function estilo() {
     if (document.getElementById('rc-estilo')) return;
-    var s = document.createElement('style');
-    s.id = 'rc-estilo';
+    var s = document.createElement('style'); s.id = 'rc-estilo';
     s.textContent = [
-      '#robo-ciclos-card{background:#fff;border:1px solid ' + cores.linha + ';border-radius:12px;padding:10px 11px;font-family:Inter,system-ui,sans-serif;color:' + cores.tinta + ';font-size:11px}',
+      '#robo-ciclos-card{background:#fff;border:1px solid ' + C.linha + ';border-radius:12px;padding:10px 11px;font-family:Inter,system-ui,sans-serif;color:' + C.tinta + ';font-size:11px}',
       '#robo-ciclos-card *{box-sizing:border-box}',
-      '.rc-topo{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px}',
-      '.rc-topo b{font-size:12px;letter-spacing:-.2px}',
-      '.rc-tag{font-size:8px;letter-spacing:1.2px;text-transform:uppercase;color:' + cores.fraco + '}',
+      '.rc-topo{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-end;margin-bottom:8px}',
       '.rc-campo{display:flex;flex-direction:column;gap:2px}',
-      '.rc-campo span{font-size:8px;letter-spacing:.6px;text-transform:uppercase;color:' + cores.fraco + '}',
-      'select.rc-sel,input.rc-num{border:1px solid ' + cores.linha + ';border-radius:7px;padding:4px 6px;font-size:11px;font-family:inherit;color:' + cores.tinta + ';background:#fff;font-variant-numeric:tabular-nums}',
-      '.rc-btn{border:1px solid ' + cores.linha + ';background:#fff;border-radius:8px;padding:6px 10px;font-size:11px;font-weight:600;cursor:pointer;color:' + cores.tinta + ';min-height:32px}',
-      '.rc-btn.on{background:' + cores.vermelho + ';border-color:' + cores.vermelho + ';color:#fff}',
-      '.rc-btn:active{transform:translateY(1px)}',
-      '.rc-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}',
+      '.rc-campo span{font-size:8px;letter-spacing:.6px;text-transform:uppercase;color:' + C.fraco + '}',
+      'select.rc-sel{border:1px solid ' + C.linha + ';border-radius:7px;padding:4px 6px;font-size:11px;font-family:inherit;background:#fff;color:' + C.tinta + '}',
+      '.rc-btn{border:1px solid ' + C.linha + ';background:#fff;border-radius:8px;padding:6px 10px;font-size:11px;font-weight:600;cursor:pointer;color:' + C.tinta + ';min-height:32px;font-family:inherit}',
+      '.rc-btn.on{background:' + C.vermelho + ';border-color:' + C.vermelho + ';color:#fff}',
+      '.rc-grid{display:grid;grid-template-columns:1.35fr 1fr;gap:8px}',
       '@media(max-width:820px){.rc-grid{grid-template-columns:1fr}}',
-      '.rc-bloco{border:1px solid ' + cores.linha + ';border-radius:10px;padding:8px;background:#fff}',
-      '.rc-bloco h4{margin:0 0 6px;font-size:8.5px;letter-spacing:1px;text-transform:uppercase;color:' + cores.fraco + ';font-weight:700}',
-      '.rc-graf{height:230px;width:100%;border-radius:8px;overflow:hidden}',
-      '@media(max-width:820px){.rc-graf{height:190px}}',
-      '.rc-kv{display:grid;grid-template-columns:1fr auto;gap:2px 8px;font-size:11px;font-variant-numeric:tabular-nums}',
-      '.rc-kv i{font-style:normal;color:' + cores.fraco + '}',
+      '.rc-bloco{border:1px solid ' + C.linha + ';border-radius:10px;padding:8px;background:#fff}',
+      '.rc-bloco h4{margin:0 0 6px;font-size:8.5px;letter-spacing:1px;text-transform:uppercase;color:' + C.fraco + ';font-weight:700}',
+      '.rc-graf{height:250px;width:100%;border-radius:8px;overflow:hidden}',
+      '@media(max-width:820px){.rc-graf{height:200px}}',
+      '.rc-kv{display:grid;grid-template-columns:1fr auto;gap:3px 8px;font-size:11px;font-variant-numeric:tabular-nums}',
+      '.rc-kv i{font-style:normal;color:' + C.fraco + '}',
       '.rc-kv b{font-weight:600;text-align:right}',
       '.rc-livro{width:100%;border-collapse:collapse;font-size:10.5px;font-variant-numeric:tabular-nums}',
-      '.rc-livro th{text-align:left;font-size:8px;letter-spacing:.5px;text-transform:uppercase;color:' + cores.fraco + ';border-bottom:1px solid ' + cores.linha + ';padding:3px 2px;font-weight:700}',
+      '.rc-livro th{text-align:left;font-size:8px;letter-spacing:.5px;text-transform:uppercase;color:' + C.fraco + ';border-bottom:1px solid ' + C.linha + ';padding:3px 2px;font-weight:700}',
       '.rc-livro td{border-bottom:1px solid #f2f2f4;padding:3px 2px;white-space:nowrap}',
       '.rc-livro td.n,.rc-livro th.n{text-align:right}',
       '.rc-livro tr.principal td{background:#fbfbfc;font-weight:600}',
-      '.rc-livro tr.aberta td{background:#fff8f8}',
-      '.rc-pos{color:' + cores.verde + ';font-weight:700}',
-      '.rc-neg{color:' + cores.vermelho + ';font-weight:700}',
-      '.rc-neutro{color:' + cores.fraco + ';font-weight:700}',
-      '.rc-pill{display:inline-block;padding:1px 6px;border-radius:99px;font-size:8.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase}',
-      '.rc-pill.alvo{background:#eaf6ef;color:' + cores.verde + '}',
-      '.rc-pill.corte{background:#fdecec;color:' + cores.vermelho + '}',
-      '.rc-pill.aberta{background:#fff4e0;color:#8a6200}',
-      '.rc-pill.encerrada{background:#f0f0f2;color:' + cores.fraco + '}',
-      '.rc-trilha{display:flex;gap:4px;flex-wrap:wrap;margin:6px 0}',
-      '.rc-trilha button{flex:1 1 auto;min-width:44px}',
-      '.rc-aviso{font-size:9.5px;color:' + cores.fraco + ';line-height:1.4;margin-top:6px}',
-      '.rc-tot{display:flex;gap:10px;flex-wrap:wrap;margin:6px 0 0;font-variant-numeric:tabular-nums}',
-      '.rc-tot div{border-top:2px solid ' + cores.tinta + ';padding-top:3px;min-width:74px}',
-      '.rc-tot b{display:block;font-size:14px;letter-spacing:-.4px}',
-      '.rc-tot span{font-size:7.5px;letter-spacing:.6px;text-transform:uppercase;color:' + cores.fraco + '}'
+      '.rc-pos{color:' + C.verde + ';font-weight:700}', '.rc-neg{color:' + C.vermelho + ';font-weight:700}',
+      '.rc-pill{display:inline-block;padding:1px 6px;border-radius:99px;font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}',
+      '.rc-pill.alvo{background:#eaf6ef;color:' + C.verde + '}', '.rc-pill.corte{background:#fdecec;color:' + C.vermelho + '}',
+      '.rc-pill.aberta{background:#fff4e0;color:#8a6200}', '.rc-pill.encerrada{background:#f0f0f2;color:' + C.fraco + '}',
+      '.rc-aviso{font-size:9.5px;color:' + C.fraco + ';line-height:1.45;margin-top:7px}'
     ].join('\n');
     document.head.appendChild(s);
   }
@@ -248,258 +358,53 @@
   function montar() {
     estilo();
     var card = document.createElement('div');
-    card.id = 'robo-ciclos-card';
-    card.style.display = 'none';
+    card.id = 'robo-ciclos-card'; card.style.display = 'none';
     card.innerHTML = [
       '<div class="rc-topo">',
-      '  <div style="flex:1 1 100%;display:flex;align-items:baseline;gap:8px"><b>Robô de ciclos</b><span class="rc-tag">escada de travas</span></div>',
-      '  <label class="rc-campo"><span>ativo</span><select class="rc-sel" id="rc-ativo">',
-      '    <option value="BTCUSDT">BTC</option><option value="ETHUSDT">ETH</option><option value="ZECUSDT">ZEC</option></select></label>',
-      '  <label class="rc-campo"><span>tempo</span><select class="rc-sel" id="rc-tf">',
-      '    <option>1m</option><option>3m</option><option>5m</option><option selected>15m</option><option>1h</option><option>4h</option></select></label>',
-      '  <label class="rc-campo"><span>lote</span><select class="rc-sel" id="rc-lote">',
-      '    <option value="0.01">0,01</option><option value="0.03">0,03</option><option value="0.06">0,06</option></select></label>',
-      '  <button type="button" class="rc-btn" id="rc-rodar">Rodar</button>',
-      '  <button type="button" class="rc-btn" id="rc-play">▶</button>',
-      '  <button type="button" class="rc-btn" id="rc-prox">Ciclo ›</button>',
+      ' <label class="rc-campo"><span>ativo</span><select class="rc-sel" id="rc-ativo"><option value="BTCUSDT">BTC</option><option value="ETHUSDT">ETH</option><option value="ZECUSDT">ZEC</option></select></label>',
+      ' <label class="rc-campo"><span>tempo</span><select class="rc-sel" id="rc-tf"><option>1m</option><option>3m</option><option>5m</option><option selected>15m</option><option>1h</option><option>4h</option></select></label>',
+      ' <label class="rc-campo"><span>lote</span><select class="rc-sel" id="rc-lote"><option value="0.01">0,01</option><option value="0.03">0,03</option><option value="0.06">0,06</option></select></label>',
+      ' <label class="rc-campo"><span>ritmo</span><select class="rc-sel" id="rc-ms"><option value="500">lento</option><option value="220" selected>normal</option><option value="80">rápido</option></select></label>',
+      ' <button type="button" class="rc-btn" id="rc-rodar">Rodar</button>',
+      ' <button type="button" class="rc-btn" id="rc-play">▶ testar</button>',
+      ' <button type="button" class="rc-btn" id="rc-prox">+1 vela</button>',
+      ' <button type="button" class="rc-btn" id="rc-ciclo">+1 ciclo</button>',
+      ' <button type="button" class="rc-btn" id="rc-reset">reiniciar</button>',
       '</div>',
-      '<div class="rc-trilha" id="rc-trilha"></div>',
       '<div class="rc-grid">',
-      '  <div class="rc-bloco">',
-      '    <h4>Simulação idêntica ao motor</h4>',
-      '    <div class="rc-graf" id="rc-graf"></div>',
-      '    <div class="rc-tot" id="rc-tot"></div>',
-      '  </div>',
-      '  <div class="rc-bloco">',
-      '    <h4>Próximo disparo</h4>',
-      '    <div class="rc-kv" id="rc-disparo"></div>',
-      '    <h4 style="margin-top:10px">Ciclo em exibição</h4>',
-      '    <div class="rc-kv" id="rc-ciclo"></div>',
-      '  </div>',
+      ' <div class="rc-bloco"><h4>Operação em papel · vela por vela</h4><div class="rc-graf" id="rc-graf"></div></div>',
+      ' <div class="rc-bloco"><h4>Conta do teste</h4><div class="rc-kv" id="rc-estado"></div>',
+      '  <h4 style="margin-top:10px">Próximo disparo</h4><div class="rc-kv" id="rc-disparo"></div></div>',
       '</div>',
-      '<div class="rc-bloco" style="margin-top:8px">',
-      '  <h4>Livro de ordens do ciclo</h4>',
-      '  <div style="max-height:230px;overflow:auto"><table class="rc-livro" id="rc-livro"></table></div>',
-      '</div>',
-      '<div class="rc-aviso" id="rc-aviso">Escolha o ativo e o tempo e toque em Rodar. O robô lê a série real, monta cada ciclo com a escada de travas em 1/3, 2/3, 3/3, 4/3 e 5/3 de R (fator 0,60), stop de 1,0 ATR e alvo de 2R.</div>'
+      '<div class="rc-bloco" style="margin-top:8px"><h4>Livro de ordens</h4><div style="max-height:200px;overflow:auto"><table class="rc-livro" id="rc-livro"></table></div></div>',
+      '<div class="rc-aviso" id="rc-aviso">Toque em Rodar para carregar a série real. Depois ▶ testar: o robô entra no cruzamento com RSI, coloca stop de 1,0 ATR, alvo de 2R e as travas da escada em 1/3, 2/3, 3/3, 4/3 e 5/3 de R, mostrando cada ordem no livro e cada giro no gráfico.</div>'
     ].join('');
     document.body.appendChild(card);
 
     el.card = card;
-    el.ativo = card.querySelector('#rc-ativo');
-    el.tf = card.querySelector('#rc-tf');
-    el.lote = card.querySelector('#rc-lote');
-    el.rodar = card.querySelector('#rc-rodar');
-    el.play = card.querySelector('#rc-play');
-    el.prox = card.querySelector('#rc-prox');
-    el.trilha = card.querySelector('#rc-trilha');
-    el.graf = card.querySelector('#rc-graf');
-    el.tot = card.querySelector('#rc-tot');
-    el.disparo = card.querySelector('#rc-disparo');
-    el.ciclo = card.querySelector('#rc-ciclo');
-    el.livro = card.querySelector('#rc-livro');
+    el.ativo = card.querySelector('#rc-ativo'); el.tf = card.querySelector('#rc-tf');
+    el.lote = card.querySelector('#rc-lote'); el.ms = card.querySelector('#rc-ms');
+    el.rodar = card.querySelector('#rc-rodar'); el.play = card.querySelector('#rc-play');
+    el.prox = card.querySelector('#rc-prox'); el.ciclo = card.querySelector('#rc-ciclo');
+    el.reset = card.querySelector('#rc-reset');
+    el.graf = card.querySelector('#rc-graf'); el.estado = card.querySelector('#rc-estado');
+    el.disparo = card.querySelector('#rc-disparo'); el.livro = card.querySelector('#rc-livro');
     el.aviso = card.querySelector('#rc-aviso');
 
-    el.rodar.addEventListener('click', rodar);
-    el.play.addEventListener('click', alternarPlay);
-    el.prox.addEventListener('click', function () { mostrarCiclo(estado.indice + 1); });
-    el.ativo.addEventListener('change', function () { CFG.ativo = el.ativo.value; });
-    el.tf.addEventListener('change', function () { CFG.tf = el.tf.value; });
+    el.rodar.addEventListener('click', preparar);
+    el.play.addEventListener('click', tocar);
+    el.prox.addEventListener('click', function () { avancar(1); });
+    el.ciclo.addEventListener('click', function () { avancar(40); });
+    el.reset.addEventListener('click', reiniciar);
+    el.ms.addEventListener('change', function () { S.ms = Number(el.ms.value); if (S.timer) { parar(); tocar(); } });
+    el.ativo.addEventListener('change', function () { CFG.ativo = el.ativo.value; reiniciar(); });
+    el.tf.addEventListener('change', function () { CFG.tf = el.tf.value; reiniciar(); });
     el.lote.addEventListener('change', function () { CFG.lote = Number(el.lote.value); });
   }
 
-  /* ── gráfico ────────────────────────────────────────────────────── */
-  function criarGrafico() {
-    if (estado.chart || !window.LightweightCharts) return;
-    estado.chart = LightweightCharts.createChart(el.graf, {
-      layout: { background: { color: '#ffffff' }, textColor: '#5c6068', fontSize: 10 },
-      grid: { vertLines: { color: '#f2f2f4' }, horzLines: { color: '#f2f2f4' } },
-      rightPriceScale: { borderColor: '#e4e4e6', scaleMargins: { top: 0.12, bottom: 0.12 } },
-      timeScale: { borderColor: '#e4e4e6', timeVisible: true, secondsVisible: false },
-      crosshair: { mode: 0 },
-      handleScroll: false, handleScale: false
-    });
-    estado.series = estado.chart.addCandlestickSeries({
-      upColor: '#1f7a4d', downColor: '#c8102e', borderVisible: false,
-      wickUpColor: '#1f7a4d', wickDownColor: '#c8102e'
-    });
-  }
-
-  function limparLinhas() {
-    estado.linhas.forEach(function (l) { try { estado.series.removePriceLine(l); } catch (e) {} });
-    estado.linhas = [];
-  }
-
-  function linha(preco, cor, titulo, estilo) {
-    try {
-      var l = estado.series.createPriceLine({
-        price: preco, color: cor, lineWidth: 1,
-        lineStyle: estilo === 'tracejado' ? 2 : 0,
-        axisLabelVisible: true, title: titulo
-      });
-      estado.linhas.push(l);
-    } catch (e) {}
-  }
-
-  function desenhar() {
-    criarGrafico();
-    if (!estado.series) { el.aviso.textContent = 'Gráfico do painel não carregou ainda. Toque em Rodar de novo em alguns segundos.'; return; }
-    var v = estado.velas;
-    if (!v.length) return;
-    var c = estado.ciclos[estado.indice];
-    var ini = Math.max(0, (c ? c.entrada : v.length) - 120);
-    var fim = Math.min(v.length, (c ? c.saida : v.length) + 40);
-    var janela = v.slice(ini, fim);
-    estado.series.setData(janela.map(function (x) { return { time: x.time, open: x.open, high: x.high, low: x.low, close: x.close }; }));
-
-    limparLinhas();
-    var marcas = [];
-    if (c) {
-      marcas.push({ time: v[c.entrada].time, position: c.lado === 1 ? 'belowBar' : 'aboveBar', color: cores.tinta, shape: c.lado === 1 ? 'arrowUp' : 'arrowDown', text: (c.lado === 1 ? 'compra ' : 'venda ') + n(c.precoEntrada, 1) });
-      marcas.push({ time: v[c.saida].time, position: 'aboveBar', color: c.motivo === 'alvo' ? cores.verde : cores.vermelho, shape: 'circle', text: c.motivo + ' ' + n(c.saida, 1) });
-      c.travas.forEach(function (t) {
-        marcas.push({ time: v[t.aberta].time, position: t.lado === 1 ? 'belowBar' : 'aboveBar', color: cores.ouro, shape: 'square', text: 'trava ' + (Math.round(t.nivel * 100) / 100) + 'R' });
-      });
-      linha(c.precoEntrada, '#5c6068', 'entrada', 'tracejado');
-      linha(c.stop, cores.vermelho, 'stop');
-      linha(c.alvo, cores.verde, 'alvo 2R');
-      c.travas.forEach(function (t) { linha(t.preco, cores.ouro, 'trava ' + (Math.round(t.nivel * 100) / 100) + 'R', 'tracejado'); });
-    }
-    try { estado.series.setMarkers(marcas.sort(function (a, b) { return a.time - b.time; })); } catch (e) {}
-    estado.chart.timeScale().fitContent();
-  }
-
-  /* ── painéis de texto ───────────────────────────────────────────── */
-  function pintarTotais() {
-    var c = estado.ciclos;
-    if (!c.length) { el.tot.innerHTML = ''; return; }
-    var total = c.reduce(function (a, x) { return a + x.resultado; }, 0);
-    var trava = c.reduce(function (a, x) { return a + x.resultadoTravas; }, 0);
-    var acertos = c.filter(function (x) { return x.resultado > 0; }).length;
-    el.tot.innerHTML = [
-      '<div><b class="' + (total >= 0 ? 'rc-pos' : 'rc-neg') + '">' + usd(total) + '</b><span>resultado</span></div>',
-      '<div><b>' + c.length + '</b><span>ciclos</span></div>',
-      '<div><b>' + Math.round(acertos / c.length * 100) + '%</b><span>acerto</span></div>',
-      '<div><b class="rc-pos">' + usd(trava) + '</b><span>das travas</span></div>'
-    ].join('');
-  }
-
-  function pintarDisparo() {
-    var v = estado.velas, i = v.length - 1;
-    if (i < 20) { el.disparo.innerHTML = '<i>sem série suficiente</i><b>--</b>'; return; }
-    var m = estado.motor;
-    var ultima = v[i], anterior = v[i - 1];
-    var dist = function (a) { return n(a, 1); };
-    var cruz = m.e8[i] > m.e16[i] ? 'EMA8 acima da EMA16' : 'EMA8 abaixo da EMA16';
-    var r = m.rsi[i], at = m.atr[i];
-    var faltaRSI = r > 55 ? 'força de compra confirmada' : (r < 45 ? 'força de venda confirmada' : 'sem força: precisa passar de 55 ou cair abaixo de 45');
-    var linhas = [
-      ['preço', dist(ultima.close)],
-      ['EMA8 / EMA16', dist(m.e8[i]) + ' / ' + dist(m.e16[i])],
-      ['cruzamento', cruz],
-      ['RSI 14', n(r, 1) + ' · ' + faltaRSI],
-      ['ATR 14', n(at, 1)],
-      ['risco por lote', 'US$ ' + n(at * CFG.lote, 2)],
-      ['se entrar agora · stop', dist(ultima.close - at) + ' / ' + dist(ultima.close + at)],
-      ['alvo 2R', dist(ultima.close - 2 * at) + ' / ' + dist(ultima.close + 2 * at)]
-    ];
-    el.disparo.innerHTML = linhas.map(function (l) { return '<i>' + l[0] + '</i><b>' + l[1] + '</b>'; }).join('');
-  }
-
-  function pintarCiclo() {
-    var c = estado.ciclos[estado.indice];
-    if (!c) { el.ciclo.innerHTML = '<i>nenhum ciclo em exibição</i><b>--</b>'; el.livro.innerHTML = ''; return; }
-    var cls = c.resultado >= 0 ? 'rc-pos' : 'rc-neg';
-    el.ciclo.innerHTML = [
-      ['ciclo', '#' + (estado.indice + 1) + ' de ' + estado.ciclos.length],
-      ['lado', c.lado === 1 ? 'compra' : 'venda'],
-      ['abertura', dia(estado.velas[c.entrada].time)],
-      ['fechamento', dia(estado.velas[c.saida].time)],
-      ['duração', Math.round((c.saida - c.entrada) * segundosTf(CFG.tf) / 60) + ' min'],
-      ['motivo', c.motivo],
-      ['travas abertas', String(c.travas.length) + ' (pico ' + c.concorrencia + ')'],
-      ['resultado', '<span class="' + cls + '">' + usd(c.resultado) + ' (' + n(c.r, 2) + 'R)</span>']
-    ].map(function (l) { return '<i>' + l[0] + '</i><b>' + l[1] + '</b>'; }).join('');
-    pintarLivro(c);
-  }
-
-  function pintarLivro(c) {
-    var linhas = [
-      '<tr class="principal"><th>ordem</th><th>lado</th><th class="n">preço</th><th class="n">tamanho</th><th>estado</th><th class="n">resultado</th></tr>',
-      '<tr class="principal"><td>principal</td><td>' + (c.lado === 1 ? 'compra' : 'venda') + '</td><td class="n">' + n(c.precoEntrada, 1) + '</td><td class="n">' + n(CFG.lote, 2) + '</td><td><span class="rc-pill ' + (c.motivo === 'alvo' ? 'alvo' : 'corte') + '">' + c.motivo + '</span></td><td class="n ' + (c.resultadoPrincipal >= 0 ? 'rc-pos' : 'rc-neg') + '">' + usd(c.resultadoPrincipal) + '</td></tr>'
-    ];
-    c.travas.forEach(function (t, k) {
-      linhas.push('<tr class="' + (t.estado === 'aberta' ? 'aberta' : '') + '"><td>trava ' + (k + 1) + ' · ' + (Math.round(t.nivel * 100) / 100) + 'R</td><td>' + (t.lado === 1 ? 'compra' : 'venda') + '</td><td class="n">' + n(t.preco, 1) + '</td><td class="n">' + n(t.tamanho, 3) + '</td><td><span class="rc-pill ' + t.estado + '">' + t.estado + '</span></td><td class="n ' + (t.resultado >= 0 ? 'rc-pos' : 'rc-neg') + '">' + usd(t.resultado) + '</td></tr>');
-    });
-    el.livro.innerHTML = linhas.join('');
-  }
-
-  function pintarTrilha() {
-    var c = estado.ciclos;
-    if (!c.length) { el.trilha.innerHTML = ''; return; }
-    var passo = Math.max(1, Math.ceil(c.length / 12));
-    var html = [];
-    for (var i = 0; i < c.length; i += passo) {
-      var x = c[i];
-      html.push('<button type="button" class="rc-btn' + (i === estado.indice ? ' on' : '') + '" data-i="' + i + '">' + (i + 1) + '</button>');
-    }
-    el.trilha.innerHTML = html.join('');
-    [].forEach.call(el.trilha.querySelectorAll('button'), function (b) {
-      b.addEventListener('click', function () { parar(); mostrarCiclo(Number(b.getAttribute('data-i'))); });
-    });
-  }
-
-  function mostrarCiclo(i) {
-    if (!estado.ciclos.length) return;
-    estado.indice = Math.max(0, Math.min(estado.ciclos.length - 1, i));
-    pintarCiclo(); pintarTrilha(); desenhar();
-  }
-
-  /* ── execução ───────────────────────────────────────────────────── */
-  async function rodar() {
-    el.rodar.textContent = 'lendo...';
-    el.rodar.disabled = true;
-    try {
-      estado.velas = await carregarVelas();
-      if (estado.velas.length < 60) throw new Error('série curta');
-      estado.motor = rodarMotor(estado.velas, CFG);
-      estado.ciclos = estado.motor.ciclos;
-      estado.indice = estado.ciclos.length ? 0 : -1;
-      pintarTotais(); pintarDisparo(); pintarCiclo(); pintarTrilha(); desenhar();
-      el.aviso.textContent = 'Série real de ' + estado.velas.length + ' velas de ' + CFG.tf + ' em ' + CFG.ativo + '. ' + estado.ciclos.length + ' ciclos montados com a escada. Toque em ▶ para ver o robô operando ciclo por ciclo.';
-    } catch (e) {
-      el.aviso.textContent = 'Não consegui ler a série agora (' + (e && e.message ? e.message : 'erro') + '). Toque em Rodar de novo.';
-    } finally {
-      el.rodar.textContent = 'Rodar';
-      el.rodar.disabled = false;
-    }
-  }
-
-  function alternarPlay() {
-    if (estado.tocando) return parar();
-    if (!estado.ciclos.length) return rodar();
-    estado.tocando = true;
-    el.play.classList.add('on'); el.play.textContent = '❚❚';
-    if (estado.indice >= estado.ciclos.length - 1) estado.indice = 0;
-    estado.timer = setInterval(function () {
-      if (estado.indice >= estado.ciclos.length - 1) return parar();
-      mostrarCiclo(estado.indice + 1);
-    }, 900);
-  }
-  function parar() {
-    estado.tocando = false;
-    if (estado.timer) clearInterval(estado.timer);
-    estado.timer = null;
-    if (el.play) { el.play.classList.remove('on'); el.play.textContent = '▶'; }
-  }
-
-  /* ── nascimento ─────────────────────────────────────────────────── */
-  function iniciar() {
-    if (document.getElementById('robo-ciclos-card')) return;
-    montar();
-  }
+  function iniciar() { if (!document.getElementById('robo-ciclos-card')) montar(); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciar);
   else setTimeout(iniciar, 60);
 
-  window.RoboCiclos = { rodar: rodar, config: CFG, estado: estado };
+  window.RoboCiclos = { preparar: preparar, passo: passo, estado: S, config: CFG };
 })();
