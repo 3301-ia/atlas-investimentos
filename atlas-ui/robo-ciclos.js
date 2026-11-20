@@ -432,6 +432,7 @@
       ' <button type="button" class="rc-btn" id="rc-ciclo">+1 ciclo</button>',
       ' <button type="button" class="rc-btn" id="rc-reset">reiniciar</button>',
       ' <button type="button" class="rc-btn" id="rc-vivo">● ao vivo</button>',
+      ' <button type="button" class="rc-btn" id="rc-abrir-vivo">abrir ao vivo ›</button>',
       '</div>',
       '<div class="rc-vivo-linha" id="rc-vivo-linha">modo ao vivo desligado</div>',
       '<div class="rc-grid">',
@@ -462,6 +463,8 @@
     el.ciclo.addEventListener('click', function () { avancar(40); });
     el.reset.addEventListener('click', reiniciar);
     el.vivo.addEventListener('click', alternarVivo);
+    var bv = card.querySelector('#rc-abrir-vivo');
+    if (bv) bv.addEventListener('click', function () { var b = document.querySelector('.vx-aba[data-aba="robo-vivo-card"]'); if (b) b.click(); });
     el.ms.addEventListener('change', function () { S.ms = Number(el.ms.value); if (S.timer) { parar(); tocar(); } });
     el.ativo.addEventListener('change', function () { CFG.ativo = el.ativo.value; reiniciar(); });
     el.tf.addEventListener('change', function () { CFG.tf = el.tf.value; reiniciar(); });
