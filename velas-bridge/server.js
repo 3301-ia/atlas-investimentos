@@ -139,11 +139,17 @@ async function serie(sym, tf, alvo, antes) {
   let fonte = null;
   let pedidos = 0;
 
+  // TRAVA DE FONTE: a serie inteira sai de UMA corretora. Se no meio da
+  // paginacao a fonte cair e outra assumir, os dois horarios nao batem no mesmo
+  // grid (a Coinbase abre vela em minuto redondo diferente), e o resultado e
+  // buraco e deslocamento no grafico. Melhor parar curto do que misturar.
+  let travada = null;
   while (pedidos < MAX_PEDIDOS && porTempo.size < alvo) {
     let lote = null;
-    for (const f of FONTES) {
+    const fila = travada ? FONTES.filter((f) => f.nome === travada) : FONTES;
+    for (const f of fila) {
       lote = await f.fn(sym, tf, fim, diag);
-      if (lote && lote.length) { fonte = f.nome; break; }
+      if (lote && lote.length) { fonte = f.nome; travada = f.nome; break; }
     }
     if (!lote || !lote.length) break;
 
