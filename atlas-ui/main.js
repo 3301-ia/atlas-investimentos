@@ -14107,6 +14107,25 @@ function normalizaVelas(arr){
   return [...mapa.values()].sort((a,b)=>a.time-b.time);
 }
 
+// FILA LEVE: na abertura, varias telas pesadas queriam desenhar ao mesmo tempo.
+// Cada uma vira um passo separado, com folga entre eles, entao a tela responde
+// enquanto o resto entra. Uma tarefa por vez, nunca duas no mesmo quadro.
+let filaLeveRodando = false;
+const filaLevePendente = [];
+function filaLeve(nome, tarefa) {
+  filaLevePendente.push({ nome: nome, tarefa: tarefa });
+  if (filaLeveRodando) return;
+  filaLeveRodando = true;
+  const passo = () => {
+    const item = filaLevePendente.shift();
+    if (!item) { filaLeveRodando = false; return; }
+    try { item.tarefa(); } catch (e) { /* um passo quebrado nao para a fila */ }
+    setTimeout(passo, 180);
+  };
+  setTimeout(passo, 180);
+}
+window.filaLeve = filaLeve;
+
 function applySeriesData(){
   candles = normalizaVelas(candles);
   const savedRange = (chart && typeof chartHasRendered !== 'undefined' && chartHasRendered && !needsFullFit) ? chart.timeScale().getVisibleLogicalRange() : null;
@@ -21235,10 +21254,9 @@ async function loadAll(){
 
   // MTF, Micro e Stoch Matrix carregam em segundo plano sem travar a tela
   Promise.all([fetchMTF(), fetchMicro(), fetchMTFStochMatrix(mySym)]).then(()=>{
-    if(mySeq===loadSeq){
-      try{ updateMTFPanel(calcMTF()); }catch(e){}
-      try{ updateMicroPanel(calcMicro()); }catch(e){}
-    }
+    if(mySeq!==loadSeq) return;
+    filaLeve('mtf', function(){ try{ updateMTFPanel(calcMTF()); }catch(e){} });
+    filaLeve('micro', function(){ try{ updateMicroPanel(calcMicro()); }catch(e){} });
   });
 }
 
