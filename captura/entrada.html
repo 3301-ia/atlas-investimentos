@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Entrada de Insumos · Caldeira</title>
+<style>
+  :root{
+    --tinta:#111315; --cinza:#6b7178; --linha:#e4e6e9; --fundo:#f6f7f8;
+    --acao:#c8102e; --ok:#127a4a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--fundo);color:var(--tinta);
+       font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+  .topo{background:#fff;border-bottom:1px solid var(--linha);padding:14px 18px;
+        display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:5}
+  .marca{font-weight:700;letter-spacing:.14em;font-size:11px;text-transform:uppercase}
+  .marca span{display:block;font-weight:400;color:var(--cinza);letter-spacing:.05em;font-size:10px;margin-top:2px}
+  .hoje{font-variant-numeric:tabular-nums;font-size:12px;color:var(--cinza)}
+  form{max-width:640px;margin:0 auto;padding:18px}
+  fieldset{border:0;margin:0 0 18px;padding:0}
+  legend{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--cinza);
+         margin:0 0 10px;font-weight:600}
+  .grade{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .largo{grid-column:1 / -1}
+  label{display:block;font-size:11px;color:var(--cinza);margin:0 0 4px;letter-spacing:.04em}
+  input,select,textarea{width:100%;padding:11px 12px;border:1px solid var(--linha);border-radius:8px;
+        background:#fff;font:inherit;color:var(--tinta);font-variant-numeric:tabular-nums}
+  input:focus,select:focus,textarea:focus{outline:2px solid #d9dce0;border-color:#c7ccd1}
+  textarea{resize:vertical;min-height:64px}
+  .numeros input{text-align:right}
+  .acoes{display:flex;gap:10px;align-items:center;margin-top:6px}
+  button{flex:1;padding:14px;border:0;border-radius:9px;background:var(--acao);color:#fff;
+         font:600 15px/1 inherit;letter-spacing:.02em}
+  button:disabled{opacity:.55}
+  .aviso{font-size:13px;padding:12px 14px;border-radius:9px;margin:14px 0 0;display:none}
+  .aviso.ok{display:block;background:#eaf6ef;color:var(--ok);border:1px solid #c9e6d6}
+  .aviso.erro{display:block;background:#fdecef;color:var(--acao);border:1px solid #f5c9d2}
+  .pe{max-width:640px;margin:0 auto;padding:0 18px 40px;color:var(--cinza);font-size:11px}
+  @media(max-width:520px){.grade{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<div class="topo">
+  <div class="marca">Caldeira Gourmet<span>Entrada de insumos</span></div>
+  <div class="hoje" id="hoje"></div>
+</div>
+
+<form id="f" autocomplete="on">
+  <fieldset>
+    <legend>O que chegou</legend>
+    <div class="grade">
+      <div class="largo"><label for="produto">Produto / insumo</label>
+        <input id="produto" name="produto" required placeholder="Ex.: Picanha Angus"></div>
+      <div><label for="tipo">Tipo / origem</label>
+        <select id="tipo" name="tipo" required>
+          <option>🥩 Carne — Refrigerado</option>
+          <option>🐟 Peixe / Fruto do Mar — Refrigerado</option>
+          <option>🌱 Hortifruit — Fresco</option>
+          <option>🧊 Congelados</option>
+          <option>🥫 Mercearia / Secos</option>
+          <option>🥛 Laticínios</option>
+          <option>🍞 Panificação</option>
+          <option>🧴 Embalagens / Descartáveis</option>
+          <option>🧼 Limpeza</option>
+        </select></div>
+      <div><label for="destino">Categoria / destino</label>
+        <input id="destino" name="destino" placeholder="Ex.: → Parrilla (cortes)"></div>
+      <div class="numeros"><label for="qtd">Quantidade</label>
+        <input id="qtd" name="qtd" inputmode="decimal" placeholder="0,000"></div>
+      <div><label for="unid">Unidade</label>
+        <select id="unid" name="unid">
+          <option>kg</option><option>g</option><option>un</option>
+          <option>cx</option><option>pct</option><option>L</option><option>bag</option>
+        </select></div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Controle</legend>
+    <div class="grade">
+      <div><label for="temp">Temperatura (°C)</label>
+        <input id="temp" name="temp" placeholder="Ex.: 3 ou Amb."></div>
+      <div><label for="nf">Nº NF</label>
+        <input id="nf" name="nf" placeholder="NF-0000"></div>
+      <div class="numeros"><label for="pesoBruto">Peso bruto</label>
+        <input id="pesoBruto" name="pesoBruto" inputmode="decimal" placeholder="0,000"></div>
+      <div class="numeros"><label for="pesoLiquido">Peso líquido</label>
+        <input id="pesoLiquido" name="pesoLiquido" inputmode="decimal" placeholder="0,000"></div>
+      <div><label for="fornecedor">Fornecedor</label>
+        <input id="fornecedor" name="fornecedor" placeholder="Ex.: Frigorífico Angus"></div>
+      <div><label for="responsavel">Responsável</label>
+        <input id="responsavel" name="responsavel" required placeholder="Seu nome"></div>
+      <div class="largo"><label for="obs">Observação</label>
+        <textarea id="obs" name="obs" placeholder="Lote, validade, avaria..."></textarea></div>
+    </div>
+  </fieldset>
+
+  <div class="acoes">
+    <button id="enviar" type="submit">Salvar entrada</button>
+  </div>
+  <div class="aviso" id="aviso"></div>
+</form>
+
+<div class="pe">
+  Grava direto no Banco de Entradas da planilha. Se a internet cair, a entrada fica guardada neste aparelho e sobe sozinha na próxima tentativa.
+</div>
+
+<script>
+// Cole aqui a URL do Apps Script publicado (Implantar > App da Web > URL).
+const ENDPOINT = "";
+
+const $ = (id) => document.getElementById(id);
+const hoje = new Date();
+$("hoje").textContent = hoje.toLocaleDateString("pt-BR") + " · " +
+  hoje.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+
+$("responsavel").value = localStorage.getItem("responsavel") || "";
+$("responsavel").addEventListener("change", (e) => localStorage.setItem("responsavel", e.target.value));
+
+function fila() { return JSON.parse(localStorage.getItem("fila_entradas") || "[]"); }
+function gravarFila(f) { localStorage.setItem("fila_entradas", JSON.stringify(f)); }
+
+function aviso(texto, tipo) {
+  const a = $("aviso");
+  a.textContent = texto;
+  a.className = "aviso " + tipo;
+}
+
+async function enviar(dados) {
+  const r = await fetch(ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(dados)
+  });
+  const t = await r.text();
+  let j = {};
+  try { j = JSON.parse(t); } catch (e) { j = { ok: r.ok, bruto: t }; }
+  if (!r.ok || !j.ok) throw new Error(j.erro || "falha ao salvar");
+  return j;
+}
+
+async function subirPendentes() {
+  const f = fila();
+  if (!f.length) return;
+  const restantes = [];
+  for (const item of f) {
+    try { await enviar(item); } catch (e) { restantes.push(item); }
+  }
+  gravarFila(restantes);
+  if (restantes.length < f.length) aviso("Pendentes enviados: " + (f.length - restantes.length), "ok");
+}
+
+$("f").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const dados = {
+    data: hoje.toLocaleDateString("pt-BR"),
+    tipo: $("tipo").value,
+    produto: $("produto").value.trim(),
+    destino: $("destino").value.trim(),
+    qtd: $("qtd").value.trim(),
+    unid: $("unid").value,
+    fornecedor: $("fornecedor").value.trim(),
+    temp: $("temp").value.trim(),
+    responsavel: $("responsavel").value.trim(),
+    nf: $("nf").value.trim(),
+    pesoBruto: $("pesoBruto").value.trim(),
+    pesoLiquido: $("pesoLiquido").value.trim(),
+    obs: $("obs").value.trim()
+  };
+
+  if (!ENDPOINT) {
+    aviso("Falta colar a URL do Apps Script no arquivo. Sem ela nada é gravado.", "erro");
+    return;
+  }
+
+  $("enviar").disabled = true;
+  try {
+    const j = await enviar(dados);
+    aviso("Salvo como " + (j.id || "entrada") + " no Banco de Entradas.", "ok");
+    ["produto", "destino", "qtd", "temp", "nf", "pesoBruto", "pesoLiquido", "obs"].forEach((k) => { $(k).value = ""; });
+    $("produto").focus();
+  } catch (e) {
+    gravarFila(fila().concat([dados]));
+    aviso("Sem conexão com a planilha. Guardei aqui e tento de novo depois.", "erro");
+  } finally {
+    $("enviar").disabled = false;
+  }
+});
+
+subirPendentes();
+</script>
+</body>
+</html>
