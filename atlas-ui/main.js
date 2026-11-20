@@ -14392,10 +14392,15 @@ async function puxarLotesAntigos(quantos){
   if(!candles.length) return 0;
   let base = candles[0].time;
 
-  // sobra da ponte: entra em bloco, sem requisicao nova
+  // sobra da ponte: entra em BLOCO de 800 velas, uma pintura por bloco.
+  // Pintar a sobra inteira de uma vez era o que congelava a troca de tempo:
+  // cada pintura recalcula todas as camadas de indicador sobre a serie toda.
   if (vxBuffer && vxBuffer.sym === sym && vxBuffer.tf === tf) {
-    const sobra = vxBuffer.velas.filter(function(c){ return c.time < base; });
-    vxBuffer = null;
+    const todas = vxBuffer.velas.filter(function(c){ return c.time < base; });
+    const BLOCO = 800;
+    const sobra = todas.length > BLOCO ? todas.slice(-BLOCO) : todas;
+    const resto = todas.length > BLOCO ? todas.slice(0, todas.length - BLOCO) : [];
+    vxBuffer = resto.length ? { sym: sym, tf: tf, velas: resto } : null;
     if (sobra.length) {
       const visRange = chart ? chart.timeScale().getVisibleLogicalRange() : null;
       candles = normalizaVelas(sobra.concat(candles));
