@@ -14931,6 +14931,20 @@ async function fetchCandles(sym,tf,limit=500){
       }
     } catch(e) { /* segue para as fontes normais */ }
   }
+  // cache local da serie: reabrir o painel no mesmo ativo e tempo nao refaz
+  // o pedido inteiro, entao a abertura fica instantanea mesmo com a ponte fria
+  const chaveCache = 'vx_velas_' + sym + '_' + fetchTf;
+  if (aggFactor === 1) {
+    try {
+      const guardado = JSON.parse(localStorage.getItem(chaveCache) || 'null');
+      if (guardado && Array.isArray(guardado.v) && guardado.v.length > 20 && (Date.now() - guardado.em) < 240000) {
+        lastDataSource = 'cache local';
+        updateDataSourceBadge('cache local', true);
+        return guardado.v;
+      }
+    } catch(e) { /* cache corrompido: ignora */ }
+  }
+
   // ponte propria primeiro: uma requisicao entrega a serie inteira, ja limpa
   if (VX_VELAS_URL && aggFactor === 1) {
     try {
@@ -14945,6 +14959,9 @@ async function fetchCandles(sym,tf,limit=500){
           if (parsed.length > 20) {
             lastDataSource = 'ponte';
             updateDataSourceBadge('ponte', true);
+            try {
+              localStorage.setItem(chaveCache, JSON.stringify({ em: Date.now(), v: parsed.slice(-4000) }));
+            } catch(e) { /* sem espaco: segue sem cache */ }
             return parsed;
           }
         }

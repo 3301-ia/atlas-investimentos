@@ -1,0 +1,26 @@
+name: VECTRA velas acorda
+
+# A ponte vectra-velas roda no plano free do Render, que dorme depois de 15
+# minutos sem visita. Este ping de 5 em 5 minutos mantém o serviço acordado,
+# então o painel nunca espera os 50 segundos de partida a frio.
+# Custo zero: repositório público e um GET por rodada.
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Acordar a ponte
+        run: |
+          for i in 1 2 3; do
+            codigo=$(curl -s -o /dev/null -w "%{http_code}" -m 70 https://vectra-velas.onrender.com/saude || true)
+            echo "tentativa $i -> $codigo"
+            if [ "$codigo" = "200" ]; then exit 0; fi
+            sleep 10
+          done
+          echo "ponte nao respondeu nesta rodada"
