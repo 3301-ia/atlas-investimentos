@@ -255,7 +255,9 @@
       // unidade da escada: no modo relatório ela é o risco (passo de 1R, como
       // sempre foi); nos modos de base ela é a distância até o alvo, então a
       // escada sobe em direção às médias (1/3, 2/3, 3/3 do alvo).
-      unidade: CFG.alvos === 'atr' ? risco : alvo.dist, travas: [], usados: {}, pnlTravas: 0
+      unidade: CFG.alvos === 'atr' ? risco : alvo.dist, travas: [], usados: {}, pnlTravas: 0,
+      // livro-caixa do ciclo: pernas já encerradas + a perna que está aberta
+      legAberta: true, realizado: 0, reentradas: 0
     };
   }
 
@@ -267,9 +269,11 @@
         t.estado = 'encerrada'; t.saida = i; p.pnlTravas += t.resultado;
       }
     });
-    // principal pode ter sido realizado antes (ex.: travado no stop, virando
-    // contra-ordem) — nesse caso o número já está fechado em p.principal
-    var principal = p.principal != null ? p.principal : (preco - p.entrada) * p.lado * p.tamanho;
+    // livro-caixa: pernas encerradas (realizado) + a perna viva (se houver) +
+    // a contra-ordem de proteção. Assim o ciclo pode ter ido e voltado sem
+    // perder o histórico do que já foi fechado.
+    var legRes = p.legAberta ? (preco - p.entrada) * p.lado * p.tamanho : 0;
+    var principal = (p.realizado || 0) + legRes;
     var hedgeRes = p.hedge ? (p.hedge.resultado || 0) : 0;
     var total = principal + hedgeRes + p.pnlTravas;
     ctx.ciclos.push({
@@ -280,6 +284,35 @@
     });
     ctx.equity += total;
     ctx.pos = null;
+  }
+
+  // DIAGNÓSTICO DAS SAÍDAS: para cada ciclo fechado, olha as velas seguintes e
+  // mede quanto o preço ainda andou na direção da operação depois da saída.
+  // É a resposta para "a venda foi no momento certo mas não persistiu":
+  // mostra qual motivo cortou e qual era o potencial deixado na mesa.
+  function diagnostico(ctx, janela) {
+    if (!ctx || !ctx.ciclos || !ctx.ciclos.length) return null;
+    var velas = S.velas, N = janela || 60;
+    var porMotivo = {}, prematuras = 0, perdidoTotal = 0, lista = [];
+    ctx.ciclos.forEach(function (c) {
+      var saida = c.saida != null ? c.saida : c.i;
+      var riscoPreco = c.risco || 0;
+      var melhor = 0;
+      for (var j = saida + 1; j <= Math.min(saida + N, velas.length - 1); j++) {
+        var ganho = (c.lado === 1 ? velas[j].high - c.precoSaida : c.precoSaida - velas[j].low) * c.lado;
+        if (ganho > melhor) melhor = ganho;
+      }
+      var emR = riscoPreco > 0 ? melhor / riscoPreco : 0;
+      var prematura = emR >= 1;
+      if (prematura) { prematuras++; perdidoTotal += melhor * (c.tamanho || CFG.lote); }
+      var chave = c.motivo || '--';
+      porMotivo[chave] = porMotivo[chave] || { ciclos: 0, prematuras: 0 };
+      porMotivo[chave].ciclos++;
+      if (prematura) porMotivo[chave].prematuras++;
+      if (prematura && lista.length < 8) lista.push({ entrada: +c.entrada.toFixed(1), motivo: chave, saida: +c.precoSaida.toFixed(1), deixouEmR: +emR.toFixed(2), total: +c.total.toFixed(2) });
+    });
+    return { ciclos: ctx.ciclos.length, prematuras: prematuras, pctPrematuras: +(prematuras / ctx.ciclos.length * 100).toFixed(1),
+             perdidoUsd: +perdidoTotal.toFixed(2), porMotivo: porMotivo, exemplos: lista };
   }
 
   function passo(mudo) {
@@ -302,15 +335,29 @@
       // ciclo travado: a contra-ordem é quem decide a saída. O alvo dela é 1R
       // além do stop (empata o prejuízo e começa a lucrar); se o preço voltar
       // ao preço da trava, ela sai no zero e o ciclo fecha no pior caso o stop.
-      var h = p.hedge, saiuH = false, precoH = 0;
+      var h = p.hedge, saiuH = false, precoH = 0, rearmar = false;
       if (h.lado === -1) {
         if (v.low <= h.alvo) { h.resultado = (h.preco - h.alvo) * h.tamanho; saiuH = true; precoH = h.alvo; }
-        else if (v.high >= h.preco) { h.resultado = 0; saiuH = true; precoH = h.preco; }
+        else if (v.high >= h.preco) { h.resultado = 0; rearmar = true; }
       } else {
         if (v.high >= h.alvo) { h.resultado = (h.alvo - h.preco) * h.tamanho; saiuH = true; precoH = h.alvo; }
-        else if (v.low <= h.preco) { h.resultado = 0; saiuH = true; precoH = h.preco; }
+        else if (v.low <= h.preco) { h.resultado = 0; rearmar = true; }
       }
-      if (saiuH) fechar(ctx, i, precoH, h.resultado > 0 ? 'trava de proteção' : 'zero');
+      if (saiuH) {
+        fechar(ctx, i, precoH, h.resultado > 0 ? 'trava de proteção' : 'zero');
+      } else if (rearmar && (p.reentradas || 0) < 4) {
+        // A operação NÃO MORRE NO RUÍDO: o preço voltou ao ponto da contra-ordem,
+        // a trava sai no zero e o principal é rearmado no mesmo preço, com o
+        // mesmo alvo. É o que faz a venda no topo persistir até o movimento.
+        var dist = CFG.alvos === 'atr' ? CFG.alvo * p.risco : (p.unidade || CFG.alvo * p.risco);
+        p.entrada = h.preco;
+        p.i = i;
+        p.legAberta = true;
+        p.reentradas = (p.reentradas || 0) + 1;
+        p.hedge = null;
+        p.stop = h.preco - p.lado * p.risco;
+        p.alvo = h.preco + p.lado * dist;
+      }
     } else if (p && !abriuAgora) {
       var d = p.risco;
       // stop e alvo primeiro: e a ordem conservadora do relatorio
@@ -321,7 +368,9 @@
         // principal fica travado no stop e o ciclo só fecha no zero ou acima —
         // a trava assume o risco e lucra se o preço continuar contra.
         var precoStop = p.lado === 1 ? Math.min(p.stop, v.open) : Math.max(p.stop, v.open);
-        p.principal = (precoStop - p.entrada) * p.lado * p.tamanho;
+        p.realizado = (p.realizado || 0) + (precoStop - p.entrada) * p.lado * p.tamanho;
+        p.legAberta = false;   // a perna principal foi encerrada no stop
+        p.entrada = precoStop;
         p.hedge = { lado: -p.lado, preco: precoStop, tamanho: p.tamanho, alvo: precoStop - p.lado * p.risco, resultado: 0 };
       } else if (stopPego) {
         fechar(ctx, i, p.lado === 1 ? Math.min(p.stop, v.open) : Math.max(p.stop, v.open), 'stop');
@@ -806,5 +855,6 @@
   // pintar/desenhar expostos para quem conduz o teste por fora (painel da
   // escada), que avanca as velas em silencio e repinta uma vez no fim
   window.RoboCiclos = { preparar: preparar, passo: passo, estado: S, config: CFG, pintar: pintarTeste, desenhar: desenhar,
-    direcao: function () { return S.dir; }, definirSinal: function (s) { CFG.sinal = s; }, construirDirecao: construirDirecao };
+    direcao: function () { return S.dir; }, definirSinal: function (s) { CFG.sinal = s; }, construirDirecao: construirDirecao,
+    diagnostico: function (janela) { return diagnostico(S.teste, janela); } };
 })();
