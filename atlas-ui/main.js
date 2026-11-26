@@ -14705,22 +14705,7 @@ const DATA_SOURCES = [
       return list.map(k=>({time:Math.floor(+k[0]/1000),open:+k[1],high:+k[2],low:+k[3],close:+k[4],volume:+k[5]})).reverse();
     },
   },
-  {
-    name:'kraken',
-    tfMap:{'1m':1,'5m':5,'15m':15,'30m':30,'1h':60,'4h':240,'1d':1440,'1w':10080}, // sem suporte a '1M'
-    build(sym,tf,limit){
-      const iv=this.tfMap[tf]; if(!iv)return null;
-      let base=toCryptoBase(sym); if(base==='BTC')base='XBT'; // Kraken usa XBT, nao BTC
-      return `https://api.kraken.com/0/public/OHLC?pair=${base}USD&interval=${iv}`;
-    },
-    parse:(d)=>{
-      if(!d?.result)return null;
-      const key=Object.keys(d.result).find(k=>k!=='last'); if(!key)return null;
-      const rows=d.result[key]; if(!rows)return null;
-      // Kraken ja devolve em ordem cronologica (mais antigo primeiro)
-      return rows.map(r=>({time:Math.floor(r[0]),open:+r[1],high:+r[2],low:+r[3],close:+r[4],volume:+r[6]}));
-    },
-  },
+  // Kraken omitido no navegador: api.kraken.com bloqueia CORS
   {
     name:'coinbase',
     tfMap:{'1m':60,'5m':300,'15m':900,'1h':3600,'1d':86400}, // sem 30m/4h/1w/1M
@@ -15019,20 +15004,8 @@ async function fetchCandles(sym,tf,limit=500){
   const isMobile = typeof navigator !== 'undefined' && /android|iphone|ipad|mobile/i.test(navigator.userAgent || '');
   const realLimit = Math.min(limit * aggFactor, isMobile ? 800 : 1500);
 
-  // tempo montado por agregacao: junta o suficiente antes de montar as velas
-  if (aggFactor > 1) {
-    try {
-      const longas = await buscaLongaKucoin(sym, fetchTf, Math.min(limit * aggFactor, 5000));
-      if (longas && longas.length > 29) {
-        const montadas = aggregateCandles(saneaVelas(longas), aggFactor);
-        if (montadas.length > 29) {
-          lastDataSource = 'kucoin';
-          updateDataSourceBadge('kucoin', true);
-          return montadas;
-        }
-      }
-    } catch(e) { /* segue para as fontes normais */ }
-  }
+  // tempo montado por agregacao: usa fontes com CORS liberado (ponte/Bybit/OKX)
+  // em vez de KuCoin direto (bloqueado por CORS no navegador)
   // cache local da serie: reabrir o painel no mesmo ativo e tempo nao refaz
   // o pedido inteiro, entao a abertura fica instantanea mesmo com a ponte fria
   const chaveCache = 'vx_velas_' + sym + '_' + fetchTf;

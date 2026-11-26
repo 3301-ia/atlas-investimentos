@@ -107,7 +107,7 @@
       o.connect(g); g.connect(ctx.destination);
       o.start(); o.stop(ctx.currentTime + 0.16);
     } catch (e) {}
-    try { if (navigator.vibrate) navigator.vibrate([60, 40, 60]); } catch (e) {}
+    try { if (navigator.vibrate && navigator.userActivation && navigator.userActivation.hasBeenActive) navigator.vibrate([60, 40, 60]); } catch (e) {}
   }
 
   function avisar(txt) {

@@ -315,6 +315,7 @@
   }
 
   function ciclo() {
+    if (document.hidden) return;
     adotar();
     // os módulos reescrevem o display do cartão deles; reafirma quem manda
     Object.keys(adotados).forEach(function (id) { adotados[id].hidden = id !== abaAtiva; });
@@ -376,7 +377,11 @@
     libertarFerramentas();
     setInterval(ciclo, 1000);
     try {
-      new MutationObserver(function () { adotar(); }).observe(document.body, { childList: true, subtree: true });
+      var obsTimer = null;
+      new MutationObserver(function () {
+        if (obsTimer) return;
+        obsTimer = setTimeout(function () { obsTimer = null; if (!document.hidden) adotar(); }, 250);
+      }).observe(document.body, { childList: true, subtree: true });
     } catch (e) {}
   }
 

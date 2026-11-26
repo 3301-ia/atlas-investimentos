@@ -56,7 +56,7 @@
       o.start();
       setTimeout(function () { try { o.stop(); ctx.close(); } catch (e) {} }, 160);
     } catch (e) {}
-    try { if (navigator.vibrate) navigator.vibrate([90, 60, 90]); } catch (e) {}
+    try { if (navigator.vibrate && navigator.userActivation && navigator.userActivation.hasBeenActive) navigator.vibrate([90, 60, 90]); } catch (e) {}
   }
 
   function aviso(texto) {
