@@ -192,6 +192,31 @@
     return null;
   }
 
+  /* ── série do estudo (a mesma do relatório de 20/11) ─────────────── */
+  // O painel só mostrava números depois de rodar o simulador ao vivo (aba
+  // Ciclos). A série que o robô foi desenhado para operar já acompanha o
+  // repositório: 21.000 velas de 15m de BTCUSDT. Carregando aqui, o backtest
+  // do robô fica estudável sem depender do simulador estar rodando.
+  var URL_SERIE_ESTUDO = 'core/dados/m15_btcusdt_15m.json';
+  var serieEstudoCache = null;
+  var serieEstudoEmCurso = null;
+  var serieEstudoFalhou = false;
+
+  function carregarSerieEstudo(pronto) {
+    if (serieEstudoCache) { if (pronto) pronto(); return; }
+    if (serieEstudoEmCurso) { serieEstudoEmCurso.push(pronto); return; }
+    serieEstudoEmCurso = pronto ? [pronto] : [];
+    fetch(URL_SERIE_ESTUDO, { cache: 'force-cache' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { if (Array.isArray(j) && j.length) serieEstudoCache = j; else serieEstudoFalhou = true; })
+      .catch(function () { serieEstudoFalhou = true; })
+      .then(function () {
+        var lista = serieEstudoEmCurso || [];
+        serieEstudoEmCurso = null;
+        lista.forEach(function (fn) { try { fn(); } catch (e) {} });
+      });
+  }
+
   /* ── backtest de referência (cache) ─────────────────────────────── */
   var cacheRef = { marca: -1, resultado: null, corrigido: null, erro: null };
 
@@ -219,8 +244,22 @@
     if (!el || !el.corpo) return;
     var fonte = fonteCiclos();
     if (!fonte) {
-      el.corpo.innerHTML = '<div class="ep-vazio">Rode o simulador (aba Ciclos: <b>▶ testar</b>) ou ligue o modo ao vivo para ver as estatísticas da escada.</div>';
-      return;
+      // sem ciclos ao vivo: estuda a série do próprio repositório
+      if (!serieEstudoCache) {
+        el.corpo.innerHTML = '<div class="ep-vazio">' + (serieEstudoFalhou
+          ? 'Não foi possível carregar a série do estudo (' + URL_SERIE_ESTUDO + '). Rode o simulador na aba Ciclos (<b>▶ testar</b>) para usar o histórico ao vivo.'
+          : 'Carregando a série do estudo (21.000 velas de 15m de BTCUSDT)…') + '</div>';
+        carregarSerieEstudo(function () { renderizar(el); });
+        return;
+      }
+      var refSerie = rodarReferencia(serieEstudoCache);
+      if (refSerie && refSerie.resultado && refSerie.resultado.listaCiclos && refSerie.resultado.listaCiclos.length) {
+        fonte = { nome: 'série do estudo · 15m · BTCUSDT', ciclos: refSerie.resultado.listaCiclos, velas: serieEstudoCache };
+      }
+      if (!fonte) {
+        el.corpo.innerHTML = '<div class="ep-vazio">' + (refSerie && refSerie.erro ? esc(refSerie.erro) : 'A série do estudo não produziu ciclos.') + '</div>';
+        return;
+      }
     }
 
     var m = analisar(fonte.ciclos);
