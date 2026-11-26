@@ -14984,6 +14984,108 @@ function vxFilaPonte(tarefa, prioridade){
   });
 }
 
+// SERIE EM MEMORIA — um cache so, para todos os paineis
+// Validador, tabela de RSI, heatmap RSI e multi-analise varrem os mesmos 33
+// ativos x 6 tempos na mesma janela de 60 s. Antes cada painel refazia o
+// pedido e gravava a propria copia; agora a serie fica 4 min em memoria e dois
+// pedidos do mesmo par ao mesmo tempo dividem uma unica requisicao.
+const VX_SERIE_CACHE = new Map();    // 'vx_velas_SYM_tf' -> { em, velas, ind }
+const VX_SERIE_EM_CURSO = new Map(); // 'vx_velas_SYM_tf|alvo' -> Promise
+const VX_SERIE_TTL = 240000;
+
+// o painel devolve so a fatia que cabe na tela; o resto fica de reserva
+function vxFatiaSerie(velas, realLimit){
+  return velas.slice(-(typeof VX_LEVE !== 'undefined' && VX_LEVE ? 600 : Math.min(Math.max(realLimit, 400), 800)));
+}
+
+function vxSerieLembrada(chave, realLimit){
+  const guardada = VX_SERIE_CACHE.get(chave);
+  if (!guardada) return null;
+  if (Date.now() - guardada.em >= VX_SERIE_TTL) { VX_SERIE_CACHE.delete(chave); return null; }
+  // so serve se tiver vela suficiente para o pedido atual: a varredura guarda
+  // 250, o grafico aberto precisa da serie cheia e refaz o pedido
+  if (guardada.velas.length < Math.min(realLimit, 4000)) return null;
+  return vxFatiaSerie(guardada.velas, realLimit);
+}
+
+// O localStorage da origem tem ~5 MB e era usado como deposito de series:
+// medido no ar, 41 chaves somavam 5,9 MB — o painel vivia no limite da cota e
+// cada gravacao custava JSON.stringify de ate 4.000 velas na main thread.
+// Agora so serie curta vai para o disco, com teto de chaves e poda da mais velha.
+const VX_LS_MAX_VELAS = 700;
+const VX_LS_MAX_CHAVES = 12;
+
+function vxGuardarSerieLocal(chave, velas){
+  if (!Array.isArray(velas) || velas.length > VX_LS_MAX_VELAS) return;
+  const texto = JSON.stringify({ em: Date.now(), v: velas });
+  try {
+    localStorage.setItem(chave, texto);
+  } catch(e) {
+    // cota estourada: abre espaco nas series antigas e tenta mais uma vez
+    try { vxPodarSeriesLocal(chave, true); localStorage.setItem(chave, texto); }
+    catch(e2) { /* sem espaco: segue so com a memoria */ }
+    return;
+  }
+  vxPodarSeriesLocal(chave, false);
+}
+
+function vxPodarSeriesLocal(manter, agressivo){
+  try {
+    const chaves = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k || k.indexOf('vx_velas_') !== 0 || k === manter) continue;
+      // le so o comeco do texto: parsear a serie inteira so pra saber a data
+      // de gravacao custaria o mesmo que gravar de novo
+      let em = 0;
+      try { const m = /"em":(\d+)/.exec((localStorage.getItem(k) || '').slice(0, 40)); if (m) em = +m[1]; } catch(e) {}
+      chaves.push({ k: k, em: em });
+    }
+    chaves.sort(function(a, b){ return a.em - b.em; });
+    const teto = agressivo ? 4 : VX_LS_MAX_CHAVES;
+    while (chaves.length >= teto) localStorage.removeItem(chaves.shift().k);
+  } catch(e) { /* localStorage indisponivel: ignora */ }
+}
+
+async function vxSerieDaPonte(sym, tf, alvo, prioridade){
+  const chave = 'vx_velas_' + sym + '_' + tf;
+  const chaveFila = chave + '|' + alvo;
+  const jaIndo = VX_SERIE_EM_CURSO.get(chaveFila);
+  if (jaIndo) return jaIndo; // dois paineis pedindo o mesmo par: uma requisicao
+  const tarefa = (async function(){
+    const sep = VX_VELAS_URL.indexOf('?') >= 0 ? '&' : '?';
+    const u = VX_PACOTE_URL + sep + 'sym=' + encodeURIComponent(sym) + '&tf=' + encodeURIComponent(tf) + '&alvo=' + alvo;
+    // o relogio do timeout comeca quando o pedido sai da fila, nao quando ele
+    // entra — senao quem esperou 6 s ja vencia antes de ser enviado
+    const pedir = function(){
+      const sig = safeTimeoutSignal(9000);
+      return fetch(u, sig ? { signal: sig } : {});
+    };
+    const r = await vxFilaPonte(pedir, prioridade);
+    if (!r.ok) return null;
+    const j = await r.json();
+    if (!j || !j.ok || !Array.isArray(j.velas) || !j.velas.length) return null;
+    const velas = saneaVelas(j.velas.map(function(v){ return { time:v[0], open:v[1], high:v[2], low:v[3], close:v[4], volume:v[5] }; }));
+    if (velas.length <= 20) return null;
+    VX_SERIE_CACHE.set(chave, { em: Date.now(), velas: velas, ind: j.indicadores || null });
+    // teto de memoria: 120 series de 4.000 velas nao podem ficar para sempre
+    while (VX_SERIE_CACHE.size > 120) VX_SERIE_CACHE.delete(VX_SERIE_CACHE.keys().next().value);
+    vxGuardarSerieLocal(chave, velas);
+    return velas;
+  })();
+  VX_SERIE_EM_CURSO.set(chaveFila, tarefa);
+  const limpar = function(){ VX_SERIE_EM_CURSO.delete(chaveFila); };
+  tarefa.then(limpar, limpar);
+  return tarefa;
+}
+
+// A aba em segundo plano nao precisa varrer 33 ativos: o resultado chega de
+// qualquer jeito quando ela volta, e a varredura nao compete com o resto do
+// sistema por CPU nem multiplica pedidos a ponte.
+function vxPodeVarrer(){
+  return typeof document === 'undefined' || !document.hidden;
+}
+
 async function fetchCandles(sym,tf,limit=500){
   // Cambio e segundos nao existem nas fontes de cripto: quem entrega e a Deriv,
   // pelo socket do proprio navegador (o IP do dono; a Deriv recusa datacenter).
@@ -15062,13 +15164,25 @@ async function fetchCandles(sym,tf,limit=500){
   // o pedido inteiro, entao a abertura fica instantanea mesmo com a ponte fria
   const chaveCache = 'vx_velas_' + sym + '_' + fetchTf;
   if (aggFactor === 1) {
+    const lembrada = vxSerieLembrada(chaveCache, realLimit);
+    if (lembrada) {
+      // cache em memoria e a mesma serie que a ponte entregou ha menos de
+      // 4 min: nao e fonte degradada, entao nao acende o aviso da barra
+      lastDataSource = 'memoria';
+      updateDataSourceBadge('memoria', false);
+      return lembrada;
+    }
     try {
       const guardado = JSON.parse(localStorage.getItem(chaveCache) || 'null');
       // a serie guardada so serve se tiver vela suficiente pro pedido atual.
       // A varredura de fundo grava 250 velas; o grafico aberto pede 1.500 e
       // precisa refazer o pedido em vez de desenhar um historico curto.
       const precisaMin = Math.min(realLimit, 400);
-      if (guardado && Array.isArray(guardado.v) && guardado.v.length > 20 && guardado.v.length >= precisaMin && (Date.now() - guardado.em) < 240000) {
+      if (guardado && Array.isArray(guardado.v) && guardado.v.length > VX_LS_MAX_VELAS) {
+        // serie grande gravada por versao antiga: sai do disco, porque nao cabe
+        // mais no orcamento de ~5 MB da origem e a memoria ja cobre estes 4 min
+        try { localStorage.removeItem(chaveCache); } catch(e) {}
+      } else if (guardado && Array.isArray(guardado.v) && guardado.v.length > 20 && guardado.v.length >= precisaMin && (Date.now() - guardado.em) < 240000) {
         lastDataSource = 'cache local';
         updateDataSourceBadge('cache local', true);
         return guardado.v;
@@ -15079,42 +15193,28 @@ async function fetchCandles(sym,tf,limit=500){
   // ponte propria primeiro: uma requisicao entrega a serie inteira, ja limpa
   if (VX_VELAS_URL && aggFactor === 1) {
     try {
-      const sep = VX_VELAS_URL.indexOf('?') >= 0 ? '&' : '?';
       // Nem todo pedido precisa do historico inteiro. O grafico aberto pede
       // folga (4.000 velas, pro historico entrar em blocos sem nova
       // requisicao); a varredura pede 200 e recebia os mesmos 4.000 — eram
       // ~107 respostas de 4.000 velas por abertura do painel.
       const alvoPonte = limit >= 300 ? Math.max(realLimit, 4000) : Math.max(realLimit, 250);
-      const u = VX_PACOTE_URL + sep + 'sym=' + encodeURIComponent(sym) + '&tf=' + encodeURIComponent(fetchTf) + '&alvo=' + alvoPonte;
-      // o relogio do timeout comeca quando o pedido sai da fila, nao quando
-      // ele entra — senao quem esperou 6 s ja vencia antes de ser enviado
-      const pedirPonte = function(){
-        const sig = safeTimeoutSignal(9000);
-        return fetch(u, sig ? { signal: sig } : {});
-      };
-      const r = await vxFilaPonte(pedirPonte, limit >= 300);
-      if (r.ok) {
-        const j = await r.json();
-        if (j && j.ok && Array.isArray(j.velas) && j.velas.length) {
-          const parsed = saneaVelas(j.velas.map(function(v){ return { time:v[0], open:v[1], high:v[2], low:v[3], close:v[4], volume:v[5] }; }));
-          if (parsed.length > 20) {
-            lastDataSource = 'ponte';
-            updateDataSourceBadge('ponte', true);
-            try {
-              localStorage.setItem(chaveCache, JSON.stringify({ em: Date.now(), v: parsed.slice(-4000) }));
-            } catch(e) { /* sem espaco: segue sem cache */ }
-            // indicadores prontos do servidor: o navegador so desenha
-            try {
-              if (j.indicadores) {
-                vxInd = { sym: sym, tf: fetchTf, n: parsed.length, ultimo: parsed[parsed.length-1].time, ind: j.indicadores };
-              }
-            } catch(e) { vxInd = null; }
-            // o que veio a mais fica guardado para o historico entrar em blocos,
-            // sem nova requisicao e sem pintar tudo de uma vez
-            try { vxBuffer = { sym: sym, tf: fetchTf, velas: parsed }; } catch(e) {}
-            return parsed.slice(-(VX_LEVE ? 600 : Math.min(Math.max(realLimit, 400), 800)));
-          }
+      const parsed = await vxSerieDaPonte(sym, fetchTf, alvoPonte, limit >= 300);
+      if (parsed && parsed.length > 20) {
+        lastDataSource = 'ponte';
+        updateDataSourceBadge('ponte', true);
+        // Só o pedido do grafico mexe no buffer de historico e nos indicadores
+        // do servidor: antes a varredura de fundo de outro ativo sobrescrevia
+        // o historico do ativo que estava aberto na tela.
+        if (limit >= 300) {
+          const guardada = VX_SERIE_CACHE.get('vx_velas_' + sym + '_' + fetchTf);
+          try {
+            if (guardada && guardada.ind) {
+              vxInd = { sym: sym, tf: fetchTf, n: parsed.length, ultimo: parsed[parsed.length-1].time, ind: guardada.ind };
+            }
+          } catch(e) { vxInd = null; }
+          try { vxBuffer = { sym: sym, tf: fetchTf, velas: parsed }; } catch(e) {}
         }
+        return vxFatiaSerie(parsed, realLimit);
       }
     } catch(e) { /* sem ponte agora: segue para as corretoras */ }
   }
@@ -16505,6 +16605,7 @@ async function startMarketCapPanels(){
 async function updateRsiHeatmap(){
   const grid=document.getElementById('rsi-heat-grid');
   if(!grid)return;
+  if(!vxPodeVarrer())return;
   const syms=[...SYMBOLS.crypto,...SYMBOLS.metals];
   const results=await Promise.all(syms.map(async sym=>{
     try{
@@ -17272,6 +17373,7 @@ function computeAntecipador(candles){
 async function updateMultiAnalysis(){
   const container=document.getElementById('multi-analysis-cards');
   if(!container||!multiViewOpen)return;
+  if(!vxPodeVarrer())return;
   const results=await Promise.all(MULTI_SYMS.map(async sym=>{
     const mtfLocal=await fetchMTFFor(sym);
     const mtf=calcMTFFrom(mtfLocal);
@@ -17616,6 +17718,7 @@ function validarAtivo({mtf,ribbon,stochH1,micro,antecipador,fundingInterp,oiInte
 async function updateValidatorPanel(){
   const container=document.getElementById('multi-analysis-cards');
   if(!container||!validatorOpen)return;
+  if(!vxPodeVarrer())return;
   const results=await Promise.all(ALL_SYMS.map(async sym=>{
     const mtfLocal=await fetchMTFFor(sym);
     const mtf=calcMTFFrom(mtfLocal);
@@ -17701,6 +17804,7 @@ function getRsiClass(v){
 async function updateRsiTable(){
   const body=document.getElementById('rsit-body');
   if(!body||!rsiTableOpen)return;
+  if(!vxPodeVarrer())return;
   const results=await Promise.all(ALL_SYMS.map(async sym=>{
     const mtfLocal=await fetchMTFFor(sym);
     const microLocal=await fetchMicroFor(sym,mtfLocal);
