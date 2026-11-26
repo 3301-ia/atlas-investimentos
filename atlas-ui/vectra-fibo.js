@@ -123,9 +123,13 @@
     if (r.perdeuZero) {
       DESENHA_NEG.forEach(function (n) {
         try {
+          // sem rotulo no eixo: o motor de desenho (canvas) ja escreve os
+          // niveis sobre o grafico, e o cartao do fib traz os valores. Com
+          // axisLabelVisible os mesmos niveis viravam caixas empilhadas na
+          // escala de preco, uma por cima da outra.
           linhas.push(candleSeries.createPriceLine({
             price: preco(r, n), color: 'rgba(140,150,165,.85)', lineWidth: 1, lineStyle: 2,
-            axisLabelVisible: true, title: 'fib ' + String(n).replace('.', ',')
+            axisLabelVisible: false,
           }));
         } catch (e) {}
       });
@@ -138,7 +142,10 @@
           color: forte ? '#d9b45b' : cor,
           lineWidth: forte ? 2 : 1,
           lineStyle: n === FIM ? 0 : 2,
-          axisLabelVisible: true,
+          // so o nivel forte ganha rotulo no eixo; os outros cinco ficavam
+          // por cima dele e do proprio preco na escala (medido: 9 rotulos
+          // empilhados num grafico de 306px de altura)
+          axisLabelVisible: forte,
           title: 'fib ' + String(n).replace('.', ',')
         }));
       } catch (e) {}

@@ -189,7 +189,9 @@
             color: cor,
             lineWidth: 1,
             lineStyle: 2,
-            axisLabelVisible: true,
+            // o nivel aparece na linha e no chip do fib; repetir o texto no
+            // eixo empilhava rotulos sobre a escala de preco
+            axisLabelVisible: false,
             title: lv.toFixed(3) + (a.bateu ? ' ok' : '')
           }));
         } catch (e) {}

@@ -169,9 +169,11 @@
       var cor = n.rsi >= 50 ? '#E2685F' : '#3FBF8F';
       if (Math.abs(n.rsi - (r.opcoes ? r.opcoes.rsiEntrada : 27)) < 0.001) cor = '#D9B45B';
       try {
+        // o rotulo do alvo invertido fica no painel do RSI Matrix; no eixo
+        // ele competia com o fib e o trailing pelo mesmo espaco
         linhas.push(serie.createPriceLine({
           price: n.preco, color: cor, lineWidth: 1, lineStyle: 2,
-          axisLabelVisible: true, title: n.rotulo
+          axisLabelVisible: false, title: n.rotulo
         }));
       } catch (e) {}
     });
