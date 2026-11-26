@@ -204,12 +204,11 @@
       var base = typeof window.emaDir === 'function' ? window.emaDir(v, 8, 16)
         : (typeof window.confluenciaDir === 'function' ? window.confluenciaDir(v, { nivel: 3 }, dirImperial) : null);
       if (!base) return null;
-      // 5m/1m vêm do histórico normal; segundos dependem do livro de ticks ao
-      // vivo e só entram com a aba visível (em segundo plano o navegador
-      // estrangula os timers e a espera estourava)
-      var alvos = ['5m', '1m'];
-      if (document.visibilityState === 'visible') alvos = alvos.concat(['30s', '15s', '5s']);
-      alvos = alvos.filter(function (t) { return segTf(t) < segTf(CFG.tf); });
+      // CONFIRMAÇÃO VEM DE CIMA: o tempo maior diz se a estrutura sustenta, o
+      // tempo do painel dá o gatilho. Antes era o contrário (1m confirmado em
+      // 15s) e, além de inverter a lógica, dependia da fonte de segundos, que
+      // não responde — resultado: nenhum sinal.
+      var alvos = ['5m', '15m', '1h', '4h', '1d'].filter(function (t) { return segTf(t) > segTf(CFG.tf); }).slice(0, 2);
       // uma leitura por micro-tempo em paralelo, cada uma com teto de tempo: a
       // fonte de segundos pode simplesmente não responder, e a cascata não
       // pode ficar parada esperando por ela.
@@ -220,7 +219,7 @@
         ]);
       };
       var pedidos = alvos.map(function (t) {
-        return comTeto(window.fetchCandles(CFG.ativo, t, 1200), t.indexOf('s') > 0 && t.indexOf('m') < 0 ? 6000 : 4000);
+        return comTeto(window.fetchCandles(CFG.ativo, t, 1200), 4000);
       });
       var respostas = await Promise.all(pedidos);
       var micros = [];
@@ -230,7 +229,8 @@
         }
       });
       if (!micros.length || typeof window.cascataDir !== 'function') return base;
-      return window.cascataDir(base, v, micros, Math.min(2, micros.length));
+      // basta uma confirmação dos tempos maiores para liberar o lado
+      return window.cascataDir(base, v, micros, 1);
     }
     return null;
   }
@@ -766,7 +766,7 @@
       ' <label class="rc-campo"><span>ativo</span><select class="rc-sel" id="rc-ativo"><option value="BTCUSDT">BTC</option><option value="ETHUSDT">ETH</option><option value="ZECUSDT">ZEC</option></select></label>',
       ' <label class="rc-campo"><span>tempo</span><select class="rc-sel" id="rc-tf"><option>1m</option><option>3m</option><option>5m</option><option selected>15m</option><option>1h</option><option>4h</option></select></label>',
       ' <label class="rc-campo"><span>lote</span><select class="rc-sel" id="rc-lote"><option value="0.01">0,01</option><option value="0.03">0,03</option><option value="0.06">0,06</option></select></label>',
-      ' <label class="rc-campo"><span>sinal</span><select class="rc-sel" id="rc-sinal"><option value="ciclos">Ciclos (EMA 8×16 + RSI)</option><option value="supertrend2">SuperTrend ATR ×2</option><option value="supertrend3">SuperTrend ATR ×3</option><option value="imperial">Imperial (ZEMA+KAMA)</option><option value="confluencia">Confluência (9 votos)</option><option value="cascata">Cascata EMA 8×16 + micro</option></select></label>',
+      ' <label class="rc-campo"><span>sinal</span><select class="rc-sel" id="rc-sinal"><option value="ciclos">Ciclos (EMA 8×16 + RSI)</option><option value="supertrend2">SuperTrend ATR ×2</option><option value="supertrend3">SuperTrend ATR ×3</option><option value="imperial">Imperial (ZEMA+KAMA)</option><option value="confluencia">Confluência (9 votos)</option><option value="cascata">Cascata EMA 8×16 + tempo maior</option></select></label>',
       ' <label class="rc-campo"><span>alvos</span><select class="rc-sel" id="rc-alvos"><option value="atr" selected>ATR 2R (relatório)</option><option value="fibo">Fibo (alvo da perna)</option><option value="medias">Base: meia pilha</option><option value="pilha">Base: pilha inteira</option></select></label>',
       ' <label class="rc-campo"><span>filtro</span><select class="rc-sel" id="rc-filtro"><option value="base">Base a favor</option><option value="livre">Livre</option></select></label>',
       ' <label class="rc-campo"><span>proteção</span><select class="rc-sel" id="rc-hedge"><option value="auto">Stop vira trava</option><option value="nada">Stop normal</option></select></label>',
