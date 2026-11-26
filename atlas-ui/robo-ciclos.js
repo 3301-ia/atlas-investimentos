@@ -278,7 +278,7 @@
     var total = principal + hedgeRes + p.pnlTravas;
     ctx.ciclos.push({
       i: p.i, saida: i, lado: p.lado, entrada: p.entrada, precoSaida: preco, motivo: motivo,
-      risco: p.risco, stop: p.stop, alvo: p.alvo, alvoNome: p.alvoNome, unidade: p.unidade,
+      risco: p.risco, stop: p.stop, alvo: p.alvo, alvoNome: p.alvoNome, unidade: p.unidade, tamanho: p.tamanho,
       principal: principal, travas: p.pnlTravas, hedge: hedgeRes,
       total: total, r: total / (p.risco * p.tamanho), lista: p.travas.slice()
     });
@@ -313,6 +313,71 @@
     });
     return { ciclos: ctx.ciclos.length, prematuras: prematuras, pctPrematuras: +(prematuras / ctx.ciclos.length * 100).toFixed(1),
              perdidoUsd: +perdidoTotal.toFixed(2), porMotivo: porMotivo, exemplos: lista };
+  }
+
+  // ── LIVRO MTF: um robô por tempo ────────────────────────────────────
+  // Roda o mesmo motor em vários tempos e mede o que o usuário descreveu: em
+  // algum momento uma trava do micro fica contra uma venda aberta no macro? Se
+  // sim, quanto tempo o livro fica travado (exposição líquida zero) e quanto
+  // isso rende? Travado é exposição zerada, não lucro: as duas pernas se anulam.
+  async function mtf(tfs, cfg) {
+    var lista = tfs || ['1m', '5m', '15m', '1h', '4h', '1d'];
+    var antes = { tf: CFG.tf, sinal: CFG.sinal, alvos: CFG.alvos, filtro: CFG.filtro, hedge: CFG.hedge };
+    if (cfg) Object.assign(CFG, cfg);
+    var saida = [];
+    for (var k = 0; k < lista.length; k++) {
+      var tf = lista[k], v = null;
+      CFG.tf = tf;
+      try { v = await window.fetchCandles(CFG.ativo, tf, 800); } catch (e) { v = null; }
+      if (!Array.isArray(v) || v.length < 80) { saida.push({ tf: tf, erro: 'sem série' }); continue; }
+      await preparar(v);
+      var n = S.velas.length;
+      for (var i = 0; i < n; i++) passo(true);
+      var c = S.teste;
+      var acertos = c.ciclos.filter(function (x) { return x.total > 0; }).length;
+      saida.push({
+        tf: tf, velas: n, ciclos: c.ciclos.length,
+        acerto: c.ciclos.length ? +(acertos / c.ciclos.length * 100).toFixed(1) : 0,
+        acumulado: +c.equity.toFixed(2),
+        de: S.velas[0].time, ate: S.velas[n - 1].time,
+        lista: c.ciclos.map(function (x) {
+          return { tEntrada: S.velas[x.i].time, tSaida: S.velas[Math.min(x.saida, n - 1)].time,
+                   lado: x.lado, tamanho: x.tamanho, total: x.total };
+        })
+      });
+    }
+    Object.assign(CFG, antes);
+    // varredura de eventos: abre na entrada, fecha na saída
+    var eventos = [], tMin = Infinity, tMax = -Infinity;
+    saida.forEach(function (r) {
+      (r.lista || []).forEach(function (c) {
+        eventos.push({ t: c.tEntrada, d: c.lado * c.tamanho, abre: 1 });
+        eventos.push({ t: c.tSaida, d: -c.lado * c.tamanho, abre: 0 });
+        if (c.tEntrada < tMin) tMin = c.tEntrada;
+        if (c.tSaida > tMax) tMax = c.tSaida;
+      });
+    });
+    eventos.sort(function (a, b) { return a.t - b.t; });
+    var liquida = 0, pernas = 0, travadoMs = 0, ultimo = tMin, picoAbs = 0, momentos = 0;
+    eventos.forEach(function (e) {
+      if (e.t > ultimo) {
+        if (Math.abs(liquida) < 1e-9 && pernas >= 2) travadoMs += e.t - ultimo;
+        ultimo = e.t;
+      }
+      liquida += e.d;
+      pernas += e.abre ? 1 : -1;
+      if (Math.abs(liquida) > picoAbs) picoAbs = Math.abs(liquida);
+      if (Math.abs(liquida) < 1e-9 && pernas >= 2) momentos++;
+    });
+    var janela = tMax > tMin ? (tMax - tMin) : 1;
+    return {
+      porTempo: saida,
+      realizado: +saida.reduce(function (s, r) { return s + (r.acumulado || 0); }, 0).toFixed(2),
+      travadoPct: +(travadoMs / janela * 100).toFixed(1),
+      janelaDias: +(janela / 86400).toFixed(1),
+      exposicaoMaxima: +picoAbs.toFixed(3),
+      momentosTravados: momentos
+    };
   }
 
   function passo(mudo) {
@@ -856,5 +921,6 @@
   // escada), que avanca as velas em silencio e repinta uma vez no fim
   window.RoboCiclos = { preparar: preparar, passo: passo, estado: S, config: CFG, pintar: pintarTeste, desenhar: desenhar,
     direcao: function () { return S.dir; }, definirSinal: function (s) { CFG.sinal = s; }, construirDirecao: construirDirecao,
-    diagnostico: function (janela) { return diagnostico(S.teste, janela); } };
+    diagnostico: function (janela) { return diagnostico(S.teste, janela); },
+    mtf: mtf };
 })();
