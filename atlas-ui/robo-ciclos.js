@@ -20,7 +20,7 @@
   })();
 
   var CFG = { ativo: 'BTCUSDT', tf: '15m', lote: 0.01, fator: 0.6, alvo: 2, stop: 1, corte: 0.5, alvoTrava: 0.5,
-              sinal: 'ciclos', alvos: 'medias', niveis: [1 / 3, 2 / 3, 1, 4 / 3, 5 / 3] };
+              sinal: 'ciclos', alvos: 'atr', filtro: 'base', niveis: [1 / 3, 2 / 3, 1, 4 / 3, 5 / 3] };
 
   var S = {
     velas: [], ind: null, dir: null, motor: null,
@@ -72,8 +72,14 @@
   function indicadores(v) {
     var cl = v.map(function (x) { return x.close; });
     var e55 = ema(cl, 55), m56 = smaCalc(cl, 56), m89 = smaCalc(cl, 89), e98 = ema(cl, 98), e200 = ema(cl, 200);
+    var e8 = ema(cl, 8), e16 = ema(cl, 16);
+    var cruzes = [];
+    for (var i = 1; i < cl.length; i++) {
+      if (e8[i - 1] <= e16[i - 1] && e8[i] > e16[i]) cruzes.push({ i: i, dir: 'alta' });
+      else if (e8[i - 1] >= e16[i - 1] && e8[i] < e16[i]) cruzes.push({ i: i, dir: 'baixa' });
+    }
     return {
-      e8: ema(cl, 8), e16: ema(cl, 16), rsi: rsiCalc(cl, 14), atr: atrCalc(v, 14),
+      e8: e8, e16: e16, rsi: rsiCalc(cl, 14), atr: atrCalc(v, 14), cruzes: cruzes,
       // base de médias do painel, na ordem em que elas seguram o preço
       ma55: e55, ma56: m56, ma89: m89, ma98: e98, ma200: e200,
       base: [
@@ -117,6 +123,47 @@
     return { dist: proj, nivel: entrada + lado * proj,
              nome: largura * fator > CFG.alvo * risco * 1.2 ? (fator === 1 ? 'pilha inteira' : 'meia pilha') : 'ATR ' + CFG.alvo + 'R' };
   }
+  // FILTRO DA BASE: a operação só nasce a favor da pilha de médias — compra
+  // quando a EMA 55 está acima da EMA 200, venda quando está abaixo. É o que o
+  // usuário pediu: alvo segue o ATR (2R), a base serve para não operar contra
+  // a estrutura.
+  function passaFiltroBase(i, lado) {
+    if (CFG.filtro === 'livre') return true;
+    var m = S.ind;
+    if (!m || !m.ma55 || !m.ma200) return true;
+    var a = m.ma55[i], b = m.ma200[i];
+    if (a == null || b == null) return true;
+    return lado === 1 ? a >= b : a <= b;
+  }
+
+  // ALVO PELO FIBO: mesma régua do painel (perna pelo cruzamento EMA 8x16,
+  // p0 = extremo antes do cruzamento, p1 = extremo até a vela atual). O alvo é
+  // o nível 1,666 da perna (o "alvo" que o cartão do fibo mostra); 2,333 e
+  // 1,333 entram como alternativas quando o nível padrão já ficou para trás.
+  // p1 usa só velas até i: nada de ler o futuro.
+  function alvoFibo(i, entrada, lado, risco) {
+    var cz = (S.ind && S.ind.cruzes) || [], k = -1;
+    for (var j = 0; j < cz.length; j++) { if (cz[j].i <= i) k = j; else break; }
+    if (k < 0) return null;
+    var cr = cz[k], ini = k > 0 ? cz[k - 1].i : Math.max(0, cr.i - 96);
+    var p0, p1, z;
+    if (cr.dir === 'baixa') {
+      p0 = -Infinity; for (z = ini; z <= cr.i; z++) p0 = Math.max(p0, S.velas[z].high);
+      p1 = Infinity; for (z = cr.i; z <= i; z++) p1 = Math.min(p1, S.velas[z].low);
+    } else {
+      p0 = Infinity; for (z = ini; z <= cr.i; z++) p0 = Math.min(p0, S.velas[z].low);
+      p1 = -Infinity; for (z = cr.i; z <= i; z++) p1 = Math.max(p1, S.velas[z].high);
+    }
+    if (!isFinite(p0) || !isFinite(p1) || p0 === p1) return null;
+    var niveis = [1.666, 2.333, 1.333];
+    for (z = 0; z < niveis.length; z++) {
+      var preco = p0 + (p1 - p0) * niveis[z];
+      var dist = (preco - entrada) * lado;
+      if (dist >= risco * 0.5) return { dist: dist, nivel: preco, nome: 'fibo ' + String(niveis[z]).replace('.', ',') };
+    }
+    return null;
+  }
+
   function sinalEm(i) {
     var m = S.ind;
     if (i < 1 || m.atr[i] == null) return 0;
@@ -196,10 +243,12 @@
   function abrir(ctx, i, lado) {
     var risco = CFG.stop * S.ind.atr[i];
     var ent = S.velas[i].close;
-    // alvos: 'medias' segue a base (55/56/89/98/200), 'atr' é o 2R do relatório
-    var alvo = CFG.alvos === 'atr'
-      ? { dist: CFG.alvo * risco, nivel: ent + lado * CFG.alvo * risco, nome: 'ATR ' + CFG.alvo + 'R' }
-      : alvoPorMedias(i, ent, lado);
+    // alvos: 'atr' é o 2R do relatório (padrão), 'fibo' usa a perna do painel,
+    // 'medias'/'pilha' projetam a base de médias
+    var alvo;
+    if (CFG.alvos === 'atr') alvo = { dist: CFG.alvo * risco, nivel: ent + lado * CFG.alvo * risco, nome: 'ATR ' + CFG.alvo + 'R' };
+    else if (CFG.alvos === 'fibo') alvo = alvoFibo(i, ent, lado, risco) || { dist: CFG.alvo * risco, nivel: ent + lado * CFG.alvo * risco, nome: 'ATR ' + CFG.alvo + 'R' };
+    else alvo = alvoPorMedias(i, ent, lado);
     ctx.pos = {
       lado: lado, i: i, entrada: ent, risco: risco, tamanho: CFG.lote,
       stop: ent - lado * risco, alvo: alvo.nivel, alvoNome: alvo.nome,
@@ -240,7 +289,7 @@
     var abriuAgora = false;
     if (!p) {
       var s = sinalEm(i);
-      if (s) { abrir(ctx, i, s); abriuAgora = true; }
+      if (s && passaFiltroBase(i, s)) { abrir(ctx, i, s); abriuAgora = true; }
     }
 
     // a posicao nasce no fechamento desta vela: o range dela ja passou, entao
@@ -638,7 +687,8 @@
       ' <label class="rc-campo"><span>tempo</span><select class="rc-sel" id="rc-tf"><option>1m</option><option>3m</option><option>5m</option><option selected>15m</option><option>1h</option><option>4h</option></select></label>',
       ' <label class="rc-campo"><span>lote</span><select class="rc-sel" id="rc-lote"><option value="0.01">0,01</option><option value="0.03">0,03</option><option value="0.06">0,06</option></select></label>',
       ' <label class="rc-campo"><span>sinal</span><select class="rc-sel" id="rc-sinal"><option value="ciclos">Ciclos (EMA 8×16 + RSI)</option><option value="supertrend2">SuperTrend ATR ×2</option><option value="supertrend3">SuperTrend ATR ×3</option><option value="imperial">Imperial (ZEMA+KAMA)</option><option value="confluencia">Confluência (9 votos)</option><option value="cascata">Cascata EMA 8×16 + micro</option></select></label>',
-      ' <label class="rc-campo"><span>alvos</span><select class="rc-sel" id="rc-alvos"><option value="medias">Base: meia pilha</option><option value="pilha">Base: pilha inteira</option><option value="atr">ATR 2R (relatório)</option></select></label>',
+      ' <label class="rc-campo"><span>alvos</span><select class="rc-sel" id="rc-alvos"><option value="atr" selected>ATR 2R (relatório)</option><option value="fibo">Fibo (alvo da perna)</option><option value="medias">Base: meia pilha</option><option value="pilha">Base: pilha inteira</option></select></label>',
+      ' <label class="rc-campo"><span>filtro</span><select class="rc-sel" id="rc-filtro"><option value="base">Base a favor</option><option value="livre">Livre</option></select></label>',
       ' <label class="rc-campo"><span>ritmo</span><select class="rc-sel" id="rc-ms"><option value="500">lento</option><option value="220" selected>normal</option><option value="80">rápido</option></select></label>',
       ' <button type="button" class="rc-btn" id="rc-rodar">Rodar</button>',
       ' <button type="button" class="rc-btn" id="rc-play">▶ testar</button>',
@@ -666,6 +716,14 @@
     el.sinal.value = CFG.sinal;
     el.alvos = card.querySelector('#rc-alvos');
     el.alvos.value = CFG.alvos;
+    el.filtro = card.querySelector('#rc-filtro');
+    el.filtro.value = CFG.filtro;
+    el.filtro.addEventListener('change', function () {
+      CFG.filtro = el.filtro.value;
+      var velas = S.velas.slice();
+      parar();
+      if (velas.length > 80) preparar(velas); else preparar();
+    });
     el.alvos.addEventListener('change', function () {
       CFG.alvos = el.alvos.value;
       var velas = S.velas.slice();
