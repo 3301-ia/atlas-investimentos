@@ -27,3 +27,8 @@ Thumbs.db
 # Os .dc.html e o canvas.json, que sao os fontes, continuam versionados.
 .design/abertura-vectra.html
 .design/preview-abertura.html
+
+# Python
+__pycache__/
+*.pyc
+.venv/
