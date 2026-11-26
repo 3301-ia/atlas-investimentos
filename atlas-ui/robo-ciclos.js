@@ -178,6 +178,24 @@
   function desenhar() {
     criarGrafico();
     if (!S.serie) return;
+    // O cartao abre e fecha (e no celular ele nasce dentro da gaveta): se o
+    // grafico foi criado escondido, ele fica com 0 de largura e nao se ajusta
+    // sozinho quando aparece. Aqui ele e redimensionado para o container atual
+    // antes de pintar, senao a serie e as marcas somem.
+    var host = el.graf;
+    // quando o cartao aparece (aba aberta, gaveta do celular), o tamanho muda:
+    // repinta para o grafico ocupar a largura real
+    if (typeof ResizeObserver !== 'undefined' && host && !el._rxObs) {
+      el._rxObs = new ResizeObserver(function () { try { desenhar(); } catch (e) {} });
+      el._rxObs.observe(host);
+    }
+    var larg = host ? host.clientWidth : 0, alt = host ? host.clientHeight : 0;
+    if (S.chart && larg > 0 && alt > 0) {
+      try {
+        var atual = S.chart.options ? S.chart.options() : null;
+        if (!atual || atual.width !== larg || atual.height !== alt) S.chart.applyOptions({ width: larg, height: alt });
+      } catch (e) {}
+    }
     var ctx = S.teste;
     var ate = ctx ? ctx.i : S.velas.length - 1;
     var de = Math.max(0, ate - 260);
@@ -310,15 +328,23 @@
     return out;
   }
 
-  async function preparar() {
+  // velasExternas: serie pronta (ex.: core/dados/m15_btcusdt_15m.json) para
+  // estudar o robo em papel sem depender da ponte nem do modo ao vivo.
+  async function preparar(velasExternas) {
     el.rodar.textContent = 'lendo...'; el.rodar.disabled = true;
+    var externa = Array.isArray(velasExternas) && velasExternas.length > 80;
     try {
-      S.velas = await carregarVelas();
+      S.velas = externa ? norm(velasExternas) : await carregarVelas();
       if (S.velas.length < 80) throw new Error('série curta');
       S.ind = indicadores(S.velas);
-      S.teste = novoTeste(Math.max(20, S.velas.length - 900));
+      // serie externa e a serie inteira do estudo: o teste comeca no primeiro
+      // ponto valido para estudar todos os ciclos, e nao na janela dos ultimos
+      // 900 que o acompanhamento ao vivo usa
+      S.teste = novoTeste(externa ? 20 : Math.max(20, S.velas.length - 900));
       pintarTeste();
-      el.aviso.textContent = 'Série real de ' + S.velas.length + ' velas de ' + CFG.tf + ' em ' + CFG.ativo + '. Teste posicionado no início da janela: toque em ▶ para o robô operar vela por vela, como se fosse ao vivo.';
+      el.aviso.textContent = externa
+        ? 'Série do estudo · ' + S.velas.length + ' velas de ' + CFG.tf + ' em ' + CFG.ativo + '. O robô opera vela por vela sobre ela: ▶ testar segue de onde parou.'
+        : 'Série real de ' + S.velas.length + ' velas de ' + CFG.tf + ' em ' + CFG.ativo + '. Teste posicionado no início da janela: toque em ▶ para o robô operar vela por vela, como se fosse ao vivo.';
     } catch (e) {
       el.aviso.textContent = 'Não consegui ler a série agora. Toque em Rodar de novo em alguns segundos.';
     } finally { el.rodar.textContent = 'Rodar'; el.rodar.disabled = false; }
@@ -503,5 +529,7 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciar);
   else setTimeout(iniciar, 60);
 
-  window.RoboCiclos = { preparar: preparar, passo: passo, estado: S, config: CFG };
+  // pintar/desenhar expostos para quem conduz o teste por fora (painel da
+  // escada), que avanca as velas em silencio e repinta uma vez no fim
+  window.RoboCiclos = { preparar: preparar, passo: passo, estado: S, config: CFG, pintar: pintarTeste, desenhar: desenhar };
 })();
