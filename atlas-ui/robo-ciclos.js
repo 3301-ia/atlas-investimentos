@@ -20,7 +20,7 @@
   })();
 
   var CFG = { ativo: 'BTCUSDT', tf: '15m', lote: 0.01, fator: 0.6, alvo: 2, stop: 1, corte: 0.5, alvoTrava: 0.5,
-              sinal: 'ciclos', niveis: [1 / 3, 2 / 3, 1, 4 / 3, 5 / 3] };
+              sinal: 'ciclos', alvos: 'medias', niveis: [1 / 3, 2 / 3, 1, 4 / 3, 5 / 3] };
 
   var S = {
     velas: [], ind: null, dir: null, motor: null,
@@ -60,9 +60,62 @@
     }
     return o;
   }
+  function smaCalc(src, p) {
+    var o = new Array(src.length).fill(null), s = 0;
+    for (var i = 0; i < src.length; i++) {
+      s += src[i];
+      if (i >= p) s -= src[i - p];
+      if (i >= p - 1) o[i] = s / p;
+    }
+    return o;
+  }
   function indicadores(v) {
     var cl = v.map(function (x) { return x.close; });
-    return { e8: ema(cl, 8), e16: ema(cl, 16), rsi: rsiCalc(cl, 14), atr: atrCalc(v, 14) };
+    var e55 = ema(cl, 55), m56 = smaCalc(cl, 56), m89 = smaCalc(cl, 89), e98 = ema(cl, 98), e200 = ema(cl, 200);
+    return {
+      e8: ema(cl, 8), e16: ema(cl, 16), rsi: rsiCalc(cl, 14), atr: atrCalc(v, 14),
+      // base de médias do painel, na ordem em que elas seguram o preço
+      ma55: e55, ma56: m56, ma89: m89, ma98: e98, ma200: e200,
+      base: [
+        { nome: 'EMA 55', s: e55 }, { nome: 'MA 56', s: m56 }, { nome: 'MA 89', s: m89 },
+        { nome: 'EMA 98', s: e98 }, { nome: 'EMA 200', s: e200 }
+      ]
+    };
+  }
+
+  // ALVO PELA BASE DE MÉDIAS: o alvo é o nível mais alto da pilha de médias
+  // (8/16 no gatilho, 55/56/89/98/200 como estrutura) que está à frente do
+  // preço, na direção da operação. Antes o alvo era 2R de ATR — curto demais:
+  // ele parava antes da primeira média e não seguia a base. Regras:
+  //   · precisa pagar pelo menos o risco (1 ATR), senão não é alvo, é ruído;
+  //   · teto de 8R para uma média perdida não virar alvo absurdo;
+  //   · sem nenhum nível à frente, cai no 2R de ATR (piso antigo).
+  function alvoPorMedias(i, entrada, lado) {
+    var m = S.ind, risco = (m.atr[i] || entrada * 0.01);
+    var niveis = [];
+    m.base.forEach(function (b) {
+      var v = b.s[i];
+      if (v == null || !isFinite(v)) return;
+      var dist = (v - entrada) * lado;   // > 0 = nível à frente, na direção
+      if (dist > 0) niveis.push({ dist: dist, nivel: v, nome: b.nome });
+    });
+    var pagam = niveis.filter(function (n) { return n.dist >= risco * 0.999; });
+    var dentroDoTeto = pagam.filter(function (n) { return n.dist <= risco * 8; });
+    if (dentroDoTeto.length) {
+      // o mais distante que ainda cabe no teto = topo da pilha na direção
+      return dentroDoTeto[dentroDoTeto.length - 1];
+    }
+    if (pagam.length) return pagam[0];
+    // Em tendência as médias ficam ATRÁS do preço: não existe nível à frente.
+    // Aí o alvo sai da própria pilha — metade da largura que ela ocupa (distância
+    // entre a média mais curta e a mais longa da base), com piso de 2R.
+    var vals = m.base.map(function (b) { return b.s[i]; }).filter(function (v) { return v != null && isFinite(v); });
+    var largura = vals.length > 1 ? Math.abs(Math.max.apply(null, vals) - Math.min.apply(null, vals)) : 0;
+    // 'medias' projeta meia pilha; 'pilha' usa a largura inteira da base
+    var fator = CFG.alvos === 'pilha' ? 1 : 0.5;
+    var proj = Math.max(CFG.alvo * risco, largura * fator);
+    return { dist: proj, nivel: entrada + lado * proj,
+             nome: largura * fator > CFG.alvo * risco * 1.2 ? (fator === 1 ? 'pilha inteira' : 'meia pilha') : 'ATR ' + CFG.alvo + 'R' };
   }
   function sinalEm(i) {
     var m = S.ind;
@@ -143,10 +196,17 @@
   function abrir(ctx, i, lado) {
     var risco = CFG.stop * S.ind.atr[i];
     var ent = S.velas[i].close;
+    // alvos: 'medias' segue a base (55/56/89/98/200), 'atr' é o 2R do relatório
+    var alvo = CFG.alvos === 'atr'
+      ? { dist: CFG.alvo * risco, nivel: ent + lado * CFG.alvo * risco, nome: 'ATR ' + CFG.alvo + 'R' }
+      : alvoPorMedias(i, ent, lado);
     ctx.pos = {
       lado: lado, i: i, entrada: ent, risco: risco, tamanho: CFG.lote,
-      stop: ent - lado * risco, alvo: ent + lado * CFG.alvo * risco,
-      travas: [], usados: {}, pnlTravas: 0
+      stop: ent - lado * risco, alvo: alvo.nivel, alvoNome: alvo.nome,
+      // unidade da escada: no modo relatório ela é o risco (passo de 1R, como
+      // sempre foi); nos modos de base ela é a distância até o alvo, então a
+      // escada sobe em direção às médias (1/3, 2/3, 3/3 do alvo).
+      unidade: CFG.alvos === 'atr' ? risco : alvo.dist, travas: [], usados: {}, pnlTravas: 0
     };
   }
 
@@ -162,7 +222,8 @@
     var total = principal + p.pnlTravas;
     ctx.ciclos.push({
       i: p.i, saida: i, lado: p.lado, entrada: p.entrada, precoSaida: preco, motivo: motivo,
-      risco: p.risco, stop: p.stop, alvo: p.alvo, principal: principal, travas: p.pnlTravas,
+      risco: p.risco, stop: p.stop, alvo: p.alvo, alvoNome: p.alvoNome, unidade: p.unidade,
+      principal: principal, travas: p.pnlTravas,
       total: total, r: total / (p.risco * p.tamanho), lista: p.travas.slice()
     });
     ctx.equity += total;
@@ -196,7 +257,7 @@
 
     p = ctx.pos;
     if (p && !abriuAgora) {
-      var d2 = p.risco;
+      var d2 = p.unidade || p.risco;
       CFG.niveis.forEach(function (niv, k) {
         if (p.usados[k]) return;
         var nivel = p.entrada + p.lado * niv * d2;
@@ -309,7 +370,7 @@
       ['estado', p ? '<span class="' + (p.lado === 1 ? 'rc-pos' : 'rc-neg') + '">' + (p.lado === 1 ? 'COMPRADO' : 'VENDIDO') + '</span>' : 'fora do mercado'],
       ['vela', hhmm(v.time) + ' · ' + n(v.close, 1)],
       ['entrada', p ? n(p.entrada, 1) : '--'],
-      ['stop / alvo', p ? n(p.stop, 1) + ' / ' + n(p.alvo, 1) : '--'],
+      ['stop / alvo', p ? n(p.stop, 1) + ' / ' + n(p.alvo, 1) + (p.alvoNome ? ' · ' + p.alvoNome : '') : '--'],
       ['travas abertas', p ? String(p.travas.filter(function (t) { return t.estado === 'aberta'; }).length) : '0'],
       ['resultado aberto', '<span class="' + cls(aberto) + '">' + usd(aberto) + '</span>'],
       ['ciclos fechados', String(ctx.ciclos.length)],
@@ -339,12 +400,18 @@
     var i = ctx.i, m = S.ind;
     if (m && m.atr[i] != null) {
       var r = m.rsi[i], at = m.atr[i], preco = v.close;
+      var ladoPrev = m.e8[i] > m.e16[i] ? 1 : -1;
+      var alvoPrev = alvoPorMedias(i, preco, ladoPrev);
+      var baseTxt = m.base.map(function (b) {
+        return b.nome.replace('EMA ', 'e').replace('MA ', 'm') + ' ' + (b.s[i] != null ? n(b.s[i], 0) : '--');
+      }).join(' · ');
       el.disparo.innerHTML = [
         ['cruzamento', m.e8[i] > m.e16[i] ? 'EMA8 acima' : 'EMA8 abaixo'],
         ['RSI 14', n(r, 1) + (r > 55 ? ' · força de compra' : r < 45 ? ' · força de venda' : ' · sem força')],
         ['ATR 14', n(at, 1)],
-        ['risco por lote', 'US$ ' + n(at * CFG.lote, 2)],
-        ['se entrar agora', 'stop ' + n(preco - at, 1) + ' · alvo ' + n(preco + 2 * at, 1)]
+        ['base de médias', baseTxt],
+        ['alvo pela base', n(alvoPrev.nivel, 1) + ' · ' + alvoPrev.nome],
+        ['se entrar agora', 'stop ' + n(preco - ladoPrev * at, 1) + ' · risco 1 ATR']
       ].map(function (l) { return '<i>' + l[0] + '</i><b>' + l[1] + '</b>'; }).join('');
     }
     desenhar();
@@ -571,6 +638,7 @@
       ' <label class="rc-campo"><span>tempo</span><select class="rc-sel" id="rc-tf"><option>1m</option><option>3m</option><option>5m</option><option selected>15m</option><option>1h</option><option>4h</option></select></label>',
       ' <label class="rc-campo"><span>lote</span><select class="rc-sel" id="rc-lote"><option value="0.01">0,01</option><option value="0.03">0,03</option><option value="0.06">0,06</option></select></label>',
       ' <label class="rc-campo"><span>sinal</span><select class="rc-sel" id="rc-sinal"><option value="ciclos">Ciclos (EMA 8×16 + RSI)</option><option value="supertrend2">SuperTrend ATR ×2</option><option value="supertrend3">SuperTrend ATR ×3</option><option value="imperial">Imperial (ZEMA+KAMA)</option><option value="confluencia">Confluência (9 votos)</option><option value="cascata">Cascata EMA 8×16 + micro</option></select></label>',
+      ' <label class="rc-campo"><span>alvos</span><select class="rc-sel" id="rc-alvos"><option value="medias">Base: meia pilha</option><option value="pilha">Base: pilha inteira</option><option value="atr">ATR 2R (relatório)</option></select></label>',
       ' <label class="rc-campo"><span>ritmo</span><select class="rc-sel" id="rc-ms"><option value="500">lento</option><option value="220" selected>normal</option><option value="80">rápido</option></select></label>',
       ' <button type="button" class="rc-btn" id="rc-rodar">Rodar</button>',
       ' <button type="button" class="rc-btn" id="rc-play">▶ testar</button>',
@@ -596,6 +664,14 @@
     el.lote = card.querySelector('#rc-lote'); el.ms = card.querySelector('#rc-ms');
     el.sinal = card.querySelector('#rc-sinal');
     el.sinal.value = CFG.sinal;
+    el.alvos = card.querySelector('#rc-alvos');
+    el.alvos.value = CFG.alvos;
+    el.alvos.addEventListener('change', function () {
+      CFG.alvos = el.alvos.value;
+      var velas = S.velas.slice();
+      parar();
+      if (velas.length > 80) preparar(velas); else preparar();
+    });
     el.sinal.addEventListener('change', function () {
       CFG.sinal = el.sinal.value;
       var velas = S.velas.slice();
