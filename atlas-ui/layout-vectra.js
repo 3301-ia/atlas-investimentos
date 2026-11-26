@@ -16,7 +16,8 @@
     { id: 'deriv-card', aba: 'Deriv', icone: '◇' },
     { id: 'rsi-matrix-card', aba: 'RSI Matrix', icone: '🔷' },
     { id: 'robo-ciclos-card', aba: 'Ciclos', icone: '🤖' },
-    { id: 'robo-vivo-card', aba: 'Ao vivo', icone: '●' }
+    { id: 'robo-vivo-card', aba: 'Ao vivo', icone: '●' },
+    { id: 'impressor-card', aba: 'Dados', icone: '🗄' }
   ];
   var PRIMARIOS = ['inicio', 'codigo', 'vigia', 'estudos', 'imperial', 'consenso', 'rsi matrix', 'analise', 'alertas'];
 

@@ -96,12 +96,13 @@
     if (CFG.sinal === 'supertrend3' && typeof window.supertrendDir === 'function') return window.supertrendDir(v, 14, 3);
     if (CFG.sinal === 'imperial') return dirImperial;
     if (CFG.sinal === 'confluencia' && typeof window.confluenciaDir === 'function') return window.confluenciaDir(v, { nivel: 3 }, dirImperial);
-    // CASCATA: o tempo base manda, mas só vale se os micro-tempos abaixo dele
-    // (1m → 30s → 15s → 5s) concordarem. Base = confluência arbitrada.
+    // CASCATA: quem governa é o cruzamento das EMA 8 x 16 no tempo base, e o
+    // mesmo cruzamento precisa estar vivo nos micro-tempos abaixo dele. É o
+    // desenho do CONFLUATOR: as EMAs 8/16 andam entre as médias maiores e o
+    // cruzamento delas é o gatilho; o micro-tempo é a confirmação.
     if (CFG.sinal === 'cascata') {
-      var base = typeof window.confluenciaDir === 'function'
-        ? window.confluenciaDir(v, { nivel: 3 }, dirImperial)
-        : (typeof window.supertrendDir === 'function' ? window.supertrendDir(v, 14, 2) : null);
+      var base = typeof window.emaDir === 'function' ? window.emaDir(v, 8, 16)
+        : (typeof window.confluenciaDir === 'function' ? window.confluenciaDir(v, { nivel: 3 }, dirImperial) : null);
       if (!base) return null;
       // 5m/1m vêm do histórico normal; segundos dependem do livro de ticks ao
       // vivo e só entram com a aba visível (em segundo plano o navegador
@@ -371,15 +372,31 @@
         if (Array.isArray(v) && v.length > 80) return norm(v);
       }
     } catch (e) {}
+    // 2) o deposito do impressor: o historico ja lido fica guardado no navegador
+    // e vale mais que uma nova chamada de rede (funciona mesmo offline)
+    try {
+      if (window.ImpressorAtlas) {
+        var dep = await window.ImpressorAtlas.serie(CFG.ativo, CFG.tf);
+        if (Array.isArray(dep) && dep.length > 80) return norm(dep);
+      }
+    } catch (e) {}
     try {
       var r = await fetch(PONTE + '/velas?sym=' + encodeURIComponent(CFG.ativo) + '&tf=' + encodeURIComponent(CFG.tf) + '&alvo=1500', { cache: 'no-store' });
       var d = await r.json();
       if (d && d.velas && d.velas.length > 80) return norm(d.velas);
     } catch (e) {}
     // espelho: so segura a tela quando o principal nao responde
-    var r2 = await fetch(PONTE + '/pacote?sym=' + encodeURIComponent(CFG.ativo) + '&tf=' + encodeURIComponent(CFG.tf) + '&alvo=1500', { cache: 'no-store' });
-    var d2 = await r2.json();
-    return norm(d2.velas || []);
+    try {
+      var r2 = await fetch(PONTE + '/pacote?sym=' + encodeURIComponent(CFG.ativo) + '&tf=' + encodeURIComponent(CFG.tf) + '&alvo=1500', { cache: 'no-store' });
+      var d2 = await r2.json();
+      return norm(d2.velas || []);
+    } catch (e) {
+      try {
+        var dep2 = window.ImpressorAtlas ? await window.ImpressorAtlas.serie(CFG.ativo, CFG.tf) : null;
+        if (Array.isArray(dep2)) return norm(dep2);
+      } catch (e2) {}
+      return [];
+    }
   }
   function norm(l) {
     var out = [], vistos = {};
@@ -553,7 +570,7 @@
       ' <label class="rc-campo"><span>ativo</span><select class="rc-sel" id="rc-ativo"><option value="BTCUSDT">BTC</option><option value="ETHUSDT">ETH</option><option value="ZECUSDT">ZEC</option></select></label>',
       ' <label class="rc-campo"><span>tempo</span><select class="rc-sel" id="rc-tf"><option>1m</option><option>3m</option><option>5m</option><option selected>15m</option><option>1h</option><option>4h</option></select></label>',
       ' <label class="rc-campo"><span>lote</span><select class="rc-sel" id="rc-lote"><option value="0.01">0,01</option><option value="0.03">0,03</option><option value="0.06">0,06</option></select></label>',
-      ' <label class="rc-campo"><span>sinal</span><select class="rc-sel" id="rc-sinal"><option value="ciclos">Ciclos (EMA 8×16 + RSI)</option><option value="supertrend2">SuperTrend ATR ×2</option><option value="supertrend3">SuperTrend ATR ×3</option><option value="imperial">Imperial (ZEMA+KAMA)</option><option value="confluencia">Confluência (9 votos)</option><option value="cascata">Cascata micro (1m→15s)</option></select></label>',
+      ' <label class="rc-campo"><span>sinal</span><select class="rc-sel" id="rc-sinal"><option value="ciclos">Ciclos (EMA 8×16 + RSI)</option><option value="supertrend2">SuperTrend ATR ×2</option><option value="supertrend3">SuperTrend ATR ×3</option><option value="imperial">Imperial (ZEMA+KAMA)</option><option value="confluencia">Confluência (9 votos)</option><option value="cascata">Cascata EMA 8×16 + micro</option></select></label>',
       ' <label class="rc-campo"><span>ritmo</span><select class="rc-sel" id="rc-ms"><option value="500">lento</option><option value="220" selected>normal</option><option value="80">rápido</option></select></label>',
       ' <button type="button" class="rc-btn" id="rc-rodar">Rodar</button>',
       ' <button type="button" class="rc-btn" id="rc-play">▶ testar</button>',
