@@ -14959,6 +14959,31 @@ const VX_VELAS_URL = (()=>{
   catch(e){ return 'https://vectra-velas.onrender.com/velas'; }
 })();
 
+// FILA DA PONTE — o servidor de velas e um Render free: atende poucas
+// conexoes por vez. O boot do painel dispara uma varredura (33 ativos x 6
+// tempos) e, sem teto, todos os pedidos entravam na fila do servidor ao mesmo
+// tempo: medido no ar, 107 requisicoes concorrentes e ~9,3 s para cada uma.
+// Com no maximo 6 em voo, o mesmo lote termina antes — e o pedido do grafico
+// aberto fura a fila, pra tela do ativo escolhido nao esperar os outros 32.
+const VX_PONTE = { ativos: 0, max: 6, fila: [] };
+function vxFilaPonte(tarefa, prioridade){
+  return new Promise(function(resolve, reject){
+    const entrar = function(){
+      VX_PONTE.ativos++;
+      let p;
+      try { p = Promise.resolve(tarefa()); } catch(e) { p = Promise.reject(e); }
+      p.then(resolve, reject).then(function(){
+        VX_PONTE.ativos--;
+        const proximo = VX_PONTE.fila.shift();
+        if (proximo) proximo();
+      });
+    };
+    if (VX_PONTE.ativos < VX_PONTE.max) entrar();
+    else if (prioridade) VX_PONTE.fila.unshift(entrar);
+    else VX_PONTE.fila.push(entrar);
+  });
+}
+
 async function fetchCandles(sym,tf,limit=500){
   // Cambio e segundos nao existem nas fontes de cripto: quem entrega e a Deriv,
   // pelo socket do proprio navegador (o IP do dono; a Deriv recusa datacenter).
@@ -15039,7 +15064,11 @@ async function fetchCandles(sym,tf,limit=500){
   if (aggFactor === 1) {
     try {
       const guardado = JSON.parse(localStorage.getItem(chaveCache) || 'null');
-      if (guardado && Array.isArray(guardado.v) && guardado.v.length > 20 && (Date.now() - guardado.em) < 240000) {
+      // a serie guardada so serve se tiver vela suficiente pro pedido atual.
+      // A varredura de fundo grava 250 velas; o grafico aberto pede 1.500 e
+      // precisa refazer o pedido em vez de desenhar um historico curto.
+      const precisaMin = Math.min(realLimit, 400);
+      if (guardado && Array.isArray(guardado.v) && guardado.v.length > 20 && guardado.v.length >= precisaMin && (Date.now() - guardado.em) < 240000) {
         lastDataSource = 'cache local';
         updateDataSourceBadge('cache local', true);
         return guardado.v;
@@ -15051,9 +15080,19 @@ async function fetchCandles(sym,tf,limit=500){
   if (VX_VELAS_URL && aggFactor === 1) {
     try {
       const sep = VX_VELAS_URL.indexOf('?') >= 0 ? '&' : '?';
-      const u = VX_PACOTE_URL + sep + 'sym=' + encodeURIComponent(sym) + '&tf=' + encodeURIComponent(fetchTf) + '&alvo=' + Math.max(realLimit, 4000);
-      const sig = safeTimeoutSignal(9000);
-      const r = await fetch(u, sig ? { signal: sig } : {});
+      // Nem todo pedido precisa do historico inteiro. O grafico aberto pede
+      // folga (4.000 velas, pro historico entrar em blocos sem nova
+      // requisicao); a varredura pede 200 e recebia os mesmos 4.000 — eram
+      // ~107 respostas de 4.000 velas por abertura do painel.
+      const alvoPonte = limit >= 300 ? Math.max(realLimit, 4000) : Math.max(realLimit, 250);
+      const u = VX_PACOTE_URL + sep + 'sym=' + encodeURIComponent(sym) + '&tf=' + encodeURIComponent(fetchTf) + '&alvo=' + alvoPonte;
+      // o relogio do timeout comeca quando o pedido sai da fila, nao quando
+      // ele entra — senao quem esperou 6 s ja vencia antes de ser enviado
+      const pedirPonte = function(){
+        const sig = safeTimeoutSignal(9000);
+        return fetch(u, sig ? { signal: sig } : {});
+      };
+      const r = await vxFilaPonte(pedirPonte, limit >= 300);
       if (r.ok) {
         const j = await r.json();
         if (j && j.ok && Array.isArray(j.velas) && j.velas.length) {
