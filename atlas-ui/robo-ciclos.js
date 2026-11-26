@@ -279,6 +279,7 @@
     ctx.ciclos.push({
       i: p.i, saida: i, lado: p.lado, entrada: p.entrada, precoSaida: preco, motivo: motivo,
       risco: p.risco, stop: p.stop, alvo: p.alvo, alvoNome: p.alvoNome, unidade: p.unidade, tamanho: p.tamanho,
+      reentradas: p.reentradas || 0,
       principal: principal, travas: p.pnlTravas, hedge: hedgeRes,
       total: total, r: total / (p.risco * p.tamanho), lista: p.travas.slice()
     });
@@ -443,6 +444,62 @@
              somaBruta: +(contas.maior.bruto + contas.menor.bruto).toFixed(2),
              somaCusto: +(contas.maior.custo + contas.menor.custo).toFixed(2),
              somaLiquida: +(contas.maior.liquido + contas.menor.liquido).toFixed(2) };
+  }
+
+  // ── CARTEIRAS (futuros): reserva de 10% do lucro + saque a cada 15 dias ──
+  // O risco por operação é fixo em % do caixa (padrão 1%), o resultado do ciclo
+  // entra em R (resultado dividido pelo risco nominal), então o tamanho cresce
+  // junto com o caixa. Do lucro de cada ciclo 10% vão para a reserva (não
+  // negociada) e 90% ficam reinvestidos. A cada 15 dias, 10% do que o caixa
+  // cresceu na janela é sacado para a carteira de retirada.
+  async function carteiras(velas, opcoes) {
+    var o = opcoes || {};
+    var inicial = o.capital || 1000;
+    var riscoPct = o.riscoPct || 1;
+    var reservaPct = o.reservaPct || 10;
+    var cicloDias = o.cicloDias || 15;
+    var saquePct = o.saquePct || 10;
+    var antes = { alvos: CFG.alvos, filtro: CFG.filtro, hedge: CFG.hedge, sinal: CFG.sinal };
+    if (o.cfg) Object.assign(CFG, o.cfg);
+    await preparar(velas);
+    var n = S.velas.length;
+    for (var i = 0; i < n; i++) passo(true);
+    var c = S.teste;
+    var caixa = inicial, reserva = 0, sacado = 0, pico = inicial, queda = 0;
+    var marca = S.velas[0].time, baseJanela = inicial, janelas = 0, historia = [];
+    c.ciclos.forEach(function (q) {
+      // cada rearme carrega um stop de 1R próprio: o risco do ciclo é
+      // 1R x (1 + rearmes). Normalizar por isso mantém o risco do ciclo em
+      // riscoPct, em vez de deixar o rearme multiplicar o risco por até 5.
+      var pernas = 1 + (q.reentradas || 0);
+      var riscoUsd = Math.abs(q.risco) * (q.tamanho || CFG.lote) * pernas;
+      if (!(riscoUsd > 0)) return;
+      var r = q.total / riscoUsd;
+      var pnl = caixa * (riscoPct / 100) * r;
+      if (pnl > 0) { var res = pnl * reservaPct / 100; reserva += res; pnl -= res; }
+      caixa += pnl;
+      var t = S.velas[Math.min(q.saida, n - 1)].time;
+      while (t - marca >= cicloDias * 86400) {
+        marca += cicloDias * 86400;
+        janelas++;
+        var ganho = Math.max(0, caixa - baseJanela);
+        var tirar = ganho * saquePct / 100;
+        caixa -= tirar;
+        sacado += tirar;
+        baseJanela = caixa;
+      }
+      var total = caixa + reserva + sacado;
+      if (total > pico) pico = total;
+      var dd = pico > 0 ? (pico - total) / pico * 100 : 0;
+      if (dd > queda) queda = dd;
+      if (historia.length < 4000) historia.push({ t: t, caixa: +caixa.toFixed(2), total: +total.toFixed(2), r: +r.toFixed(2) });
+    });
+    Object.assign(CFG, antes);
+    var total2 = caixa + reserva + sacado;
+    return { inicial: inicial, caixaFinal: +caixa.toFixed(2), reserva: +reserva.toFixed(2),
+             sacado: +sacado.toFixed(2), total: +total2.toFixed(2),
+             retornoPct: +((total2 / inicial - 1) * 100).toFixed(1), quedaPct: +queda.toFixed(1),
+             ciclos: c.ciclos.length, janelasDe15d: janelas, historia: historia };
   }
 
   function passo(mudo) {
@@ -987,5 +1044,5 @@
   window.RoboCiclos = { preparar: preparar, passo: passo, estado: S, config: CFG, pintar: pintarTeste, desenhar: desenhar,
     direcao: function () { return S.dir; }, definirSinal: function (s) { CFG.sinal = s; }, construirDirecao: construirDirecao,
     diagnostico: function (janela) { return diagnostico(S.teste, janela); },
-    mtf: mtf, contra: contra };
+    mtf: mtf, contra: contra, carteiras: carteiras };
 })();
