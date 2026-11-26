@@ -206,6 +206,10 @@
 #vx-leituras .vx-empty{color:var(--vx-dim); font:500 10.5px/1.4 'Inter',sans-serif; padding:4px 0}
 
 /* ---------- cartões adotados (sinais, avisos, dock) ---------- */
+/* Só no desktop: no celular o dock é a gaveta fixa embaixo. Estas regras
+   jogavam a gaveta para o fluxo e, com o cartão Ciclos aberto, ela crescia
+   até 1.800px, empurrando o gráfico para 0px de altura. */
+@media (min-width: 821px) {
 #vx-work #vx-sinais,
 #vx-work #vx-avisos,
 #vx-work #vx-dock{
@@ -222,6 +226,7 @@
 #vx-work #vx-dock .vx-dock-abas{overflow-x:auto}
 #vx-work #vx-avisos{max-height:230px; overflow:auto}
 #vx-work #vx-sinais.recolhido{max-height:44px}
+}
 
 /* barras de rolagem discretas dentro da coluna */
 #vx-work *::-webkit-scrollbar{width:6px; height:6px}

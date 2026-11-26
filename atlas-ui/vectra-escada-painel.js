@@ -252,9 +252,33 @@
         carregarSerieEstudo(function () { renderizar(el); });
         return;
       }
+      // 1) o robô cíclico do papel opera a série do estudo vela por vela:
+      //    os ciclos dele são os que aparecem aqui, e o gráfico do cartão
+      //    (Operação em papel) mostra cada giro
+      var rc = window.RoboCiclos;
+      if (rc && typeof rc.preparar === 'function' && rc.estado && rc.estado.velas && rc.estado.velas.length) {
+        fonte = fonteCiclos(); // o robô já rodou esta série
+      }
+      if (!fonte && rc && typeof rc.preparar === 'function' && window.__vxEstudoNoRobo !== 'rodando' && window.__vxEstudoNoRobo !== 'pronto') {
+        window.__vxEstudoNoRobo = 'rodando';
+        el.corpo.innerHTML = '<div class="ep-vazio">Rodando o robô cíclico em papel sobre a série do estudo…</div>';
+        rc.preparar(serieEstudoCache).then(function () {
+          var n = 0;
+          // avança vela por vela, em silêncio; o gráfico é pintado uma vez no fim
+          while (rc.passo(true) && n++ < 40000) {}
+          try { rc.pintar(); } catch (e) {}
+          window.__vxEstudoNoRobo = 'pronto';
+          renderizar(el);
+        }).catch(function () {
+          window.__vxEstudoNoRobo = 'pronto';
+          renderizar(el);
+        });
+        return;
+      }
+      // 2) sem o robô (ou sem ciclos dele): cai no backtest de referência
       var refSerie = rodarReferencia(serieEstudoCache);
       if (refSerie && refSerie.resultado && refSerie.resultado.listaCiclos && refSerie.resultado.listaCiclos.length) {
-        fonte = { nome: 'série do estudo · 15m · BTCUSDT', ciclos: refSerie.resultado.listaCiclos, velas: serieEstudoCache };
+        fonte = { nome: 'série do estudo · 15m · BTCUSDT (referência)', ciclos: refSerie.resultado.listaCiclos, velas: serieEstudoCache };
       }
       if (!fonte) {
         el.corpo.innerHTML = '<div class="ep-vazio">' + (refSerie && refSerie.erro ? esc(refSerie.erro) : 'A série do estudo não produziu ciclos.') + '</div>';
@@ -382,6 +406,34 @@
 
     el.corpo.innerHTML = html.join('');
 
+    // A política do painel é abrir minimizado: o estudo tem 7 seções e, todas
+    // abertas, viram ~2.300px de rolagem. Só o resumo nasce aberto; o resto
+    // abre no toque do título.
+    Array.prototype.slice.call(el.corpo.querySelectorAll('.ep-secao')).forEach(function (sec, idx) {
+      var h4 = sec.querySelector('h4');
+      var corpoSec = document.createElement('div');
+      corpoSec.className = 'ep-corpo';
+      Array.prototype.slice.call(sec.childNodes).forEach(function (no) {
+        if (no !== h4) corpoSec.appendChild(no);
+      });
+      sec.appendChild(corpoSec);
+      if (idx > 0) sec.classList.add('ep-min');
+      if (h4) {
+        h4.setAttribute('role', 'button');
+        h4.setAttribute('aria-expanded', idx > 0 ? 'false' : 'true');
+        h4.tabIndex = 0;
+        var alternar = function (ev) {
+          if (ev && ev.target && ev.target.tagName === 'BUTTON') return;
+          sec.classList.toggle('ep-min');
+          h4.setAttribute('aria-expanded', sec.classList.contains('ep-min') ? 'false' : 'true');
+        };
+        h4.addEventListener('click', alternar);
+        h4.addEventListener('keydown', function (ev) {
+          if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); alternar(); }
+        });
+      }
+    });
+
     desenharEquity(m.equityCurva, m.drawdownCurva);
 
     var btnExport = document.getElementById('ep-export');
@@ -480,7 +532,11 @@
       '#escada-painel-card *{box-sizing:border-box}',
       '.ep-vazio{color:' + C.fraco + ';font-size:11px;text-align:center;padding:24px 8px;line-height:1.5}',
       '.ep-secao{border:1px solid ' + C.linha + ';border-radius:10px;padding:8px;background:#fff;margin-bottom:8px}',
-      '.ep-secao h4{margin:0 0 6px;font-size:8.5px;letter-spacing:1px;text-transform:uppercase;color:' + C.fraco + ';font-weight:700;display:flex;justify-content:space-between;align-items:center;gap:6px}',
+      '.ep-secao h4{margin:0 0 6px;font-size:8.5px;letter-spacing:1px;text-transform:uppercase;color:' + C.fraco + ';font-weight:700;display:flex;justify-content:space-between;align-items:center;gap:6px;cursor:pointer}',
+      '.ep-secao h4::after{content:"⌄";font-size:11px;line-height:1;color:' + C.fraco + '}',
+      '.ep-secao.ep-min h4{margin-bottom:0}',
+      '.ep-secao.ep-min h4::after{content:"›"}',
+      '.ep-secao.ep-min .ep-corpo{display:none}',
       '.ep-kv{display:grid;grid-template-columns:1fr auto;gap:3px 8px;font-size:11px;font-variant-numeric:tabular-nums}',
       '.ep-kv i{font-style:normal;color:' + C.fraco + '}', '.ep-kv b{font-weight:600;text-align:right}',
       '.ep-alvo{color:' + C.fraco + ';font-weight:400}',

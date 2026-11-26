@@ -249,7 +249,9 @@ body.vx .vx-titulo {
     min-height: 0 !important; overflow: hidden !important;
   }
   body.vx .layout > div:first-child { flex: 1 1 auto !important; min-height: 0 !important; }
-  body.vx .chart-wrap { height: auto !important; flex: 1 1 auto !important; min-height: 0 !important; }
+  /* min-height e' o que sustenta o grafico no flex: o canvas e' absoluto, entao
+     sem piso de altura a base do flex vira 0 e a area do grafico colapsa */
+  body.vx .chart-wrap { height: auto !important; flex: 1 1 auto !important; min-height: 220px !important; }
   /* sub-painéis antigos do desktop não roubam altura no celular */
   body.vx .main-area > *:not(.chart-wrap) { display: none !important; }
   /* ativos e consenso já vivem na gaveta e nas abas do trilho: parados em
@@ -280,8 +282,11 @@ body.vx .vx-titulo {
     max-height: 46vh; overflow-y: auto; z-index: 91;
   }
 
-  /* gaveta: fechada mostra só as abas */
+  /* gaveta: fechada mostra só as abas.
+     position:fixed é o que impede a gaveta de entrar no fluxo: aberta, o
+     cartão Ciclos chega a 1.800px e empurrava o gráfico para 0px de altura. */
   #vx-dock {
+    position: fixed !important; z-index: 90 !important;
     top: auto !important; left: 8px; right: 8px; bottom: 52px !important;
     width: auto !important; max-width: none;
     max-height: 46px !important; overflow: hidden;
