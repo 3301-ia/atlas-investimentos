@@ -63,6 +63,10 @@ PADRAO = {
     "alvo_trava": 0.5,
     "corte_trava": 0.5,
     "reserva_pct": 0.10,
+    # Trava encerrada junto com o ciclo: o relatório soma o resultado com o
+    # sinal invertido (18 travas, +US$ 9,30 que deveriam ser -US$ 9,30).
+    # False reproduz o documento; True aplica a contabilidade correta.
+    "corrigir_sinal_encerrada": False,
 }
 
 
@@ -190,7 +194,12 @@ def rodar(velas: Sequence[dict], **cfg) -> dict:
         p = pos
         for trava in p["travas"]:
             if trava["estado"] == "aberta":
-                trava["resultado"] = (trava["preco"] - preco) * (-p["lado"]) * trava["tamanho"]
+                if C["corrigir_sinal_encerrada"]:
+                    # Contabilidade correta: resultado = (saída - entrada) * lado da trava.
+                    trava["resultado"] = (preco - trava["preco"]) * trava["lado"] * trava["tamanho"]
+                else:
+                    # Fórmula do relatório (sinal invertido nesta saída).
+                    trava["resultado"] = (trava["preco"] - preco) * (-p["lado"]) * trava["tamanho"]
                 trava["estado"] = "encerrada"
                 p["pnl_travas"] += trava["resultado"]
 

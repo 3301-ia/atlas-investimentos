@@ -193,16 +193,21 @@
   }
 
   /* ── backtest de referência (cache) ─────────────────────────────── */
-  var cacheRef = { marca: -1, resultado: null, erro: null };
+  var cacheRef = { marca: -1, resultado: null, corrigido: null, erro: null };
 
   function rodarReferencia(velas) {
     if (!window.VectraBacktest || !velas || !velas.length) return null;
     if (cacheRef.marca === velas.length) return cacheRef;
-    cacheRef = { marca: velas.length, resultado: null, erro: null };
+    cacheRef = { marca: velas.length, resultado: null, corrigido: null, erro: null };
     try {
       var r = window.VectraBacktest.rodar(velas);
       if (r && r.erro) cacheRef.erro = r.erro;
-      else cacheRef.resultado = r;
+      else {
+        cacheRef.resultado = r;
+        // O relatório soma as travas encerradas com o ciclo com o sinal
+        // invertido. Aqui roda a mesma mecânica com a conta correta.
+        cacheRef.corrigido = window.VectraBacktest.rodar(velas, { corrigirSinalEncerrada: true });
+      }
     } catch (e) {
       cacheRef.erro = e && e.message ? e.message : String(e);
     }
@@ -308,6 +313,12 @@
         (conf.ok ? '✓ reprodução OK — todos os números conferem com o relatório (seção 27).' :
           '⚠ divergência: ' + conf.itens.filter(function (i) { return !i.ok; }).map(function (i) { return i.nome; }).join(', ')) +
         '</div>');
+      if (ref.corrigido && !ref.corrigido.erro) {
+        var dif = ref.resultado.resultado - ref.corrigido.resultado;
+        html.push('<div class="ep-nota ep-warn">O relatório soma as 18 travas encerradas junto com o ciclo com o ' +
+          'sinal invertido. Com a contabilidade correta o mesmo mecanismo dá <b>' + usd(ref.corrigido.resultado) +
+          '</b> (' + usd(-dif) + '). O executor usa o número corrigido.</div>');
+      }
     }
     html.push('</div>');
 

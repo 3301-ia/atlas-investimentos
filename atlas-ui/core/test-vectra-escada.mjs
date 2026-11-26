@@ -63,6 +63,17 @@ if (!r.erro) {
   });
 
   t('conferência completa contra o relatório', B.conferir(r).ok);
+
+  /* ── o erro de sinal das travas encerradas com o ciclo ───────────── */
+  const corrigido = B.rodar(velas, { corrigirSinalEncerrada: true });
+  t('mesma contagem de ciclos com o sinal corrigido', corrigido.ciclos === 599, String(corrigido.ciclos));
+  t('sinal corrigido dá 665,89 ± 2%', Math.abs(corrigido.resultado - 665.89) / 665.89 <= 0.02,
+    corrigido.resultado.toFixed(2));
+  t('diferença para o relatório é US$ 18,60 (18 travas)',
+    Math.abs((r.resultado - corrigido.resultado) - 18.60) < 0.05,
+    (r.resultado - corrigido.resultado).toFixed(2));
+  t('tabela por nível não muda com a correção',
+    JSON.stringify(corrigido.nivelStats.map(n => n.aberturas)) === JSON.stringify([388, 318, 241, 169, 103]));
 }
 
 /* ── a trava do erro histórico: série em OHLC tem de ser recusada ──── */

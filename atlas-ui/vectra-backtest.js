@@ -65,7 +65,11 @@
     reservaPct: 0.10,
     // false = regra do relatório (a trava aberta na vela pode fechar na mesma vela)
     // true  = conservador (a trava só fecha a partir da vela seguinte)
-    travaSoNaVelaSeguinte: false
+    travaSoNaVelaSeguinte: false,
+    // Trava encerrada junto com o ciclo: o relatório soma com o sinal
+    // invertido (18 travas, +US$ 9,30 que deveriam ser -US$ 9,30).
+    // false reproduz o documento; true aplica a contabilidade correta.
+    corrigirSinalEncerrada: false
   };
 
   /* ── Normalização da série ──────────────────────────────────────── */
@@ -194,7 +198,9 @@
       var p = pos;
       p.travas.forEach(function (t) {
         if (t.estado === 'aberta') {
-          t.resultado = (t.preco - preco) * (-p.lado) * t.tamanho;
+          t.resultado = C.corrigirSinalEncerrada
+            ? (preco - t.preco) * t.lado * t.tamanho
+            : (t.preco - preco) * (-p.lado) * t.tamanho;
           t.estado = 'encerrada';
           p.pnlTravas += t.resultado;
         }

@@ -131,7 +131,9 @@ def testar_configuracao(tmp: Path) -> None:
     print("\n[1] Configuração obrigatória do Freqtrade")
     estrategia = nova_estrategia(tmp)
     teste("minimal_roi existe", getattr(estrategia, "minimal_roi", None) is not None)
-    teste("position_adjustment_enable ligado", getattr(estrategia, "position_adjustment_enable", False) is True)
+    # A escada saiu do Freqtrade de propósito: reduzir a posição não é trava.
+    teste("estratégia não mexe na posição (escada fora do Freqtrade)",
+          not hasattr(estrategia, "adjust_trade_position"))
     teste("use_custom_stoploss ligado", estrategia.use_custom_stoploss is True)
     teste("timeframe 15m", estrategia.timeframe == "15m")
     teste("startup_candle_count definido", estrategia.startup_candle_count >= 20)
@@ -158,38 +160,25 @@ def testar_stop_fixo(tmp: Path) -> None:
     teste("stop nunca vira positivo", razao2 < 0, f"razao={razao2}")
 
 
-def testar_escada(tmp: Path) -> None:
-    print("\n[3] Escada: abre no nível e reduz quando a trava toca alvo/corte")
+def testar_principal(tmp: Path) -> None:
+    print("\n[3] A estratégia opera só a principal (a escada vive no executor)")
     estrategia = nova_estrategia(tmp)
     trade = TradeFake(aberto=100.0)
     info = estrategia._iniciar_info(trade)
     risco = info["risco_preco"]
     agora = datetime.now(timezone.utc)
 
-    # Preço em 1/3R: abre a primeira trava e não mexe na posição.
-    preco_nivel1 = 100.0 + risco / 3
-    ajuste = estrategia.adjust_trade_position(trade, agora, preco_nivel1, 0.1)
-    teste("nenhum ajuste ao abrir a trava", ajuste is None, f"ajuste={ajuste}")
-    teste("1 trava aberta", info["travas_abertas"] == 1)
-    teste("nível 1 registrado", info["proximo_nivel"] == 1)
-    trava = info["travas"][0]
-    teste("alvo da trava a 0,5R abaixo do nível",
-          abs((trava["preco"] - trava["alvo"]) - 0.5 * risco) < 1e-9)
-    teste("tamanho da trava = 0,60 do lote", abs(trava["tamanho"] - 0.006) < 1e-12, f"{trava['tamanho']}")
+    teste("info não guarda travas", info.get("travas") == [])
+    teste("sem adjust_trade_position", not hasattr(estrategia, "adjust_trade_position"))
 
-    # Preço no alvo da trava: devolve redução (stake negativo).
-    ajuste = estrategia.adjust_trade_position(trade, agora, trava["alvo"], 0.2)
-    teste("redução devolvida no alvo", ajuste is not None and ajuste < 0, f"ajuste={ajuste}")
-    teste("trava marcada como alvo", trava["estado"] == "alvo")
-    teste("resultado da trava positivo", trava["resultado"] > 0, f"{trava['resultado']:.4f}")
-    teste("contador de travas abertas caiu", info["travas_abertas"] == 0)
+    # O alvo de 2R é o que fecha a posição principal.
+    preco_alvo = 100.0 + 2.0 * risco
+    saida = estrategia.custom_exit("BTC/USDT", trade, agora, preco_alvo, 0.2)
+    teste("saída no alvo de 2R", saida == "alvo_2r", str(saida))
 
-    # Duas travas até 2/3R.
-    estrategia2 = nova_estrategia(tmp)
-    trade2 = TradeFake(aberto=100.0, id_=2)
-    info2 = estrategia2._iniciar_info(trade2)
-    estrategia2.adjust_trade_position(trade2, agora, 100.0 + info2["risco_preco"] * 0.7, 0.3)
-    teste("duas travas abertas até 0,67R", len(info2["travas"]) == 2, f"{len(info2['travas'])}")
+    # Antes do alvo, não sai.
+    teste("não sai antes do alvo",
+          estrategia.custom_exit("BTC/USDT", trade, agora, 100.0 + 1.5 * risco, 0.1) is None)
 
 
 def testar_auditoria_e_disjuntores(tmp: Path) -> None:
@@ -293,7 +282,7 @@ def main() -> int:
         tmp = Path(tmp)
         testar_configuracao(tmp)
         testar_stop_fixo(tmp)
-        testar_escada(tmp / "escada")
+        testar_principal(tmp / "principal")
         testar_auditoria_e_disjuntores(tmp / "auditoria")
 
     testar_backtest(serie)

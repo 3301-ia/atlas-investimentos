@@ -33,13 +33,20 @@
 # 7. talib deixou de ser obrigatório: EMA, RSI e ATR são calculados em pandas,
 #    iguais aos do backtest de referência.
 #
-# ─── LIMITE CONHECIDO DO FREQTRADE ──────────────────────────────────
-# O Freqtrade não mantém posição contrária no mesmo par ao mesmo tempo. A
-# trava aqui é virtual: ela abre no nível, e quando toca o alvo ou o corte a
-# posição principal é reduzida no tamanho da trava (stake negativo). O efeito
-# econômico é parecido, mas não idêntico ao relatório, onde cada trava é uma
-# ordem contrária separada e a soma das travas pode passar do lote (até 3×).
-# Para reproduzir o relatório número por número use vectra_backtest.py.
+# ─── A ESCADA NÃO MORA AQUI ─────────────────────────────────────────
+# O Freqtrade não mantém posição contrária no mesmo par ao mesmo tempo, e um
+# mantenedor confirmou que não vai suportar (issue #7386: "No we don't - and
+# we're unlikely to support this in the near future"). Reduzir a posição no
+# lugar da trava é outra coisa, não é o mecanismo do relatório.
+#
+# Por isso esta estratégia opera SOMENTE a posição principal: entrada, stop de
+# 1,0 ATR, alvo de 2R, registro de auditoria e disjuntores. A escada, com cada
+# trava como posição contrária separada, roda em ../executor/vectra_executor.py.
+#
+# Usar as duas ao mesmo tempo no mesmo par não funciona: elas brigariam pela
+# mesma posição. Escolha uma:
+#   · escada completa  -> executor (posições contrárias de verdade)
+#   · só principal     -> esta estratégia no Freqtrade
 #
 #   freqtrade trade --strategy VectraEscada --config user_data/config.json
 
@@ -109,10 +116,6 @@ class VectraEscada(IStrategy):
     # Obrigatório: sem minimal_roi o Freqtrade não carrega a estratégia.
     # Valor alto de propósito: a saída é a escada, não o ROI.
     minimal_roi = {"0": 10.0}
-
-    # Sem isto, adjust_trade_position nunca é chamado e a escada não existe.
-    position_adjustment_enable = True
-    max_entry_position_adjustment = 5
 
     process_only_new_candles = True
     startup_candle_count = 40
@@ -240,9 +243,7 @@ class VectraEscada(IStrategy):
             "risco_usd": risco_preco * quantidade,
             "stop_preco": entrada - lado * risco_preco,
             "alvo_preco": entrada + lado * self.alvo_r.value * risco_preco,
-            "proximo_nivel": 0,
             "travas": [],
-            "travas_abertas": 0,
             "aberta_em": datetime.now(timezone.utc).isoformat(),
         }
         self._trades[self._chave(trade)] = info
@@ -285,7 +286,9 @@ class VectraEscada(IStrategy):
     ):
         info = self._info(trade) or self._iniciar_info(trade)
         lucro_r = self._lucro_em_r(trade, current_rate, info)
-        if lucro_r >= self.alvo_r.value:
+        # Tolerância: (104 - 100) * 1 / 2,0167 dá 1,999999999999997 e a
+        # comparação direta deixaria de sair exatamente no alvo.
+        if lucro_r >= self.alvo_r.value - 1e-9:
             return "alvo_2r"
         return None
 
@@ -295,79 +298,10 @@ class VectraEscada(IStrategy):
             return 0.0
         return (preco - info["entrada"]) * info["lado"] / risco
 
-    # ─── Escada (seção 22) ───────────────────────────────────────────
-    def adjust_trade_position(
-        self,
-        trade: Trade,
-        current_time: datetime,
-        current_rate: float,
-        current_profit: float,
-        min_stake: Optional[float] = None,
-        max_stake: float = 0.0,
-        current_entry_rate: float = 0.0,
-        current_exit_rate: float = 0.0,
-        current_entry_profit: float = 0.0,
-        current_exit_profit: float = 0.0,
-        **kwargs,
-    ) -> Optional[float]:
-        info = self._info(trade) or self._iniciar_info(trade)
-        lado = info["lado"]
-        lucro_r = self._lucro_em_r(trade, current_rate, info)
-
-        # 1. Abre travas virtuais nos níveis já alcançados.
-        while info["proximo_nivel"] < len(self.NIVEIS):
-            nivel = self.NIVEIS[info["proximo_nivel"]]
-            if lucro_r < nivel:
-                break
-            preco_nivel = info["entrada"] + lado * nivel * info["risco_preco"]
-            tamanho = self.fator_trava.value * float(trade.amount or 0)
-            info["travas"].append({
-                "nivel": nivel,
-                "preco": preco_nivel,
-                "tamanho": tamanho,
-                "alvo": preco_nivel - lado * self.alvo_trava.value * info["risco_preco"],
-                "corte": preco_nivel + lado * self.corte_trava.value * info["risco_preco"],
-                "estado": "aberta",
-                "resultado": 0.0,
-                "aberta_em": current_time.isoformat() if current_time else None,
-            })
-            info["proximo_nivel"] += 1
-            info["travas_abertas"] += 1
-            logger.info(
-                "VECTRA ESCADA: trava %.3fR aberta em %s @ %.2f (%d/%d)",
-                nivel, trade.pair, preco_nivel, info["travas_abertas"], len(self.NIVEIS),
-            )
-
-        # 2. Fecha a primeira trava que tocou alvo ou corte (uma por vela).
-        for trava in info["travas"]:
-            if trava["estado"] != "aberta":
-                continue
-            tocou_alvo = current_rate <= trava["alvo"] if lado == 1 else current_rate >= trava["alvo"]
-            tocou_corte = current_rate >= trava["corte"] if lado == 1 else current_rate <= trava["corte"]
-            if not (tocou_alvo or tocou_corte):
-                continue
-
-            trava["estado"] = "alvo" if tocou_alvo else "corte"
-            # Trava é contrária: compra no nível e recompra no alvo (ou vende
-            # e recompra), então o resultado é (nível - saída) * lado.
-            trava["resultado"] = (trava["preco"] - current_rate) * lado * trava["tamanho"]
-            info["travas_abertas"] = max(0, info["travas_abertas"] - 1)
-
-            stake_atual = float(trade.stake_amount or 0) or (current_rate * float(trade.amount or 0))
-            alvo_stake = trava["tamanho"] * current_rate
-            # Nunca zera a principal: no máximo 90% do stake vivo.
-            alvo_stake = min(alvo_stake, stake_atual * 0.9)
-            if min_stake:
-                alvo_stake = max(alvo_stake, float(min_stake))
-            if alvo_stake <= 0 or alvo_stake >= stake_atual:
-                return None
-            logger.info(
-                "VECTRA ESCADA: trava %.3fR fechou em %s @ %.2f (US$ %.4f)",
-                trava["nivel"], trava["estado"], current_rate, trava["resultado"],
-            )
-            return -alvo_stake
-
-        return None
+    # ─── Escada ──────────────────────────────────────────────────────
+    # Não implementada aqui de propósito. Ver o aviso no topo do arquivo e o
+    # executor em ../executor/vectra_executor.py. Qualquer redução parcial
+    # desta posição seria uma trava falsa.
 
     # ─── Disjuntores (seção 25) ──────────────────────────────────────
     def _stats_vazias(self) -> dict:
@@ -532,7 +466,6 @@ class VectraEscada(IStrategy):
             "resultado_total": total,
             "resultado_r": total / risco_usd if risco_usd else 0.0,
             "travas": info["travas"],
-            "travas_abertas": info["travas_abertas"],
         }
 
         try:

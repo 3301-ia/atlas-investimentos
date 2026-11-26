@@ -4,102 +4,110 @@ Implementação do mecanismo descrito no **relatório técnico de 20/11/2026**:
 entrada por cruzamento de EMA 8 × EMA 16 com RSI, stop de 1,0 ATR, alvo de
 2R e uma escada de cinco travas contrárias em terços de R.
 
-## Arquivos
+## Onde cada coisa roda
 
-| Arquivo | O que é |
-|---|---|
-| `atlas-ui/vectra-backtest.js` | Backtest reprodutível do Anexo B. Roda no navegador e em Node. |
-| `atlas-ui/vectra-escada-painel.js` | Painel da escada (aba **Ciclos**): níveis, decomposição, disjuntores, auditoria, curva de equity e conferência do relatório. |
-| `atlas-ui/core/dados/m15_btcusdt_15m.json` | As 21.000 velas de 15m do estudo, no formato da ponte. |
-| `atlas-ui/core/test-vectra-escada.mjs` | Teste de reprodução: 684,52 ± 2% e a tabela por nível. |
-| `atlas-ui/core/test-vectra-painel.mjs` | Teste do painel (precisa de jsdom). |
-| `freqtrade/user_data/strategies/vectra_escada.py` | Estratégia para operar no Freqtrade. |
-| `freqtrade/ferramentas/vectra_backtest.py` | O mesmo backtest em Python puro, para conferência local. |
-| `freqtrade/ferramentas/test_vectra_escada.py` | Testes da estratégia, sem Freqtrade instalado. |
+| Peça | Arquivo | O que faz |
+|---|---|---|
+| Backtest de referência | `freqtrade/ferramentas/vectra_backtest.py` | reproduz o relatório, em Python puro |
+| Backtest no navegador | `atlas-ui/vectra-backtest.js` | o mesmo motor, para o painel e para Node |
+| Painel | `atlas-ui/vectra-escada-painel.js` | aba **Ciclos**: níveis, decomposição, disjuntores, auditoria, conferência |
+| **Executor da escada** | `executor/vectra_executor.py` | opera a escada com cada trava como posição contrária separada |
+| Estratégia Freqtrade | `freqtrade/user_data/strategies/vectra_escada.py` | opera **só a principal** (ver abaixo) |
+| Série do estudo | `atlas-ui/core/dados/m15_btcusdt_15m.json` | 21.000 velas de 15m |
 
-## Reproduzir o relatório
+## Por que a escada não vive no Freqtrade
+
+O Freqtrade não mantém posição contrária no mesmo par ao mesmo tempo. Um
+mantenedor respondeu isso na issue
+[#7386](https://github.com/freqtrade/freqtrade/issues/7386): *"No we don't -
+and we're unlikely to support this in the near future"*. Dentro do Freqtrade a
+trava só poderia ser redução parcial da principal, e redução não é trava: é
+fechamento.
+
+Então:
+
+- **`executor/vectra_executor.py`** é onde a escada existe. Cada trava é uma
+  posição própria, de lado oposto, com alvo e corte próprios. É o mecanismo do
+  relatório.
+- **`freqtrade/.../vectra_escada.py`** opera apenas a principal: entrada, stop
+  de 1,0 ATR, alvo de 2R, auditoria e disjuntores. Não mexe na posição.
+
+As duas no mesmo par brigariam pela mesma posição. Escolha uma.
+
+## Números
 
 ```bash
-node atlas-ui/core/test-vectra-escada.mjs
 python3 freqtrade/ferramentas/vectra_backtest.py atlas-ui/core/dados/m15_btcusdt_15m.json
+python3 executor/vectra_executor.py replay atlas-ui/core/dados/m15_btcusdt_15m.json
+node atlas-ui/core/test-vectra-escada.mjs
 ```
 
-Saída esperada (21.000 velas, lote 0,01):
+| | Relatório | Backtest | Executor (conta corrigida) |
+|---|---|---|---|
+| Ciclos | 599 | 599 | 599 |
+| Resultado | US$ 684,52 | US$ 684,49 | **US$ 665,89** |
+| Acerto | 44,2% | 44,2% | 44,4% |
+| Queda máxima | 15,45 | 15,45 | 15,45 |
+| Pior sequência | 11 | 11 | 11 |
+| Principal | 24,7% | 24,7% | 25,4% |
+| Travas | 75,3% | 75,3% | 74,6% |
+| Aberturas por nível | 388/318/241/169/103 | idem | idem |
+| Acerto por nível | 75/93/93/98/100% | idem | idem |
 
-```
-599 ciclos · US$ 684,49 · 44,2% acerto · queda US$ 15,45
-principal US$ 169,10 (24,7%) · travas US$ 515,40 (75,3%)
-níveis: 388 / 318 / 241 / 169 / 103 aberturas
-```
+### O erro de sinal do relatório
 
-A diferença de três centavos para os US$ 684,52 do relatório é arredondamento
-do documento. Todos os outros números conferem exatamente.
+Quando a principal fecha (alvo ou stop) com travas ainda abertas, essas travas
+são encerradas no mesmo preço. O relatório soma o resultado dessas travas com
+o **sinal invertido**: uma trava vendida que perde quando o preço sobe aparece
+como ganho.
 
-## A regra que faz o número fechar
+São **18 travas** em 599 ciclos, somando **+US$ 9,30** que deveriam ser
+**−US$ 9,30**. O efeito no total é **US$ 18,60**: 684,52 em vez de 665,89.
 
-Três detalhes do relatório não são óbvios e mudam o resultado:
+O mecanismo é o mesmo; a diferença é a contabilidade. O executor usa a conta
+correta. O backtest mantém o padrão do relatório para o protocolo de validação
+(seção 27) e expõe `corrigir_sinal_encerrada=True` / `corrigirSinalEncerrada: true`
+para a leitura corrigida. O painel mostra as duas.
+
+## As três regras que fazem o número fechar
 
 1. **Ordem da vela.** A ponte entrega `[tempo, abertura, fechamento, máxima,
-   mínima, volume]`, não OHLC. Ler como OHLC troca máxima por fechamento e
-   inverte o gatilho dos stops. O backtest recusa a série quando ela está em
-   OHLC, em vez de devolver um número falso.
-2. **A trava pode fechar na mesma vela em que abriu.** É isso que produz
-   US$ 684,52. Fechando a trava só a partir da vela seguinte (modo
-   `travaSoNaVelaSeguinte`) o resultado cai para US$ 468,48 e o acerto dos
-   níveis para 43% a 58% — ou seja, o estudo depende dessa regra.
-3. **Trava encerrada junto com o ciclo não conta como abertura.** É o que
-   transforma 393 aberturas em 388 no primeiro nível e faz a tabela por nível
-   do relatório fechar exatamente.
+   mínima, volume]`, não OHLC. Ler como OHLC inverte o gatilho dos stops. O
+   backtest recusa a série em vez de devolver número falso.
+2. **A trava pode fechar na mesma vela em que abriu.** Fechando só na vela
+   seguinte, o resultado cai para US$ 468,48 e o acerto dos níveis para 43-58%.
+3. **Trava encerrada com o ciclo não conta como abertura de nível.** É o que
+   transforma 393 aberturas em 388 no primeiro nível.
 
-## Painel
+## Sobre medir pelo extremo
 
-O painel entra dentro do cartão da aba **Ciclos**, logo abaixo do robô de
-papel. Ele lê os ciclos de `RoboCiclos.estado.teste` (ou de
-`RoboVivo.estado.ctx`, na aba Ao vivo) e mostra:
+O texto da seção 22 diz que o lucro em R deve ser medido pelo **fechamento** da
+vela, "não pelo extremo". Os números publicados, porém, foram gerados com o
+**extremo**: medindo pelo fechamento, o resultado cai para US$ 372,14 (−45,6%)
+e as aberturas viram 303/237/150/81/40. O padrão adotado é o que reproduz o
+documento, e o modo conservador existe para medir essa diferença.
 
-- resumo com acerto, resultado, queda, lucro/queda e reserva de 10%;
-- decomposição principal × travas;
-- tabela por nível com aberturas, acerto, % dos ciclos e resultado;
-- curva de equity com área de drawdown;
-- disjuntores da seção 25;
-- conferência do relatório, rodando o backtest completo sobre a série
-  carregada (botão **recalcular**);
-- registro de auditoria com exportação em CSV.
+## Limitações que continuam valendo
 
-## Estratégia Freqtrade
+- **Sem custos.** O estudo não inclui taxa nem funding. Com até cinco travas
+  por ciclo são até dez eventos de taxa por ciclo, cerca de US$ 0,24 por evento
+  a 0,04% sobre US$ 592. É material para um sistema que ganha US$ 1,11 por
+  ciclo.
+- **Preenchimento otimista.** O stop é preenchido no preço do stop, exceto
+  quando a vela abre além dele. Na realidade há deslizamento, e ele piora nos
+  momentos de volatilidade, que são os que geram mais travas.
+- **Um ativo, um período.** BTC em 15m entre abril e novembro de 2026. ETH e
+  ZEC precisam de teste próprio.
+- **Margem.** Cinco travas abertas exigem 3,0 vezes o lote em margem. Em conta
+  pequena com alavancagem baixa, isso inviabiliza o BTC.
+- **A estratégia Freqtrade não reproduz o relatório**, porque opera só a
+  principal.
+
+## Testes
 
 ```bash
-pip install freqtrade
-cp freqtrade/user_data/config.exemplo.json freqtrade/user_data/config.json
-freqtrade trade --strategy VectraEscada --config freqtrade/user_data/config.json
+node atlas-ui/core/test-vectra-escada.mjs           # 31 ok, sem dependência
+node atlas-ui/core/test-vectra-painel.mjs           # 21 ok, precisa de jsdom
+python3 freqtrade/ferramentas/test_vectra_escada.py # 42 ok, sem Freqtrade
+python3 executor/test_vectra_executor.py            # 38 ok
 ```
-
-O que estava quebrado na versão anterior e foi corrigido:
-
-| Problema | Efeito | Correção |
-|---|---|---|
-| `position_adjustment_enable` ausente | `adjust_trade_position` nunca era chamado: **nenhuma trava abria** | ligado, com `max_entry_position_adjustment = 5` |
-| `minimal_roi` ausente | o Freqtrade recusa carregar a estratégia | `{"0": 10.0}` (ROI desligado, saída é a escada) |
-| `custom_stoploss` devolvia fração da entrada | o stop andava junto com o preço a cada vela | stop é preço fixo; a distância é recalculada contra o preço atual |
-| só o alvo era registrado | acerto e sequência de perdas nunca viam as perdas: **disjuntores cegos** | `confirm_trade_exit` registra toda saída |
-| disjuntores fora da seção 25 | acerto < 33% desligava em vez de reduzir lote; faltava o limite de 28% | limites corrigidos, com redução de lote em `custom_stake_amount` |
-| estatísticas só em memória | reiniciar o robô zerava os disjuntores | persistidas em `user_data/vectra_estado.json` |
-| `talib` obrigatório | instalação frágil | EMA, RSI e ATR em pandas, iguais ao backtest |
-
-### Limite conhecido
-
-O Freqtrade **não mantém posição contrária no mesmo par ao mesmo tempo**. Na
-estratégia, a trava é virtual: ela abre no nível e, quando toca o alvo ou o
-corte, a posição principal é reduzida no tamanho da trava (stake negativo).
-O efeito econômico é parecido, mas não idêntico ao relatório, onde cada trava
-é uma ordem separada e a soma das travas pode chegar a 3× o lote.
-
-Para o número do relatório, a referência é `vectra_backtest.py`. A estratégia
-Freqtrade é para operar, não para reproduzir o estudo.
-
-## Custos
-
-O estudo não inclui taxa nem funding. Com até cinco travas por ciclo são até
-dez eventos de taxa por ciclo. A 0,04% por operação sobre US$ 592, isso dá
-cerca de US$ 0,24 por evento — material para um sistema que ganha US$ 1,14 por
-ciclo. Antes de dinheiro real, vale refazer o backtest com a taxa da corretora.
