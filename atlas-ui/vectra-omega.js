@@ -91,7 +91,7 @@
 
   function montar() {
     if (document.getElementById(ID)) return document.getElementById(ID);
-    const caixa = el('div', `position:fixed;inset:0;z-index:9999;background:rgba(10,13,20,.97);display:none;flex-direction:column;font-family:Inter,system-ui,sans-serif;color:#dfe3ea`);
+    const caixa = el('div', `position:fixed;inset:0;z-index:9999;background:#0a0d14;display:none;flex-direction:column;font-family:Inter,system-ui,sans-serif;color:#dfe3ea`);
     caixa.id = ID;
     caixa.innerHTML = `
       <div style="display:flex;align-items:center;gap:14px;padding:12px 16px;border-bottom:1px solid #242935">

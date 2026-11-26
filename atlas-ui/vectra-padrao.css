@@ -593,3 +593,77 @@ body.vx .side-nav .nav-item .nav-lbl, .side-nav .nav-item .nav-lbl{
   white-space: nowrap !important; max-width: 52px !important;
   overflow: hidden !important; text-overflow: clip !important; display: block !important;
 }
+
+/* ── Otimizações de contraste, abas e responsividade ───────────────────── */
+body.vx .vx-toolbtn, .vx-toolbtn{
+  color: #d6dde6 !important;
+  background: rgba(255,255,255,.05) !important;
+  border: 1px solid rgba(255,255,255,.14) !important;
+}
+body.vx .vx-toolbtn:hover, .vx-toolbtn:hover{
+  color: #ffffff !important;
+  background: rgba(255,255,255,.10) !important;
+  border-color: rgba(255,255,255,.26) !important;
+}
+
+/* Abas de ESTADO dentro da MESA: quebram linha em vez de cortar fora da tela */
+body.vx #vx-work #vx-dock .vx-dock-abas, #vx-dock .vx-dock-abas{
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 4px !important;
+  overflow-x: visible !important;
+}
+
+/* Menu MAIS da lateral: abre para cima dentro da viewport e fora da barra de desenho */
+@media (min-width: 761px){
+  body.vx #nav-mais-lista.aberto, #nav-mais-lista.aberto{
+    position: fixed !important;
+    left: 104px !important;
+    bottom: 12px !important;
+    top: auto !important;
+    width: auto !important;
+    min-width: 72px !important;
+    max-height: min(65vh, 380px) !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    z-index: 200 !important;
+    background: #0e1116 !important;
+    border: 1px solid rgba(255,255,255,.12) !important;
+    border-radius: 6px !important;
+    padding: 4px !important;
+  }
+}
+
+/* Gráfico nunca é esmagado quando Ferramentas + Sub-painéis estão abertos */
+body.vx #chart-wrap, body.vx #chart{
+  min-height: 260px !important;
+}
+
+@media (max-width: 760px){
+  /* Faixa de contexto (#vx-contexto) e distâncias empilham sem colidir */
+  body.vx .page-col #vx-contexto, body.vx #vx-contexto, #vx-contexto{
+    display: flex !important;
+    flex-direction: column !important;
+    grid-template-columns: 1fr !important;
+    align-items: stretch !important;
+    height: auto !important;
+    min-height: 0 !important;
+    gap: 6px !important;
+    padding: 6px 8px !important;
+    position: relative !important;
+  }
+  body.vx #vx-ctx-estado, #vx-ctx-estado,
+  body.vx #vx-ctx-dist, #vx-ctx-dist{
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    white-space: normal !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+  }
+  .side-nav .nav-item, .side-nav #btn-robo, .side-nav #nav-mais{
+    position: relative !important;
+  }
+}

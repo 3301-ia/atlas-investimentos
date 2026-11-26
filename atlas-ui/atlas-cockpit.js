@@ -943,8 +943,8 @@
     cicloDominancia();
     renderLeituras();
 
-    setInterval(function () { lerPreco(); pintarKpis(); relogio(); }, 1000);
-    setInterval(function () { adotarCartoes(); adotarFlutuantes(); arrumarNavegacao(); tituloDoPainel(); }, 4000);
+    setInterval(function () { if (!document.hidden) { lerPreco(); pintarKpis(); relogio(); } }, 1000);
+    setInterval(function () { if (!document.hidden) { adotarCartoes(); adotarFlutuantes(); arrumarNavegacao(); tituloDoPainel(); } }, 4000);
     setInterval(cicloDominancia, 60000);
     setInterval(function () { var24(instrumento()); }, 120000);
     setInterval(lerPosicao, 120000);

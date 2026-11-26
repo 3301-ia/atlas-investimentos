@@ -6,8 +6,9 @@
   function linha(t, e){
     if(!e) return "";
     var es = e.estrutura||{}, cf = e.confluencia||{}, ab = e.aberta||{};
-    var acao = (e.acoes&&e.acoes.length)? e.acoes[e.acoes.length-1].motivo : (ab.lado? "ordem aberta: "+ab.lado : "sem ordem");
-    return "<div class=vx-sinal-linha><b>"+t+"</b> "+es.lado+" <span class=vx-fraco>folga "+(es.folga_pct==null?"-":es.folga_pct)+"%</span> "+
+    var lado = es.lado || ab.lado || "-";
+    var acao = (e.acoes&&e.acoes.length&&e.acoes[e.acoes.length-1].motivo)? e.acoes[e.acoes.length-1].motivo : (ab.lado? "ordem aberta: "+ab.lado : "sem ordem");
+    return "<div class=vx-sinal-linha><b>"+t+"</b> "+lado+" <span class=vx-fraco>folga "+(es.folga_pct==null?"-":es.folga_pct)+"%</span> "+
       (cf.forca!=null? "<span class=vx-voto>confluencia "+cf.forca+"</span>" : "")+
       "<div class=vx-motivo>"+acao+"</div></div>";
   }

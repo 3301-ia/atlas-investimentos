@@ -193,7 +193,7 @@
   }
 
   function vibrar() {
-    try { if (navigator.vibrate) navigator.vibrate([120, 60, 120, 60, 200]); } catch (e) {}
+    try { if (navigator.vibrate && navigator.userActivation && navigator.userActivation.hasBeenActive) navigator.vibrate([120, 60, 120, 60, 200]); } catch (e) {}
   }
 
   function notificar(titulo, corpo) {
@@ -953,8 +953,8 @@
     desenharLog();
     carregarCore();
 
-    setInterval(rodar, 700);
-    setInterval(function () { if (S.aberto) { pintarLeituras(); pintarLive(); } }, 1200);
+    setInterval(function () { if (!document.hidden) rodar(); }, 1500);
+    setInterval(function () { if (S.aberto && !document.hidden) { pintarLeituras(); pintarLive(); } }, 2000);
 
     // a navegação lateral chama esta função
     window.atlasAbrirAlertas = function () { abrir(); };

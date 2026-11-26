@@ -42,25 +42,45 @@
   }
   const lim = (x) => Math.max(0, Math.min(100, x));
 
-  async function historico() {
+  async function historico(onProgress) {
+    const cacheKey = 'vx_omega_prob_btc_1d';
+    try {
+      const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+      if (cached && Array.isArray(cached.v) && cached.v.length > 500 && (Date.now() - cached.em) < 43200000) {
+        return cached.v;
+      }
+    } catch (e) {}
+
     // 300 velas por pedido: pagina de 2015 até hoje
-    const inicio = new Date('2015-01-01T00:00:00Z').getTime();
+    const inicio = new Date('2015-06-01T00:00:00Z').getTime();
     const fim = Date.now();
-    let cursor = inicio; const todas = [];
-    while (cursor < fim) {
-      const ate = Math.min(cursor + 300 * 86400000, fim);
-      const u = `https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=86400&start=${new Date(cursor).toISOString()}&end=${new Date(ate).toISOString()}`;
-      const r = await fetch(u, { headers: { 'User-Agent': 'vectra' } });
-      if (!r.ok) break;
-      const j = await r.json();
-      if (!j.length) break;
-      todas.push(...j);
-      cursor = ate;
-      await new Promise((res) => setTimeout(res, 220));
+    const janelas = [];
+    for (let cursor = inicio; cursor < fim; cursor += 300 * 86400000) {
+      janelas.push([cursor, Math.min(cursor + 300 * 86400000, fim)]);
+    }
+    const todas = [];
+    for (let i = 0; i < janelas.length; i += 3) {
+      const lote = janelas.slice(i, i + 3);
+      if (onProgress) onProgress(Math.min(i + lote.length, janelas.length), janelas.length);
+      const resps = await Promise.all(lote.map(async ([de, ate]) => {
+        const u = `https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=86400&start=${new Date(de).toISOString()}&end=${new Date(ate).toISOString()}`;
+        try {
+          const r = await fetch(u);
+          if (!r.ok) return [];
+          const j = await r.json();
+          return Array.isArray(j) ? j : [];
+        } catch (e) { return []; }
+      }));
+      resps.forEach((j) => { if (j.length) todas.push(...j); });
+      if (i + 3 < janelas.length) await new Promise((res) => setTimeout(res, 150));
     }
     const mapa = new Map();
     todas.forEach((c) => mapa.set(c[0], c));
-    return [...mapa.values()].sort((a, b) => a[0] - b[0]).map((c) => ({ time: c[0], close: c[4] }));
+    const serie = [...mapa.values()].sort((a, b) => a[0] - b[0]).map((c) => ({ time: c[0], close: c[4] }));
+    if (serie.length > 500) {
+      try { localStorage.setItem(cacheKey, JSON.stringify({ em: Date.now(), v: serie })); } catch (e) {}
+    }
+    return serie;
   }
 
   function omegaSerie(closes) {
@@ -139,7 +159,7 @@
     if (document.getElementById(ID)) return document.getElementById(ID);
     const c = document.createElement('div');
     c.id = ID;
-    c.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(10,13,20,.98);display:none;flex-direction:column;font-family:Inter,system-ui,sans-serif;color:#dfe3ea';
+    c.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#0a0d14;display:none;flex-direction:column;font-family:Inter,system-ui,sans-serif;color:#dfe3ea';
     c.innerHTML = `
       <div style="display:flex;align-items:center;gap:14px;padding:12px 16px;border-bottom:1px solid #242935">
         <b style="font-size:12px;letter-spacing:.18em">Ω-SCORE · MODELO DE PROBABILIDADE</b>
@@ -160,7 +180,10 @@
     if (area.dataset.pronto) return;
     status.textContent = 'carregando histórico…';
     try {
-      const h = await historico();
+      const h = await historico((feito, total) => {
+        status.textContent = `carregando histórico… (${feito}/${total})`;
+      });
+      if (!h.length) throw new Error('histórico indisponível');
       const closes = h.map((x) => x.close);
       const scores = omegaSerie(closes);
       const dados = [];
