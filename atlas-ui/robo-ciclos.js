@@ -380,6 +380,71 @@
     };
   }
 
+  // ── CONTRA-CRUZAMENTO MTF: as duas pontas ao mesmo tempo ──────────────
+  // A tese é: no desacordo entre o tempo maior e o menor, abre compra numa
+  // ponta e venda na outra. Aqui isso é medido de verdade: cada ponta roda o
+  // motor na sua própria série, só nos trechos de contra-cruzamento, e o
+  // resultado vem com custo (taxa por lado + slippage de 1 tick por lado),
+  // porque travado as duas pernas se anulam e só o custo sobra.
+  async function contra(tfMaior, tfMenor, cfg) {
+    var antes = { tf: CFG.tf, sinal: CFG.sinal, alvos: CFG.alvos, filtro: CFG.filtro, hedge: CFG.hedge };
+    if (cfg) Object.assign(CFG, cfg);
+    CFG.sinal = 'ciclos';
+    var maior = null, menor = null;
+    try {
+      maior = await window.fetchCandles(CFG.ativo, tfMaior, 800);
+      menor = await window.fetchCandles(CFG.ativo, tfMenor, 800);
+    } catch (e) { maior = menor = null; }
+    if (!Array.isArray(maior) || !Array.isArray(menor) || maior.length < 80 || menor.length < 80) {
+      Object.assign(CFG, antes);
+      return { erro: 'sem série para ' + tfMaior + '/' + tfMenor };
+    }
+    var dMaior = window.emaDir(maior, 8, 16), dMenor = window.emaDir(menor, 8, 16);
+    // tempo menor alinhado sobre o maior (última vela menor conhecida)
+    var j = 0, noMaior = [];
+    for (var i = 0; i < maior.length; i++) {
+      while (j + 1 < menor.length && menor[j + 1].time <= maior[i].time) j++;
+      noMaior.push(dMenor[j]);
+    }
+    var k = 0, noMenor = [];
+    for (var m = 0; m < menor.length; m++) {
+      while (k + 1 < maior.length && maior[k + 1].time <= menor[m].time) k++;
+      noMenor.push(dMaior[k]);
+    }
+    var divergencia = 0;
+    var dirMaior = maior.map(function (_, x) {
+      var op = noMaior[x] === -dMaior[x] && dMaior[x] !== 0;
+      if (op) divergencia++;
+      return op ? dMaior[x] : 0;
+    });
+    var dirMenor = menor.map(function (_, x) {
+      return (dMenor[x] === -noMenor[x] && dMenor[x] !== 0) ? dMenor[x] : 0;
+    });
+    var contas = {};
+    async function rodar(velas, dir, chave) {
+      await preparar(velas);
+      S.dir = dir;
+      var n = S.velas.length;
+      for (var x = 0; x < n; x++) passo(true);
+      var c = S.teste, bruto = 0, custo = 0;
+      c.ciclos.forEach(function (q) {
+        bruto += q.total;
+        var nocional = (q.entrada + q.precoSaida) * q.tamanho;
+        custo += nocional * 0.0004 + 0.02 * q.tamanho;   // 0,04% por lado + 1 tick por lado
+      });
+      contas[chave] = { ciclos: c.ciclos.length, bruto: +bruto.toFixed(2), custo: +custo.toFixed(2),
+                        liquido: +(bruto - custo).toFixed(2) };
+    }
+    await rodar(maior, dirMaior, 'maior');
+    await rodar(menor, dirMenor, 'menor');
+    Object.assign(CFG, antes);
+    return { par: tfMaior + '/' + tfMenor, velasDivergentes: divergencia,
+             maior: contas.maior, menor: contas.menor,
+             somaBruta: +(contas.maior.bruto + contas.menor.bruto).toFixed(2),
+             somaCusto: +(contas.maior.custo + contas.menor.custo).toFixed(2),
+             somaLiquida: +(contas.maior.liquido + contas.menor.liquido).toFixed(2) };
+  }
+
   function passo(mudo) {
     var ctx = S.teste;
     if (!ctx) return false;
@@ -922,5 +987,5 @@
   window.RoboCiclos = { preparar: preparar, passo: passo, estado: S, config: CFG, pintar: pintarTeste, desenhar: desenhar,
     direcao: function () { return S.dir; }, definirSinal: function (s) { CFG.sinal = s; }, construirDirecao: construirDirecao,
     diagnostico: function (janela) { return diagnostico(S.teste, janela); },
-    mtf: mtf };
+    mtf: mtf, contra: contra };
 })();
