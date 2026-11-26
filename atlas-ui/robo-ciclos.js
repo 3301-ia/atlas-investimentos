@@ -159,6 +159,9 @@
   /* ── gráfico ────────────────────────────────────────────────────── */
   function criarGrafico() {
     if (S.chart || !window.LightweightCharts) return;
+    // o cartao nasce escondido na gaveta: criar o grafico com 0 de largura
+    // deixava os canvas presos em style.width:0px mesmo depois de abrir
+    if (!el.graf || el.graf.clientWidth < 60) return;
     S.chart = LightweightCharts.createChart(el.graf, {
       layout: { background: { color: '#ffffff' }, textColor: '#5c6068', fontSize: 10 },
       grid: { vertLines: { color: '#f4f4f6' }, horzLines: { color: '#f4f4f6' } },
@@ -176,24 +179,24 @@
   }
 
   function desenhar() {
-    criarGrafico();
-    if (!S.serie) return;
-    // O cartao abre e fecha (e no celular ele nasce dentro da gaveta): se o
-    // grafico foi criado escondido, ele fica com 0 de largura e nao se ajusta
-    // sozinho quando aparece. Aqui ele e redimensionado para o container atual
-    // antes de pintar, senao a serie e as marcas somem.
+    // O cartao abre e fecha (e no celular ele nasce dentro da gaveta): o
+    // observer entra antes de criar, senao a criacao adiada nunca seria
+    // retomada quando o cartao ganhasse largura.
     var host = el.graf;
-    // quando o cartao aparece (aba aberta, gaveta do celular), o tamanho muda:
-    // repinta para o grafico ocupar a largura real
     if (typeof ResizeObserver !== 'undefined' && host && !el._rxObs) {
       el._rxObs = new ResizeObserver(function () { try { desenhar(); } catch (e) {} });
       el._rxObs.observe(host);
     }
+    criarGrafico();
+    if (!S.serie) return;
     var larg = host ? host.clientWidth : 0, alt = host ? host.clientHeight : 0;
     if (S.chart && larg > 0 && alt > 0) {
+      // resize() em vez de applyOptions condicional: o grafico nascido com 0 de
+      // largura reportava o tamanho certo em options() mas deixava os canvas em
+      // style.width:0px — medido aqui, 7 canvas com 0px de largura.
       try {
-        var atual = S.chart.options ? S.chart.options() : null;
-        if (!atual || atual.width !== larg || atual.height !== alt) S.chart.applyOptions({ width: larg, height: alt });
+        if (typeof S.chart.resize === 'function') S.chart.resize(larg, alt);
+        else S.chart.applyOptions({ width: larg, height: alt });
       } catch (e) {}
     }
     var ctx = S.teste;
@@ -437,7 +440,10 @@
     if (document.getElementById('rc-estilo')) return;
     var s = document.createElement('style'); s.id = 'rc-estilo';
     s.textContent = [
-      '#robo-ciclos-card{background:#fff;border:1px solid ' + C.linha + ';border-radius:12px;padding:10px 11px;font-family:Inter,system-ui,sans-serif;color:' + C.tinta + ';font-size:11px}',
+      // a media query olha a janela, mas o cartao vive numa gaveta de ~300px:
+      // sem container query ele continuava em duas colunas e o grafico ficava
+      // com 128px de largura
+      '#robo-ciclos-card{background:#fff;border:1px solid ' + C.linha + ';border-radius:12px;padding:10px 11px;font-family:Inter,system-ui,sans-serif;color:' + C.tinta + ';font-size:11px;container-type:inline-size}',
       '#robo-ciclos-card *{box-sizing:border-box}',
       '.rc-topo{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-end;margin-bottom:8px}',
       '.rc-campo{display:flex;flex-direction:column;gap:2px}',
@@ -447,6 +453,7 @@
       '.rc-btn.on{background:' + C.vermelho + ';border-color:' + C.vermelho + ';color:#fff}',
       '.rc-grid{display:grid;grid-template-columns:1.35fr 1fr;gap:8px}',
       '@media(max-width:820px){.rc-grid{grid-template-columns:1fr}}',
+      '@container (max-width:560px){.rc-grid{grid-template-columns:minmax(0,1fr)}.rc-graf{height:200px}}',
       '.rc-bloco{border:1px solid ' + C.linha + ';border-radius:10px;padding:8px;background:#fff}',
       '.rc-bloco h4{margin:0 0 6px;font-size:8.5px;letter-spacing:1px;text-transform:uppercase;color:' + C.fraco + ';font-weight:700}',
       '.rc-graf{height:250px;width:100%;border-radius:8px;overflow:hidden}',

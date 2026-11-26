@@ -16,8 +16,8 @@
   })();
 
   var CFG = { ativo: 'BTCUSDT', tf: '15m', lote: 0.01, fator: 0.6, alvo: 2, stop: 1, corte: 0.5, alvoTrava: 0.5,
-              niveis: [1 / 3, 2 / 3, 1, 4 / 3, 5 / 3] };
-  var S = { velas: [], ind: null, ctx: null, vivo: false, timer: null, chart: null, serie: null, linhas: [] };
+              sinal: 'ema', niveis: [1 / 3, 2 / 3, 1, 4 / 3, 5 / 3] };
+  var S = { velas: [], ind: null, dir: null, ctx: null, vivo: false, timer: null, chart: null, serie: null, linhas: [] };
   var el = {};
   var C = { tinta: '#1c1c1e', fraco: '#8a8f98', linha: '#e4e4e6', vermelho: '#c8102e', verde: '#1f7a4d', ouro: '#c8a000' };
   var CHAVE = 'vx.robo.vivo.v1';
@@ -52,9 +52,31 @@
     var c = v.map(function (x) { return x.close; });
     return { e8: ema(c, 8), e16: ema(c, 16), rsi: rsiCalc(c, 14), atr: atrCalc(v, 14) };
   }
+  // SUPERTREND (ATR x multiplicador): a banda do lado do trend so aperta, a do
+  // lado oposto e reescrita a cada vela. Devolve a direcao por vela (+1/-1).
+  function superTrendDir(v, p, mult) {
+    var atr = atrCalc(v, p), dir = new Array(v.length).fill(0);
+    var trend = 1, upper = null, lower = null;
+    for (var i = 0; i < v.length; i++) {
+      if (atr[i] == null) { dir[i] = 0; continue; }
+      var hl2 = (v[i].high + v[i].low) / 2, banda = mult * atr[i], ub = hl2 + banda, lb = hl2 - banda;
+      if (trend === 1) { lower = lower == null ? lb : Math.max(lb, lower); upper = ub; }
+      else { upper = upper == null ? ub : Math.min(ub, upper); lower = lb; }
+      if (trend === 1 && v[i].close < lower) { trend = -1; upper = ub; }
+      else if (trend === -1 && v[i].close > upper) { trend = 1; lower = lb; }
+      dir[i] = trend;
+    }
+    return dir;
+  }
   function sinalEm(i) {
     var m = S.ind;
     if (i < 1 || m.atr[i] == null) return 0;
+    // Com sinal direcional (SuperTrend/Imperial) o gatilho e' a virada de lado
+    if (S.dir && S.dir.length > i) {
+      if (S.dir[i] === 1 && S.dir[i - 1] !== 1) return 1;
+      if (S.dir[i] === -1 && S.dir[i - 1] !== -1) return -1;
+      return 0;
+    }
     if (m.e8[i - 1] <= m.e16[i - 1] && m.e8[i] > m.e16[i] && m.rsi[i] > 55) return 1;
     if (m.e8[i - 1] >= m.e16[i - 1] && m.e8[i] < m.e16[i] && m.rsi[i] < 45) return -1;
     return 0;
@@ -193,7 +215,15 @@
 
     var m = S.ind, i = ctx.i;
     if (m && m.atr[i] != null) {
-      el.disparo.innerHTML = [
+      var leitura = S.dir
+        ? [
+            ['sinal', CFG.sinal === 'imperial' ? 'Imperial SuperTrend' : 'SuperTrend'],
+            ['lado', S.dir[i] === 1 ? 'ALTA' : 'BAIXA'],
+            ['ATR 14', n(m.atr[i], 1)],
+            ['risco por lote', 'US$ ' + n(m.atr[i] * CFG.lote, 2)]
+          ]
+        : null;
+      el.disparo.innerHTML = leitura ? leitura.map(function (l) { return '<i>' + l[0] + '</i><b>' + l[1] + '</b>'; }).join('') : [
         ['cruzamento', m.e8[i] > m.e16[i] ? 'EMA8 acima' : 'EMA8 abaixo'],
         ['RSI 14', n(m.rsi[i], 1) + (m.rsi[i] > 55 ? ' · força de compra' : m.rsi[i] < 45 ? ' · força de venda' : ' · sem força')],
         ['ATR 14', n(m.atr[i], 1)],
@@ -264,6 +294,16 @@
       var v = await carregar();
       if (!Array.isArray(v) || v.length < 80) throw new Error('série curta');
       S.velas = v; S.ind = indicadores(v);
+      S.dir = null;
+      if (CFG.sinal === 'supertrend') {
+        S.dir = superTrendDir(v, 14, 3);
+      } else if (CFG.sinal === 'imperial') {
+        try {
+          var mod = await import('./core/imperial.js');
+          var imp = mod && mod.imperial ? mod.imperial(v) : null;
+          S.dir = imp && imp.series && Array.isArray(imp.series.dir) ? imp.series.dir : null;
+        } catch (e) { S.dir = null; }
+      }
       S.ctx = novoCtx(inicio(v));
       var g = 0;
       while (S.ctx.i < v.length - 1 && g++ < 6000) passo(S.ctx);
@@ -340,6 +380,7 @@
       ' <label class="rv-campo"><span>ativo</span><select class="rv-sel" id="rv-ativo"><option value="BTCUSDT">BTC</option><option value="ETHUSDT">ETH</option><option value="ZECUSDT">ZEC</option></select></label>',
       ' <label class="rv-campo"><span>tempo</span><select class="rv-sel" id="rv-tf"><option>1m</option><option>3m</option><option>5m</option><option selected>15m</option><option>1h</option><option>4h</option></select></label>',
       ' <label class="rv-campo"><span>lote</span><select class="rv-sel" id="rv-lote"><option value="0.01">0,01</option><option value="0.03">0,03</option><option value="0.06">0,06</option></select></label>',
+      ' <label class="rv-campo"><span>sinal</span><select class="rv-sel" id="rv-sinal"><option value="ema">EMA 8×16 + RSI</option><option value="supertrend">SuperTrend ATR 14×3</option><option value="imperial">Imperial (ZEMA+KAMA)</option></select></label>',
       ' <button type="button" class="rv-btn" id="rv-vivo">● acompanhar ao vivo</button>',
       ' <button type="button" class="rv-btn" id="rv-ir">ver o teste ›</button>',
       '</div>',
@@ -354,6 +395,9 @@
 
     el.card = card;
     el.ativo = card.querySelector('#rv-ativo'); el.tf = card.querySelector('#rv-tf'); el.lote = card.querySelector('#rv-lote');
+    el.sinal = card.querySelector('#rv-sinal');
+    el.sinal.value = CFG.sinal;
+    el.sinal.addEventListener('change', function () { CFG.sinal = el.sinal.value; if (S.vivo) rodar(); });
     el.btn = card.querySelector('#rv-vivo'); el.ir = card.querySelector('#rv-ir');
     el.linha = card.querySelector('#rv-linha'); el.graf = card.querySelector('#rv-graf');
     el.estado = card.querySelector('#rv-estado'); el.disparo = card.querySelector('#rv-disparo'); el.livro = card.querySelector('#rv-livro');
