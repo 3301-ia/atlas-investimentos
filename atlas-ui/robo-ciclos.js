@@ -20,7 +20,7 @@
   })();
 
   var CFG = { ativo: 'BTCUSDT', tf: '15m', lote: 0.01, fator: 0.6, alvo: 2, stop: 1, corte: 0.5, alvoTrava: 0.5,
-              sinal: 'ciclos', alvos: 'atr', filtro: 'base', niveis: [1 / 3, 2 / 3, 1, 4 / 3, 5 / 3] };
+              sinal: 'ciclos', alvos: 'atr', filtro: 'base', hedge: 'auto', niveis: [1 / 3, 2 / 3, 1, 4 / 3, 5 / 3] };
 
   var S = {
     velas: [], ind: null, dir: null, motor: null,
@@ -267,12 +267,15 @@
         t.estado = 'encerrada'; t.saida = i; p.pnlTravas += t.resultado;
       }
     });
-    var principal = (preco - p.entrada) * p.lado * p.tamanho;
-    var total = principal + p.pnlTravas;
+    // principal pode ter sido realizado antes (ex.: travado no stop, virando
+    // contra-ordem) — nesse caso o número já está fechado em p.principal
+    var principal = p.principal != null ? p.principal : (preco - p.entrada) * p.lado * p.tamanho;
+    var hedgeRes = p.hedge ? (p.hedge.resultado || 0) : 0;
+    var total = principal + hedgeRes + p.pnlTravas;
     ctx.ciclos.push({
       i: p.i, saida: i, lado: p.lado, entrada: p.entrada, precoSaida: preco, motivo: motivo,
       risco: p.risco, stop: p.stop, alvo: p.alvo, alvoNome: p.alvoNome, unidade: p.unidade,
-      principal: principal, travas: p.pnlTravas,
+      principal: principal, travas: p.pnlTravas, hedge: hedgeRes,
       total: total, r: total / (p.risco * p.tamanho), lista: p.travas.slice()
     });
     ctx.equity += total;
@@ -295,11 +298,34 @@
     // a posicao nasce no fechamento desta vela: o range dela ja passou, entao
     // stop, alvo e travas so valem a partir da vela seguinte
     p = ctx.pos;
-    if (p && !abriuAgora) {
+    if (p && !abriuAgora && p.hedge) {
+      // ciclo travado: a contra-ordem é quem decide a saída. O alvo dela é 1R
+      // além do stop (empata o prejuízo e começa a lucrar); se o preço voltar
+      // ao preço da trava, ela sai no zero e o ciclo fecha no pior caso o stop.
+      var h = p.hedge, saiuH = false, precoH = 0;
+      if (h.lado === -1) {
+        if (v.low <= h.alvo) { h.resultado = (h.preco - h.alvo) * h.tamanho; saiuH = true; precoH = h.alvo; }
+        else if (v.high >= h.preco) { h.resultado = 0; saiuH = true; precoH = h.preco; }
+      } else {
+        if (v.high >= h.alvo) { h.resultado = (h.alvo - h.preco) * h.tamanho; saiuH = true; precoH = h.alvo; }
+        else if (v.low <= h.preco) { h.resultado = 0; saiuH = true; precoH = h.preco; }
+      }
+      if (saiuH) fechar(ctx, i, precoH, h.resultado > 0 ? 'trava de proteção' : 'zero');
+    } else if (p && !abriuAgora) {
       var d = p.risco;
       // stop e alvo primeiro: e a ordem conservadora do relatorio
-      if (p.lado === 1 && v.low <= p.stop) fechar(ctx, i, Math.min(p.stop, v.open), 'stop');
-      else if (p.lado === -1 && v.high >= p.stop) fechar(ctx, i, Math.max(p.stop, v.open), 'stop');
+      var stopPego = (p.lado === 1 && v.low <= p.stop) || (p.lado === -1 && v.high >= p.stop);
+      if (stopPego && CFG.hedge === 'auto') {
+        // TRAVA DE PROTEÇÃO: o stop não encerra no prejuízo, ele VIRA contra-ordem
+        // (numa venda do principal, a trava é uma compra) com o mesmo tamanho. O
+        // principal fica travado no stop e o ciclo só fecha no zero ou acima —
+        // a trava assume o risco e lucra se o preço continuar contra.
+        var precoStop = p.lado === 1 ? Math.min(p.stop, v.open) : Math.max(p.stop, v.open);
+        p.principal = (precoStop - p.entrada) * p.lado * p.tamanho;
+        p.hedge = { lado: -p.lado, preco: precoStop, tamanho: p.tamanho, alvo: precoStop - p.lado * p.risco, resultado: 0 };
+      } else if (stopPego) {
+        fechar(ctx, i, p.lado === 1 ? Math.min(p.stop, v.open) : Math.max(p.stop, v.open), 'stop');
+      }
       else if (p.lado === 1 && v.high >= p.alvo) fechar(ctx, i, p.alvo, 'alvo');
       else if (p.lado === -1 && v.low <= p.alvo) fechar(ctx, i, p.alvo, 'alvo');
     }
@@ -431,6 +457,11 @@
     var linhas = ['<tr><th>ordem</th><th>lado</th><th class="n">preço</th><th class="n">tamanho</th><th>estado</th><th class="n">resultado</th></tr>'];
     if (p) {
       linhas.push('<tr class="principal"><td>principal</td><td>' + (p.lado === 1 ? 'compra' : 'venda') + '</td><td class="n">' + n(p.entrada, 1) + '</td><td class="n">' + n(p.tamanho, 2) + '</td><td><span class="rc-pill aberta">aberta</span></td><td class="n ' + cls(aberto) + '">' + usd(aberto) + '</td></tr>');
+      if (p.hedge) {
+        linhas.push('<tr class="principal"><td>trava de proteção</td><td>' + (p.hedge.lado === 1 ? 'compra' : 'venda') +
+          '</td><td class="n">' + n(p.hedge.preco, 1) + '</td><td class="n">' + n(p.hedge.tamanho, 2) +
+          '</td><td><span class="rc-pill aberta">aberta</span></td><td class="n">' + usd(p.hedge.resultado || 0) + '</td></tr>');
+      }
       p.travas.forEach(function (t, k) {
         linhas.push('<tr><td>trava ' + (k + 1) + ' · ' + (Math.round(t.nivel * 100) / 100) + 'R</td><td>' + (t.lado === 1 ? 'compra' : 'venda') + '</td><td class="n">' + n(t.preco, 1) + '</td><td class="n">' + n(t.tamanho, 3) + '</td><td><span class="rc-pill ' + t.estado + '">' + t.estado + '</span></td><td class="n ' + cls(t.resultado) + '">' + usd(t.resultado) + '</td></tr>');
       });
@@ -689,6 +720,7 @@
       ' <label class="rc-campo"><span>sinal</span><select class="rc-sel" id="rc-sinal"><option value="ciclos">Ciclos (EMA 8×16 + RSI)</option><option value="supertrend2">SuperTrend ATR ×2</option><option value="supertrend3">SuperTrend ATR ×3</option><option value="imperial">Imperial (ZEMA+KAMA)</option><option value="confluencia">Confluência (9 votos)</option><option value="cascata">Cascata EMA 8×16 + micro</option></select></label>',
       ' <label class="rc-campo"><span>alvos</span><select class="rc-sel" id="rc-alvos"><option value="atr" selected>ATR 2R (relatório)</option><option value="fibo">Fibo (alvo da perna)</option><option value="medias">Base: meia pilha</option><option value="pilha">Base: pilha inteira</option></select></label>',
       ' <label class="rc-campo"><span>filtro</span><select class="rc-sel" id="rc-filtro"><option value="base">Base a favor</option><option value="livre">Livre</option></select></label>',
+      ' <label class="rc-campo"><span>proteção</span><select class="rc-sel" id="rc-hedge"><option value="auto">Stop vira trava</option><option value="nada">Stop normal</option></select></label>',
       ' <label class="rc-campo"><span>ritmo</span><select class="rc-sel" id="rc-ms"><option value="500">lento</option><option value="220" selected>normal</option><option value="80">rápido</option></select></label>',
       ' <button type="button" class="rc-btn" id="rc-rodar">Rodar</button>',
       ' <button type="button" class="rc-btn" id="rc-play">▶ testar</button>',
@@ -718,6 +750,14 @@
     el.alvos.value = CFG.alvos;
     el.filtro = card.querySelector('#rc-filtro');
     el.filtro.value = CFG.filtro;
+    el.hedge = card.querySelector('#rc-hedge');
+    el.hedge.value = CFG.hedge;
+    el.hedge.addEventListener('change', function () {
+      CFG.hedge = el.hedge.value;
+      var velas = S.velas.slice();
+      parar();
+      if (velas.length > 80) preparar(velas); else preparar();
+    });
     el.filtro.addEventListener('change', function () {
       CFG.filtro = el.filtro.value;
       var velas = S.velas.slice();

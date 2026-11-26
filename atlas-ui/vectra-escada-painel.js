@@ -262,9 +262,10 @@
       if (!fonte && rc && typeof rc.preparar === 'function' && window.__vxEstudoNoRobo !== 'rodando' && window.__vxEstudoNoRobo !== 'pronto') {
         window.__vxEstudoNoRobo = 'rodando';
         el.corpo.innerHTML = '<div class="ep-vazio">Rodando o robô cíclico em papel sobre a série do estudo…</div>';
-        // a conferência reproduz o relatório, cujos alvos são 2R de ATR e sem
-        // filtro de base: aqui o robô roda nesse modo para os números baterem
-        if (rc.config) { rc.config.alvos = 'atr'; rc.config.filtro = 'livre'; }
+        // a conferência reproduz o relatório, cujos alvos são 2R de ATR, sem
+        // filtro de base e com stop normal: aqui o robô roda nesse modo para os
+        // números baterem
+        if (rc.config) { rc.config.alvos = 'atr'; rc.config.filtro = 'livre'; rc.config.hedge = 'nada'; }
         rc.preparar(serieEstudoCache).then(function () {
           var n = 0;
           // avança vela por vela, em silêncio; o gráfico é pintado uma vez no fim
