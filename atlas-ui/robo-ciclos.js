@@ -20,10 +20,10 @@
   })();
 
   var CFG = { ativo: 'BTCUSDT', tf: '15m', lote: 0.01, fator: 0.6, alvo: 2, stop: 1, corte: 0.5, alvoTrava: 0.5,
-              niveis: [1 / 3, 2 / 3, 1, 4 / 3, 5 / 3] };
+              sinal: 'ciclos', niveis: [1 / 3, 2 / 3, 1, 4 / 3, 5 / 3] };
 
   var S = {
-    velas: [], ind: null, motor: null,
+    velas: [], ind: null, dir: null, motor: null,
     chart: null, serie: null, linhas: [], marcadores: [],
     teste: null, timer: null, ms: 220, indice: 0
   };
@@ -34,7 +34,10 @@
   function usd(v) { return (v >= 0 ? '+' : '') + n(v, 2); }
   function hhmm(t) { var d = new Date(t * 1000); return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
   function diahora(t) { var d = new Date(t * 1000); return ('0' + d.getDate()).slice(-2) + '/' + ('0' + (d.getMonth() + 1)).slice(-2) + ' ' + hhmm(t); }
-  function segTf(tf) { return ({ '1m': 60, '3m': 180, '5m': 300, '15m': 900, '1h': 3600, '4h': 14400 })[tf] || 900; }
+  function segTf(tf) {
+    var mapa = { '1s': 1, '5s': 5, '15s': 15, '30s': 30, '1m': 60, '3m': 180, '5m': 300, '15m': 900, '1h': 3600, '4h': 14400 };
+    return mapa[tf] || 900;
+  }
 
   /* ── indicadores ─────────────────────────────────────────────────── */
   function ema(src, p) { var k = 2 / (p + 1), o = [], s = null; for (var i = 0; i < src.length; i++) { s = s === null ? src[i] : src[i] * k + s * (1 - k); o.push(s); } return o; }
@@ -64,9 +67,71 @@
   function sinalEm(i) {
     var m = S.ind;
     if (i < 1 || m.atr[i] == null) return 0;
+    // Com sinal escolhido (SuperTrend, Imperial ou a confluência arbitrada) o
+    // gatilho é a virada de lado; o resto do motor — stop, alvo, escada de
+    // travas e o resultado em dólar — continua idêntico ao modo dos ciclos.
+    if (S.dir && S.dir.length > i) {
+      var a = S.dir[i], b = S.dir[i - 1];
+      if (a === 1 && b !== 1) return 1;
+      if (a === -1 && b !== -1) return -1;
+      return 0;
+    }
     if (m.e8[i - 1] <= m.e16[i - 1] && m.e8[i] > m.e16[i] && m.rsi[i] > 55) return 1;
     if (m.e8[i - 1] >= m.e16[i - 1] && m.e8[i] < m.e16[i] && m.rsi[i] < 45) return -1;
     return 0;
+  }
+
+  // A série de direção do sinal escolhido. Reaproveita o motor do painel
+  // (window.supertrendDir / window.confluenciaDir, do main.js) e o Imperial do
+  // core, para o gatilho ser exatamente o mesmo indicador que está na tela.
+  async function construirDirecao(v) {
+    if (!CFG.sinal || CFG.sinal === 'ciclos') return null;
+    var dirImperial = null;
+    try {
+      var mod = await import('./core/imperial.js');
+      var imp = mod && mod.imperial ? mod.imperial(v) : null;
+      dirImperial = imp && imp.series && Array.isArray(imp.series.dir) ? imp.series.dir : null;
+    } catch (e) { dirImperial = null; }
+    if (CFG.sinal === 'supertrend2' && typeof window.supertrendDir === 'function') return window.supertrendDir(v, 14, 2);
+    if (CFG.sinal === 'supertrend3' && typeof window.supertrendDir === 'function') return window.supertrendDir(v, 14, 3);
+    if (CFG.sinal === 'imperial') return dirImperial;
+    if (CFG.sinal === 'confluencia' && typeof window.confluenciaDir === 'function') return window.confluenciaDir(v, { nivel: 3 }, dirImperial);
+    // CASCATA: o tempo base manda, mas só vale se os micro-tempos abaixo dele
+    // (1m → 30s → 15s → 5s) concordarem. Base = confluência arbitrada.
+    if (CFG.sinal === 'cascata') {
+      var base = typeof window.confluenciaDir === 'function'
+        ? window.confluenciaDir(v, { nivel: 3 }, dirImperial)
+        : (typeof window.supertrendDir === 'function' ? window.supertrendDir(v, 14, 2) : null);
+      if (!base) return null;
+      // 5m/1m vêm do histórico normal; segundos dependem do livro de ticks ao
+      // vivo e só entram com a aba visível (em segundo plano o navegador
+      // estrangula os timers e a espera estourava)
+      var alvos = ['5m', '1m'];
+      if (document.visibilityState === 'visible') alvos = alvos.concat(['30s', '15s', '5s']);
+      alvos = alvos.filter(function (t) { return segTf(t) < segTf(CFG.tf); });
+      // uma leitura por micro-tempo em paralelo, cada uma com teto de tempo: a
+      // fonte de segundos pode simplesmente não responder, e a cascata não
+      // pode ficar parada esperando por ela.
+      var comTeto = function (p, ms) {
+        return Promise.race([
+          p.catch(function () { return null; }),
+          new Promise(function (r) { setTimeout(function () { r(null); }, ms); })
+        ]);
+      };
+      var pedidos = alvos.map(function (t) {
+        return comTeto(window.fetchCandles(CFG.ativo, t, 1200), t.indexOf('s') > 0 && t.indexOf('m') < 0 ? 6000 : 4000);
+      });
+      var respostas = await Promise.all(pedidos);
+      var micros = [];
+      respostas.forEach(function (mv) {
+        if (Array.isArray(mv) && mv.length > 40 && typeof window.emaDir === 'function') {
+          micros.push({ velas: mv, dir: window.emaDir(mv, 8, 16) });
+        }
+      });
+      if (!micros.length || typeof window.cascataDir !== 'function') return base;
+      return window.cascataDir(base, v, micros, Math.min(2, micros.length));
+    }
+    return null;
   }
 
   /* ── modo de teste: uma vela por passo ───────────────────────────── */
@@ -340,6 +405,7 @@
       S.velas = externa ? norm(velasExternas) : await carregarVelas();
       if (S.velas.length < 80) throw new Error('série curta');
       S.ind = indicadores(S.velas);
+      S.dir = await construirDirecao(S.velas);
       // serie externa e a serie inteira do estudo: o teste comeca no primeiro
       // ponto valido para estudar todos os ciclos, e nao na janela dos ultimos
       // 900 que o acompanhamento ao vivo usa
@@ -392,6 +458,7 @@
       var v = await carregarVelas();
       if (!Array.isArray(v) || v.length < 80) throw new Error('serie curta');
       S.velas = v; S.ind = indicadores(v);
+      S.dir = await construirDirecao(v);
       S.teste = novoTeste(inicioDoTeste(v));
       S.silencioso = true;
       var guarda = 0;
@@ -486,6 +553,7 @@
       ' <label class="rc-campo"><span>ativo</span><select class="rc-sel" id="rc-ativo"><option value="BTCUSDT">BTC</option><option value="ETHUSDT">ETH</option><option value="ZECUSDT">ZEC</option></select></label>',
       ' <label class="rc-campo"><span>tempo</span><select class="rc-sel" id="rc-tf"><option>1m</option><option>3m</option><option>5m</option><option selected>15m</option><option>1h</option><option>4h</option></select></label>',
       ' <label class="rc-campo"><span>lote</span><select class="rc-sel" id="rc-lote"><option value="0.01">0,01</option><option value="0.03">0,03</option><option value="0.06">0,06</option></select></label>',
+      ' <label class="rc-campo"><span>sinal</span><select class="rc-sel" id="rc-sinal"><option value="ciclos">Ciclos (EMA 8×16 + RSI)</option><option value="supertrend2">SuperTrend ATR ×2</option><option value="supertrend3">SuperTrend ATR ×3</option><option value="imperial">Imperial (ZEMA+KAMA)</option><option value="confluencia">Confluência (9 votos)</option><option value="cascata">Cascata micro (1m→15s)</option></select></label>',
       ' <label class="rc-campo"><span>ritmo</span><select class="rc-sel" id="rc-ms"><option value="500">lento</option><option value="220" selected>normal</option><option value="80">rápido</option></select></label>',
       ' <button type="button" class="rc-btn" id="rc-rodar">Rodar</button>',
       ' <button type="button" class="rc-btn" id="rc-play">▶ testar</button>',
@@ -509,6 +577,14 @@
     el.card = card;
     el.ativo = card.querySelector('#rc-ativo'); el.tf = card.querySelector('#rc-tf');
     el.lote = card.querySelector('#rc-lote'); el.ms = card.querySelector('#rc-ms');
+    el.sinal = card.querySelector('#rc-sinal');
+    el.sinal.value = CFG.sinal;
+    el.sinal.addEventListener('change', function () {
+      CFG.sinal = el.sinal.value;
+      var velas = S.velas.slice();
+      parar();
+      if (velas.length > 80) preparar(velas); else preparar();
+    });
     el.rodar = card.querySelector('#rc-rodar'); el.play = card.querySelector('#rc-play');
     el.prox = card.querySelector('#rc-prox'); el.ciclo = card.querySelector('#rc-ciclo');
     el.reset = card.querySelector('#rc-reset');
@@ -538,5 +614,6 @@
 
   // pintar/desenhar expostos para quem conduz o teste por fora (painel da
   // escada), que avanca as velas em silencio e repinta uma vez no fim
-  window.RoboCiclos = { preparar: preparar, passo: passo, estado: S, config: CFG, pintar: pintarTeste, desenhar: desenhar };
+  window.RoboCiclos = { preparar: preparar, passo: passo, estado: S, config: CFG, pintar: pintarTeste, desenhar: desenhar,
+    direcao: function () { return S.dir; }, definirSinal: function (s) { CFG.sinal = s; }, construirDirecao: construirDirecao };
 })();

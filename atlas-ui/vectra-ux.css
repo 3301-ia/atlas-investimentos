@@ -286,9 +286,12 @@ body.vx .vx-titulo {
      position:fixed é o que impede a gaveta de entrar no fluxo: aberta, o
      cartão Ciclos chega a 1.800px e empurrava o gráfico para 0px de altura. */
   #vx-dock {
+    /* left/right também precisam de !important: o cockpit adota a gaveta com
+       inset:auto inline, e sem isso a gaveta ficava com a largura do conteúdo
+       (medido: 738px dentro de uma tela de 430px) */
     position: fixed !important; z-index: 90 !important;
-    top: auto !important; left: 8px; right: 8px; bottom: 52px !important;
-    width: auto !important; max-width: none;
+    top: auto !important; left: 8px !important; right: 8px !important; bottom: 52px !important;
+    width: auto !important; max-width: calc(100vw - 16px);
     max-height: 46px !important; overflow: hidden;
     transition: max-height 220ms ease;
   }

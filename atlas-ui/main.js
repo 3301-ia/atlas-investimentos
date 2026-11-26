@@ -18278,6 +18278,114 @@ function supertrendDir(candlesArr, len, mult){
   return dir;
 }
 
+// ── CONFLUÊNCIA ARBITRADA ────────────────────────────────────────────
+// Cada indicador da lista do painel (EMAs, RSI, StochRSI, MACD, Bollinger,
+// DI+/DI-, SuperTrend 2 e 3, Imperial) vota +1 / -1 / 0 por vela. O placar
+// líquido decide o lado; sem quórum, mantém o lado anterior — um sinal
+// arbitrado não pode ficar pulando de lado a cada vela.
+function adxDiSeries(candlesArr, len) {
+  const n = candlesArr.length;
+  const diP = new Array(n).fill(0), diM = new Array(n).fill(0);
+  let sp = 0, sm = 0, tr = 0;
+  const k = 1 / len;
+  for (let i = 1; i < n; i++) {
+    const up = candlesArr[i].high - candlesArr[i - 1].high;
+    const dn = candlesArr[i - 1].low - candlesArr[i].low;
+    const dmais = up > dn && up > 0 ? up : 0;
+    const dmenos = dn > up && dn > 0 ? dn : 0;
+    const trv = Math.max(candlesArr[i].high - candlesArr[i].low,
+      Math.abs(candlesArr[i].high - candlesArr[i - 1].close),
+      Math.abs(candlesArr[i].low - candlesArr[i - 1].close));
+    sp = sp * (1 - k) + dmais * k;
+    sm = sm * (1 - k) + dmenos * k;
+    tr = tr * (1 - k) + trv * k;
+    diP[i] = tr > 0 ? (sp / tr) * 100 : 0;
+    diM[i] = tr > 0 ? (sm / tr) * 100 : 0;
+  }
+  return { diP, diM };
+}
+
+function bollingerPctbSeries(closes, len, mult) {
+  const mid = sma(closes, len), out = new Array(closes.length).fill(null);
+  for (let i = len - 1; i < closes.length; i++) {
+    if (mid[i] == null) continue;
+    let v = 0;
+    for (let j = 0; j < len; j++) { const d = closes[i - j] - mid[i]; v += d * d; }
+    const dp = Math.sqrt(v / len) * mult;
+    const sup = mid[i] + dp, inf = mid[i] - dp;
+    out[i] = sup > inf ? (closes[i] - inf) / (sup - inf) : 0.5;
+  }
+  return out;
+}
+
+// Devolve a direção por vela; com cfg.detalhe devolve também os votos da
+// última vela, para conferir por que um lado ganhou.
+function confluenciaDir(candlesArr, cfg, dirImperial) {
+  cfg = cfg || {};
+  const n = candlesArr.length;
+  const closes = candlesArr.map(c => c.close);
+  const e8 = ema(closes, 8), e16 = ema(closes, 16);
+  const rsi = rsiCalc(closes, 14);
+  const stoch = stochCalc(rsi, 14);
+  const kLine = sma(stoch.map(v => (v == null ? 50 : v)), 3);
+  const dLine = sma(kLine.map(v => (v == null ? 50 : v)), 3);
+  const e12 = ema(closes, 12), e26 = ema(closes, 26);
+  const macd = closes.map((_, i) => e12[i] - e26[i]);
+  const macdSig = ema(macd, 9);
+  const bb = bollingerPctbSeries(closes, 20, 2);
+  const dis = adxDiSeries(candlesArr, 14);
+  const st2 = supertrendDir(candlesArr, 14, 2);
+  const st3 = supertrendDir(candlesArr, 14, 3);
+  const nivel = cfg.nivel || 3;
+  const dir = new Array(n).fill(0);
+  let lado = 0, votos = null;
+  for (let i = 1; i < n; i++) {
+    let s = 0;
+    const sp = v => { s += v; return v; };
+    sp(e8[i] > e16[i] ? 1 : e8[i] < e16[i] ? -1 : 0);
+    sp(rsi[i] == null ? 0 : rsi[i] > 55 ? 1 : rsi[i] < 45 ? -1 : 0);
+    sp(kLine[i] == null || dLine[i] == null ? 0 : kLine[i] > dLine[i] ? 1 : -1);
+    sp(macd[i] > macdSig[i] ? 1 : macd[i] < macdSig[i] ? -1 : 0);
+    sp(bb[i] == null ? 0 : bb[i] > 0.55 ? 1 : bb[i] < 0.45 ? -1 : 0);
+    sp(dis.diP[i] > dis.diM[i] ? 1 : dis.diP[i] < dis.diM[i] ? -1 : 0);
+    sp(st2[i]);
+    sp(st3[i]);
+    sp(Array.isArray(dirImperial) && dirImperial[i] ? dirImperial[i] : 0);
+    if (i === n - 1) votos = { ema: e8[i] > e16[i] ? 1 : -1, rsi: rsi[i] > 55 ? 1 : rsi[i] < 45 ? -1 : 0, stoch: kLine[i] > dLine[i] ? 1 : -1, macd: macd[i] > macdSig[i] ? 1 : -1, bollinger: bb[i] == null ? 0 : bb[i] > 0.55 ? 1 : bb[i] < 0.45 ? -1 : 0, di: dis.diP[i] > dis.diM[i] ? 1 : -1, supertrend2: st2[i], supertrend3: st3[i], imperial: Array.isArray(dirImperial) && dirImperial[i] ? dirImperial[i] : 0, placar: s };
+    if (s >= nivel) lado = 1;
+    else if (s <= -nivel) lado = -1;
+    dir[i] = lado;
+  }
+  dir[0] = 0;
+  return cfg.detalhe ? { dir, votos } : dir;
+}
+
+// Direção por cruzamento de médias (é o cruzamento do CONFLUATOR: EMA 8 x 16).
+function emaDir(candlesArr, rapida, lenta) {
+  const closes = candlesArr.map(c => c.close);
+  const a = ema(closes, rapida || 8), b = ema(closes, lenta || 16);
+  return closes.map((_, i) => (a[i] > b[i] ? 1 : a[i] < b[i] ? -1 : 0));
+}
+
+// CASCATA: a direção do tempo base só vale se os micro-tempos concordarem.
+// Cada série micro é alinhada pela vela base que a contém — o micro que conta é
+// o último fechado antes da base fechar, então não há leitura do futuro.
+function cascataDir(dirBase, candlesBase, micros, minimo) {
+  const n = candlesBase.length;
+  const ok = new Array(n).fill(0);
+  (micros || []).forEach(m => {
+    if (!m || !m.velas || m.velas.length < 30 || !Array.isArray(m.dir)) return;
+    let j = 0;
+    for (let i = 0; i < n; i++) {
+      const t = candlesBase[i].time;
+      while (j + 1 < m.velas.length && m.velas[j + 1].time <= t) j++;
+      if (dirBase[i] !== 0 && m.dir[j] === dirBase[i]) ok[i]++;
+    }
+  });
+  const precisa = minimo == null ? 1 : minimo;
+  return dirBase.map((d, i) => (d !== 0 && ok[i] >= precisa ? d : 0));
+}
+
 function runBacktest(candlesArr,cfg){
   const n=candlesArr.length;
   const closes=candlesArr.map(c=>c.close), highs=candlesArr.map(c=>c.high), lows=candlesArr.map(c=>c.low);
