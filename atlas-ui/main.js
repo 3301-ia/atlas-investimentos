@@ -14361,8 +14361,11 @@ async function loteAntigo(sym, tf, base){
       if (r.ok) {
         const j = await r.json();
         if (j && j.ok && Array.isArray(j.velas) && j.velas.length) {
+          // ATENÇÃO: a ponte entrega [t, o, c, h, l, v]. Ler como OHLC trocava
+          // máxima com mínima em TODA vela vinda da ponte (medido: 779 de 800
+          // velas com high < low), e com isso stop, alvo e travas ficavam errados.
           const bloco = j.velas
-            .map(function(v){ return { time:v[0], open:v[1], high:v[2], low:v[3], close:v[4], volume:v[5] }; })
+            .map(function(v){ return { time:v[0], open:v[1], close:v[2], high:v[3], low:v[4], volume:v[5] }; })
             .filter(function(c){ return c.time < base; });
           if (bloco.length) return bloco;
         }
@@ -15034,7 +15037,9 @@ function vxPodarSeriesLocal(manter, agressivo){
     const chaves = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (!k || k.indexOf('vx_velas_') !== 0 || k === manter) continue;
+      // 'vx_velas' sem sufixo tambem pega as series antigas, gravadas antes da
+      // correcao da ordem da ponte (elas tinham high/low trocados)
+      if (!k || k.indexOf('vx_velas') !== 0 || k === manter) continue;
       // le so o comeco do texto: parsear a serie inteira so pra saber a data
       // de gravacao custaria o mesmo que gravar de novo
       let em = 0;
@@ -15048,7 +15053,7 @@ function vxPodarSeriesLocal(manter, agressivo){
 }
 
 async function vxSerieDaPonte(sym, tf, alvo, prioridade){
-  const chave = 'vx_velas_' + sym + '_' + tf;
+  const chave = 'vx_velas_v2_' + sym + '_' + tf;
   const chaveFila = chave + '|' + alvo;
   const jaIndo = VX_SERIE_EM_CURSO.get(chaveFila);
   if (jaIndo) return jaIndo; // dois paineis pedindo o mesmo par: uma requisicao
@@ -15065,7 +15070,8 @@ async function vxSerieDaPonte(sym, tf, alvo, prioridade){
     if (!r.ok) return null;
     const j = await r.json();
     if (!j || !j.ok || !Array.isArray(j.velas) || !j.velas.length) return null;
-    const velas = saneaVelas(j.velas.map(function(v){ return { time:v[0], open:v[1], high:v[2], low:v[3], close:v[4], volume:v[5] }; }));
+    // ordem da ponte: [t, o, c, h, l, v] — não é OHLC
+    const velas = saneaVelas(j.velas.map(function(v){ return { time:v[0], open:v[1], close:v[2], high:v[3], low:v[4], volume:v[5] }; }));
     if (velas.length <= 20) return null;
     VX_SERIE_CACHE.set(chave, { em: Date.now(), velas: velas, ind: j.indicadores || null });
     // teto de memoria: 120 series de 4.000 velas nao podem ficar para sempre
@@ -15162,7 +15168,7 @@ async function fetchCandles(sym,tf,limit=500){
   }
   // cache local da serie: reabrir o painel no mesmo ativo e tempo nao refaz
   // o pedido inteiro, entao a abertura fica instantanea mesmo com a ponte fria
-  const chaveCache = 'vx_velas_' + sym + '_' + fetchTf;
+  const chaveCache = 'vx_velas_v2_' + sym + '_' + fetchTf;
   if (aggFactor === 1) {
     const lembrada = vxSerieLembrada(chaveCache, realLimit);
     if (lembrada) {
@@ -15206,7 +15212,7 @@ async function fetchCandles(sym,tf,limit=500){
         // do servidor: antes a varredura de fundo de outro ativo sobrescrevia
         // o historico do ativo que estava aberto na tela.
         if (limit >= 300) {
-          const guardada = VX_SERIE_CACHE.get('vx_velas_' + sym + '_' + fetchTf);
+          const guardada = VX_SERIE_CACHE.get('vx_velas_v2_' + sym + '_' + fetchTf);
           try {
             if (guardada && guardada.ind) {
               vxInd = { sym: sym, tf: fetchTf, n: parsed.length, ultimo: parsed[parsed.length-1].time, ind: guardada.ind };
@@ -18244,13 +18250,44 @@ function computeMASeries(closes,len,isEma){
 
 // Motor puro — recebe candles + config, devolve o resultado completo.
 // Isolado de qualquer coisa de UI, pra dar pra testar sozinho.
+// SUPERTREND clássico (banda ATR × multiplicador), devolvendo a direção por
+// vela. É o mesmo raciocínio do indicador da tela, mas calculado aqui para o
+// backtest poder usar o sinal sem depender do gráfico.
+function supertrendDir(candlesArr, len, mult){
+  const n = candlesArr.length, dir = new Array(n).fill(0);
+  const atr = atrCalc(candlesArr.map(c=>c.high), candlesArr.map(c=>c.low), candlesArr.map(c=>c.close), len);
+  let trend = 1, upper = null, lower = null;
+  for (let i = 0; i < n; i++) {
+    if (atr[i] == null) { dir[i] = 0; continue; }
+    const hl2 = (candlesArr[i].high + candlesArr[i].low) / 2, banda = mult * atr[i];
+    const ub = hl2 + banda, lb = hl2 - banda;
+    // A banda do lado do trend so aperta (nunca afrouxa) e a do lado oposto
+    // e' reescrita a cada vela. Sem isso as duas travavam e o trend ficava
+    // preso em um lado só — media 1 virada em 800 velas antes da correção.
+    if (trend === 1) {
+      lower = lower == null ? lb : Math.max(lb, lower);
+      upper = ub;
+    } else {
+      upper = upper == null ? ub : Math.min(ub, upper);
+      lower = lb;
+    }
+    if (trend === 1 && candlesArr[i].close < lower) { trend = -1; upper = ub; }
+    else if (trend === -1 && candlesArr[i].close > upper) { trend = 1; lower = lb; }
+    dir[i] = trend;
+  }
+  return dir;
+}
+
 function runBacktest(candlesArr,cfg){
   const n=candlesArr.length;
   const closes=candlesArr.map(c=>c.close), highs=candlesArr.map(c=>c.high), lows=candlesArr.map(c=>c.low);
-  const fast=computeMASeries(closes,cfg.fastLen,cfg.isEma);
+  // dirSerie: sinal pronto por vela (+1/-1) vindo do SuperTrend ou do Imperial.
+  // Com ele o gatilho é a virada de lado, não o cruzamento de médias.
+  const dirSerie = Array.isArray(cfg.dirSerie) && cfg.dirSerie.length === n ? cfg.dirSerie : null;
+  const fast=dirSerie?[]:computeMASeries(closes,cfg.fastLen,cfg.isEma);
   // slowIsEma permite par misto (EMA 8 x MA 89); sem ele, as duas pernas
   // seguem o mesmo tipo, como era antes
-  const slow=computeMASeries(closes,cfg.slowLen,
+  const slow=dirSerie?[]:computeMASeries(closes,cfg.slowLen,
     cfg.slowIsEma===undefined?cfg.isEma:cfg.slowIsEma);
   const atr=atrCalc(highs,lows,closes,cfg.atrLen);
   const atrSma=sma(atr.map(v=>v==null?0:v),cfg.atrFilterLen);
@@ -18258,12 +18295,12 @@ function runBacktest(candlesArr,cfg){
   const trades=[];
   let active=null; // {dir, entryPx, entryIdx, entryTime, qtyLeft, pnlPct, tp:[{px,hit,qty}], sl:[{px,hit}]}
 
-  const minBar=Math.max(cfg.slowLen,cfg.atrFilterLen,cfg.atrLen)+2;
+  const minBar=dirSerie?2:Math.max(cfg.slowLen,cfg.atrFilterLen,cfg.atrLen)+2;
 
   for(let i=minBar;i<n;i++){
-    if(fast[i]==null||slow[i]==null||fast[i-1]==null||slow[i-1]==null)continue;
-    const crossUp = fast[i]>slow[i] && fast[i-1]<=slow[i-1];
-    const crossDown = fast[i]<slow[i] && fast[i-1]>=slow[i-1];
+    if(!dirSerie && (fast[i]==null||slow[i]==null||fast[i-1]==null||slow[i-1]==null))continue;
+    const crossUp = dirSerie ? (dirSerie[i]===1 && dirSerie[i-1]!==1) : (fast[i]>slow[i] && fast[i-1]<=slow[i-1]);
+    const crossDown = dirSerie ? (dirSerie[i]===-1 && dirSerie[i-1]!==-1) : (fast[i]<slow[i] && fast[i-1]>=slow[i-1]);
     const atrOk = cfg.useAtrFilter ? (atr[i]!=null && atrSma[i]!=null && atr[i]>atrSma[i]) : true;
     const longCond = crossUp && atrOk && (cfg.direction!=='short');
     const shortCond = crossDown && atrOk && (cfg.direction!=='long');
@@ -20601,7 +20638,31 @@ async function runBacktestUI(){
     return;
   }
 
-  const results=runBacktest(d,cfg);
+  // Sinais que já existem no painel: SuperTrend (ATR) e Imperial
+  // (ZEMA+KAMA do core/imperial.js). Os dois entregam direção por vela, então
+  // o backtest usa a virada de lado como gatilho de compra/venda.
+  let dirSerie = null;
+  if (signalKey === 'supertrend') {
+    dirSerie = supertrendDir(d, 14, 3);
+  } else if (signalKey === 'imperial') {
+    try {
+      const mod = await import('./core/imperial.js');
+      const imp = mod && mod.imperial ? mod.imperial(d) : null;
+      dirSerie = imp && imp.series && Array.isArray(imp.series.dir) ? imp.series.dir : null;
+    } catch (e) { dirSerie = null; }
+  }
+  if ((signalKey === 'supertrend' || signalKey === 'imperial') && !dirSerie) {
+    resultsEl.innerHTML = '<div style="color:var(--red);font-size:12px;text-align:center;padding:30px;">Não consegui calcular esse sinal com o histórico atual.</div>';
+    btn.disabled = false; btn.textContent = '▶ Rodar backtest';
+    return;
+  }
+  // Com sinal direcional o ATR já está embutido (SuperTrend/Imperial são de
+  // ATR) e a série diz os dois lados: forçar "só compra" ou pedir ATR acima da
+  // média engolia a maioria das viradas (medido: 10 viradas viravam 2 trades).
+  const cfgFinal = dirSerie
+    ? Object.assign({}, cfg, { dirSerie: dirSerie, direction: 'both', useAtrFilter: false })
+    : cfg;
+  const results=runBacktest(d,cfgFinal);
   renderBacktestResults(results);
   btn.disabled=false; btn.textContent='▶ Rodar backtest';
 }
@@ -20622,6 +20683,8 @@ function renderBacktestResults(r){
   </div>`;
 
   el.innerHTML=`
+    <div class="sp-sec"><span>CURVA DE CAPITAL · PnL ACUMULADO POR TRADE</span></div>
+    <canvas id="bt-equity" height="110" style="width:100%;display:block;margin-bottom:14px;"></canvas>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:16px;">
       ${statBox('Total Trades', r.total)}
       ${statBox('Win Rate', r.winRate.toFixed(1)+'%', r.winRate>=50?'var(--green)':'var(--red)')}
@@ -20664,6 +20727,43 @@ function renderBacktestResults(r){
     </div>
     <div style="font-size:10px;color:var(--t3);line-height:1.5;">Simulação sem custo de spread/comissão. SL sempre avaliado antes do TP (conservador). PnL em % por trade, somado (não composto).</div>
   `;
+  desenharCurvaBacktest(r);
+}
+
+// Curva de capital do backtest: sem ela o resultado era só número em cartão.
+// Um ponto por trade, verde quando o trade fechou positivo.
+function desenharCurvaBacktest(r){
+  const cv = document.getElementById('bt-equity');
+  if (!cv || !r || !Array.isArray(r.equityCurve) || !r.equityCurve.length) return;
+  const eq = r.equityCurve;
+  const dpr = window.devicePixelRatio || 1;
+  const larg = Math.max(280, Math.round(cv.getBoundingClientRect().width || 640));
+  const alt = 110;
+  cv.width = Math.round(larg * dpr);
+  cv.height = Math.round(alt * dpr);
+  cv.style.height = alt + 'px';
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, larg, alt);
+  const min = Math.min(0, ...eq), max = Math.max(0, ...eq), faixa = (max - min) || 1, pad = 8;
+  const X = i => pad + (larg - 2 * pad) * (eq.length < 2 ? 0 : i / (eq.length - 1));
+  const Y = v => alt - pad - ((v - min) / faixa) * (alt - 2 * pad);
+  ctx.strokeStyle = 'rgba(255,255,255,.14)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(pad, Y(0)); ctx.lineTo(larg - pad, Y(0)); ctx.stroke();
+  ctx.strokeStyle = r.netPnl >= 0 ? '#26d0a0' : '#ff5c5c';
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  eq.forEach((v, i) => { if (i) ctx.lineTo(X(i), Y(v)); else ctx.moveTo(X(i), Y(v)); });
+  ctx.stroke();
+  (r.trades || []).forEach((t, i) => {
+    ctx.fillStyle = t.pnlPct >= 0 ? 'rgba(38,208,160,.9)' : 'rgba(255,92,92,.9)';
+    ctx.beginPath(); ctx.arc(X(i), Y(eq[i] || 0), 1.6, 0, Math.PI * 2); ctx.fill();
+  });
+  ctx.fillStyle = 'rgba(255,255,255,.5)';
+  ctx.font = '9px ui-monospace,monospace';
+  ctx.fillText((max >= 0 ? '+' : '') + max.toFixed(1) + '%', pad, 11);
+  ctx.fillText((min >= 0 ? '+' : '') + min.toFixed(1) + '%', pad, alt - 1);
 }
 
 let lastStudySnapshot=null;
